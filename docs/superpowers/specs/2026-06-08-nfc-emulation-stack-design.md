@@ -73,16 +73,20 @@ Key conventions that shape the API below:
 │  src/nfc/nfc_stack.c/.h          ← public wiring layer         │
 ├────────────────┬────────────────────────────────────────────────┤
 │  services/     │  ndef/   desfire/   ultralight/   emv/  aliro/ │
+│                │  each exposes serialize() / deserialize()       │
 ├────────────────┴────────────────────────────────────────────────┤
+│  store/    nfc_store.c/.h                                        │
+│  gather services' serialize() → save cb (stub: shell hex dump)  │
+│  load cb (stub: compiled-in .h) → scatter to deserialize()      │
+├─────────────────────────────────────────────────────────────────┤
 │  router/           aid_router.c/.h   service.h                  │
 │  SELECT AID → registered service lookup → dispatch APDUs        │
 ├─────────────────────────────────────────────────────────────────┤
 │  framing/          apdu_assembler.c/.h   apdu_types.h           │
-│  DATA_IND fragments → complete APDU → router                    │
-│  router response → nfc_t4t_response_pdu_send()                  │
+│  complete APDU (net_buf) → parse → router; unref after dispatch │
 ├─────────────────────────────────────────────────────────────────┤
 │  hal/              nfc_transport.c/.h                           │
-│  T4T lifecycle · UID rotation · raw field events up             │
+│  T4T lifecycle · UID rotation · ISR assembles APDU into net_buf │
 ├─────────────────────────────────────────────────────────────────┤
 │  nrfxlib nfc_t4t_lib   (libnfc_t4t.a — closed binary)          │
 └─────────────────────────────────────────────────────────────────┘
@@ -110,6 +114,11 @@ src/
     │   ├── aid_router.c
     │   ├── aid_router.h
     │   └── service.h
+    ├── store/
+    │   ├── nfc_store.c
+    │   ├── nfc_store.h
+    │   ├── nfc_store_shell_cmds.c
+    │   └── nfc_store_default_cards.h   (compiled-in card blobs — load stub source)
     └── services/
         ├── ndef/
         │   ├── ndef_service.c
@@ -277,11 +286,22 @@ typedef void (*nfc_service_on_apdu_fn)(const nfc_apdu_t *apdu, void *user_ctx);
 typedef void (*nfc_service_on_deselect_fn)(void *user_ctx);
 typedef void (*nfc_service_on_field_off_fn)(void *user_ctx);
 
+/* Persistence hooks — optional. NULL = service not persistable.
+ * serialize: flatten the service's data model into out[0..max); set *out_len.
+ * deserialize: restore the data model from in[0..len). Both return 0/-errno. */
+typedef int (*nfc_service_serialize_fn)(uint8_t *out, size_t max,
+                                        size_t *out_len, void *user_ctx);
+typedef int (*nfc_service_deserialize_fn)(const uint8_t *in, size_t len,
+                                          void *user_ctx);
+
 typedef struct {
     nfc_service_on_select_fn    on_select;
     nfc_service_on_apdu_fn      on_apdu;     /* calls nfc_transport_send_response() internally */
     nfc_service_on_deselect_fn  on_deselect;
     nfc_service_on_field_off_fn on_field_off;
+    nfc_service_serialize_fn    serialize;   /* optional — store layer */
+    nfc_service_deserialize_fn  deserialize; /* optional — store layer */
+    uint8_t                     persist_id;  /* stable id for TLV framing in a saved blob */
     void *user_ctx;
 } nfc_service_t;
 ```
@@ -489,6 +509,63 @@ IDLE
 
 ---
 
+### 6.5 Store Layer (`store/`)
+
+**Responsibility:** Save/load the emulated card's data as a flat blob. This is a
+**stub seam**, not a persistence backend: the destination (save) and source
+(load) are *registered callbacks* (CALLBACK_REGISTRATION_GUIDE canonical pattern).
+The default stubs require no filesystem — save dumps to the shell, load reads a
+compiled-in `.h`. A real NVS/LittleFS backend is added later by registering a
+different callback; nothing else changes.
+
+**What it does:** Given a set of services, it calls each service's `serialize()`,
+frames the blobs into one TLV buffer keyed by `persist_id`, and hands the buffer
+to the registered **save** callback. For load, it fetches the buffer from the
+registered **load** callback and scatters each TLV entry to the matching service's
+`deserialize()`.
+
+**Minimal lifecycle (init/shutdown), Pattern A state (caller/WQ thread).**
+
+**API (`store/nfc_store.h`):**
+```c
+/* save sink: where the packed blob goes. Default stub = shell hex dump. */
+typedef int (*nfc_store_save_fn)(const char *tag,
+                                 const uint8_t *blob, size_t len, void *user_ctx);
+/* load source: where the blob comes from. Default stub = compiled-in .h. */
+typedef int (*nfc_store_load_fn)(const char *tag,
+                                 uint8_t *out, size_t max, size_t *out_len,
+                                 void *user_ctx);
+
+int nfc_store_init(const nfc_store_config_t *cfg);                 /* @caller_sync */
+int nfc_store_shutdown(void);                                      /* @caller_sync */
+int nfc_store_register_save_cb(nfc_store_save_fn fn, void *user_ctx); /* @caller_sync; NULL = restore default stub */
+int nfc_store_register_load_cb(nfc_store_load_fn fn, void *user_ctx); /* @caller_sync; NULL = restore default stub */
+
+/* Pack svcs[].serialize() into one TLV blob → save cb. */
+int nfc_store_save(const char *tag, const nfc_service_t *const *svcs, size_t n); /* @caller_sync */
+/* Fetch via load cb → scatter TLV entries to matching svcs[].deserialize(). */
+int nfc_store_load(const char *tag, const nfc_service_t *const *svcs, size_t n); /* @caller_sync */
+
+const nfc_store_config_t *nfc_store_get_config(void);             /* never NULL */
+int  nfc_store_get_stats(nfc_store_stats_t *out);                 /* copy-out */
+nfc_store_state_t nfc_store_get_state(void);
+```
+
+**Default stubs:**
+- **Save stub** (`nfc_store_save_stub`): emits the blob to the shell as a pastable
+  C array under a sentinel tag (e.g. `@@NFCDUMP@@ <tag> <hex>`), so a saved card
+  can be copied straight into `nfc_store_default_cards.h`.
+- **Load stub** (`nfc_store_load_stub`): looks up `tag` in the compiled-in table
+  in `nfc_store_default_cards.h` and copies the bytes out.
+
+**Shell (`nfc_store_shell_cmds.c`):** `nfc save <tag>` → `nfc_stack_save(tag)`;
+`nfc load <tag>` → `nfc_stack_load(tag)`; plus `config`/`stats`/`state`.
+
+**TLV blob format:** `[persist_id:u8][len:u16][bytes...]` repeated, so unknown
+ids are skipped on load and services can be added without breaking old blobs.
+
+---
+
 ## 7. Public Stack API (`nfc_stack.h`)
 
 ```c
@@ -523,6 +600,13 @@ typedef enum {
  * In-memory only — does not persist across reboots.
  * Internally calls aid_router_clear() then re-registers the new profile's AIDs. */
 int nfc_stack_set_profile(nfc_profile_t profile);
+
+/* Save / load the active profile's card data via the store layer.
+ * save: gather active services' serialize() → nfc_store_save() → save cb.
+ * load: nfc_store_load() → load cb → scatter to active services' deserialize().
+ * With default stubs: save dumps to shell, load reads compiled-in .h. */
+int nfc_stack_save(const char *tag);   /* @caller_sync */
+int nfc_stack_load(const char *tag);   /* @caller_sync */
 ```
 
 `main.c` usage:
@@ -543,11 +627,12 @@ ISR (NFCT interrupt)
   │
   ├── FIELD_ON  → submit k_work to nfc_work_q → router/services notified
   ├── FIELD_OFF → submit k_work to nfc_work_q → router/services reset
-  └── DATA_IND  → copy fragment bytes to static staging buf → submit k_work
+  └── DATA_IND  → alloc/append FIXED net_buf (immediate copy)
+                  on final fragment → k_fifo_put → wake nfc_work_q
                                                                │
                                               nfc_work_q thread (high priority)
                                                                │
-                                              framing: assemble APDU
+                                              framing: parse APDU (net_buf), unref after
                                                                │
                                               router: dispatch to service
                                                                │
@@ -559,7 +644,10 @@ ISR (NFCT interrupt)
                                                   (buf borrowed until next callback)
 ```
 
-**Staging buffer:** Static `uint8_t` array in the framing layer, sized `NFC_APDU_MAX_LEN`. ISR copies each fragment immediately (nrfxlib buffer lifetime undocumented). Work handler assembles from staging buffer.
+**Inbound buffer:** FIXED `net_buf` pool (CONVENTIONS §5). The ISR allocates on
+the first fragment and appends each fragment immediately (nrfxlib buffer lifetime
+undocumented), enqueueing the complete APDU on the final fragment. One owner at a
+time; the WQ unrefs after dispatch. Pool exhaustion → drop + stat, never assert.
 
 ---
 
@@ -599,6 +687,15 @@ config NFC_SERVICE_ALIRO
     select PSA_WANT_ALG_GCM
     select PSA_WANT_KEY_TYPE_ECC_KEY_PAIR
 
+config NFC_STORE
+    bool "Card save/load (stub seam)"
+    depends on NFC_STACK
+    default y
+    help
+      Serialize/deserialize the active card via registered save/load
+      callbacks. Default stubs dump to shell and load from a compiled-in
+      header — no filesystem required.
+
 config NFC_ROUTER_MAX_AIDS
     int "Maximum registered AIDs"
     default 8
@@ -608,6 +705,16 @@ config NFC_NDEF_MAX_SIZE
     int "NDEF file buffer size in bytes"
     default 256
     depends on NFC_SERVICE_NDEF
+
+config NFC_APDU_BUF_SIZE
+    int "Inbound APDU net_buf size in bytes"
+    default 512
+    depends on NFC_STACK
+
+config NFC_APDU_POOL_COUNT
+    int "Inbound APDU net_buf pool count"
+    default 4
+    depends on NFC_STACK
 ```
 
 ---
@@ -647,7 +754,7 @@ config NFC_NDEF_MAX_SIZE
 ## 12. Out of Scope
 
 - GUI / display output (no screen on this target)
-- NFC file save/load (no filesystem)
+- Real persistence backend for save/load (NVS / LittleFS / Flipper `.nfc` files) — the store layer ships a stub seam (shell dump + compiled-in `.h`); a real backend is a later callback swap
 - BLE-triggered UID rotation (separate concern, can call `nfc_stack_set_uid()`)
 - DeSFire write operations (read + auth first; write is a follow-on)
 - Aliro step-up phase AccessDocument (skeleton stub only in first implementation)

@@ -35,6 +35,7 @@ shape.
 | `hal/nfc_transport` | **Full** — init/start/stop/shutdown (restartable for UID rotation) | **Pattern B** — `atomic_t` (ISR + WQ read state) | none |
 | `framing/apdu_assembler` | **Minimal** — init/shutdown | **Pattern A** — plain enum (WQ thread only) | none |
 | `router/aid_router` | **Minimal** — init/shutdown | **Pattern A** — plain enum (WQ thread only) | none |
+| `store/nfc_store` | **Minimal** — init/shutdown | **Pattern A** — plain enum (caller thread) | none |
 | `nfc_stack` | **Full** — init/start/stop/shutdown | **Pattern A** lifecycle + `atomic_t` pending-profile | none |
 | `services/ndef` | **Minimal** — init/shutdown | **Pattern A** (WQ thread) | none |
 | `services/desfire` | **Minimal** — init/shutdown | **Pattern A** lifecycle + per-session auth FSM | **SMF** (auth: IDLE→STEP1→STEP2→AUTHENTICATED) |
@@ -80,7 +81,10 @@ is the HAL (closest to hardware); top is the services.
 | framing → router (complete APDU) | up | **A** direct call to fixed singleton | `aid_router_dispatch(buf, len)` |
 | router → service (SELECT-matched dispatch) | up | **A** service vtable | `aid_router_register(aid, len, svc)` |
 | service → HAL (response) | down | direct call | `nfc_transport_send_response(buf, len)` |
-| `nfc_stack` → hal/framing/router | down | direct call | orchestration |
+| `nfc_stack` → store (save/load active card) | down | direct call | `nfc_store_save/load(tag, svcs, n)` |
+| store → service (serialize/deserialize) | down | direct call via vtable | `svc->serialize` / `svc->deserialize` |
+| store → save/load backend | out | **register-cb** (canonical §4) | `nfc_store_register_save_cb/load_cb` — default stubs (shell / `.h`) |
+| `nfc_stack` → hal/framing/router/store | down | direct call | orchestration |
 
 **Wiring rule (STACK_SPEC rule 2):** all cross-layer callback registration
 happens in **`nfc_stack.c`** — the lifecycle orchestrator. No layer `#include`s

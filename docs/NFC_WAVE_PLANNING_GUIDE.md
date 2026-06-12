@@ -26,10 +26,14 @@ next wave.
 | 5c | Ultralight service | `plans/wave5-ultralight.md` | Spec §6.4.3 + Waves 1-4 + Flipper |
 | 5d | EMV service | `plans/wave5-emv.md` | Spec §6.4.4 + Waves 1-4 + Flipper |
 | 5e | Aliro service | `plans/wave5-aliro.md` | Spec §6.4.5 + Waves 1-4 + aliro/ |
+| 6 | Store (`nfc_store`) | `plans/wave6-store.md` | Spec §6.5 + Waves 1-5 |
 
 Waves 1-4 are **sequential** — each depends on the locked output of the previous.
 Wave 5 services (5a-5e) run **in parallel** — they are independent once the Wave 4
-stack interface is locked.
+stack interface is locked. Wave 6 (store) is **last** — it gathers each service's
+`serialize()`/`deserialize()`, so it needs all services locked. The
+`service.h` persistence hooks themselves are locked back in **Wave 3** so the
+services build them in from the start.
 
 ---
 
@@ -190,7 +194,8 @@ docs/
         ├── wave5-desfire.md
         ├── wave5-ultralight.md
         ├── wave5-emv.md
-        └── wave5-aliro.md
+        ├── wave5-aliro.md
+        └── wave6-store.md
 ```
 
 The target source tree the plans build toward:
@@ -201,6 +206,7 @@ src/nfc/
 ├── hal/        nfc_transport.c / .h
 ├── framing/    apdu_assembler.c / .h, apdu_types.h
 ├── router/     aid_router.c / .h, service.h
+├── store/      nfc_store.c / .h, nfc_store_shell_cmds.c, nfc_store_default_cards.h
 └── services/
     ├── ndef/        ndef_service.c / .h
     ├── desfire/     desfire_service.c / .h, desfire_data.h
