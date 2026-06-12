@@ -41,6 +41,11 @@ For each numbered task in the plan, in order:
   (e.g. `feat(nfc): wave1 task 7 — send_response ISR path`). Use `test(nfc):`
   for test-only commits, `fix(nfc):` for in-wave fixes after review findings.
 - **R5.** Mark each task done in your running report as you commit it.
+- **R5a (early checkpoint).** The dispatcher reviews your commits continuously,
+  starting after your first ~3 tasks, and may interrupt with corrections. A
+  correction to a pattern (not just a line) must be back-applied to all prior
+  commits of this wave before new tasks continue — replicated mistakes are
+  fixed at the root, early, while they are 3 commits deep instead of 20.
 
 ## 3. The gate (must pass before every commit)
 
