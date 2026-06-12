@@ -14,6 +14,28 @@ The stack replaces the existing `src/nfc_emulation.c/h` and provides a layered a
 
 ---
 
+## 1a. Conventions Compliance
+
+**All layers and services in this stack follow `docs/NFC_STACK_CONVENTIONS.md`** —
+the binding adaptation of the firmware-wide design docs (API_DESIGN_CREED,
+CALLBACK_REGISTRATION_GUIDE, STATS_API_DESIGN, NETWORK_BUFFERS, STACK_SPEC) to
+this stack. Where this spec and the conventions doc overlap, the conventions doc
+governs the *how* (lifecycle naming, struct/getter shape, callback pattern,
+buffer model, stats recipe, threading annotations); this spec governs the *what*
+(protocols, AIDs, layer responsibilities).
+
+Key conventions that shape the API below:
+- Lifecycle is `init` / `start` / `stop` / `shutdown` — **no `deinit`**.
+- Every layer exposes `_config_t` / `_stats_t` / `_state_t` + `get_config` /
+  `get_stats` / `get_state`.
+- Callback context pointers are named `user_ctx`; callbacks registered after
+  `init()`, before `start()`, wired in `nfc_stack.c`.
+- Inbound fragment→APDU transport uses a FIXED `net_buf` pool; outbound responses
+  use static service buffers.
+- Every public function carries `@threadsafe` / `@isr_safe` / `@caller_sync`.
+
+---
+
 ## 2. Hardware Constraints
 
 | Capability | Status |
@@ -120,29 +142,39 @@ src/
 UNINIT ──nfc_transport_init()──► IDLE
 IDLE   ──nfc_transport_start()─► RUNNING
 RUNNING──nfc_transport_stop()──► IDLE
-IDLE   ──nfc_transport_deinit()► UNINIT
+IDLE   ──nfc_transport_shutdown()► UNINIT
 ```
 
-**Public API:**
+**Public API:** (full lifecycle; state storage Pattern B / `atomic_t` — ISR reads state)
 ```c
-int  nfc_transport_init(const nfc_transport_callbacks_t *cbs);
-int  nfc_transport_start(const nfc_uid_t *uid);
-int  nfc_transport_stop(void);
-void nfc_transport_deinit(void);
-int  nfc_transport_set_uid(const nfc_uid_t *uid); /* stop → set NFCID1 → start */
-int  nfc_transport_send_response(const uint8_t *buf, size_t len);
-int  nfc_transport_get_stats(nfc_transport_stats_t *out);
+int  nfc_transport_init(const nfc_transport_config_t *cfg);            /* @caller_sync */
+int  nfc_transport_register_callbacks(const nfc_transport_ops_t *ops,
+                                      void *user_ctx);                 /* @caller_sync — after init, before start */
+int  nfc_transport_start(const nfc_uid_t *uid);                       /* @caller_sync */
+int  nfc_transport_stop(void);                                        /* @caller_sync */
+int  nfc_transport_shutdown(void);                                    /* @caller_sync — replaces deinit */
+int  nfc_transport_set_uid(const nfc_uid_t *uid);                     /* @threadsafe — stop → set NFCID1 → start */
+int  nfc_transport_send_response(const uint8_t *buf, size_t len);     /* @threadsafe — borrows buf until next callback */
+const nfc_transport_config_t *nfc_transport_get_config(void);         /* @isr_safe — never NULL */
+int  nfc_transport_get_stats(nfc_transport_stats_t *out);             /* @threadsafe — copy-out */
+nfc_transport_state_t nfc_transport_get_state(void);                  /* @isr_safe */
 ```
 
-**Callbacks delivered upward:**
+**Callbacks delivered upward (Pattern A ops struct, dispatch thread = `nfc_work_q`):**
 ```c
 typedef struct {
-    void (*on_field_on)(void *ctx);
-    void (*on_field_off)(void *ctx);
-    void (*on_fragment)(void *ctx, const uint8_t *data, size_t len, bool more); /* DATA_IND */
-    void *ctx;
-} nfc_transport_callbacks_t;
+    void (*on_field_on)(void *user_ctx);
+    void (*on_field_off)(void *user_ctx);
+    void (*on_apdu)(struct net_buf *apdu, void *user_ctx); /* complete APDU; callee owns the ref */
+    void *user_ctx;
+} nfc_transport_ops_t;
 ```
+
+**APDU assembly:** The ISR allocates a FIXED-pool `net_buf` on the first `DATA_IND`
+fragment, appends each fragment with `net_buf_add_mem` (immediate copy — nrfxlib
+buffer lifetime undocumented), and on the final fragment (`MORE` clear) enqueues
+the complete-APDU `net_buf` to `nfc_work_q`. `on_apdu` then fires on the work
+thread with the assembled buffer. See `docs/NFC_STACK_CONVENTIONS.md` §5.
 
 **Key nrfxlib contracts respected:**
 - Raw PICC mode = `nfc_t4t_setup()` + `nfc_t4t_emulation_start()` with no payload set call. Header: `/opt/nordic/ncs/v3.2.4/nrfxlib/nfc/include/nfc_t4t_lib.h`
@@ -170,21 +202,35 @@ typedef struct {
 
 ### 6.2 Framing Layer (`framing/`)
 
-**Responsibility:** Accumulate `DATA_IND` fragments into a complete APDU, bounds-check, forward to router. Accept flat response buffer from router, call `nfc_transport_send_response()`.
+**Responsibility:** Receive the complete-APDU `net_buf` from the HAL `on_apdu`
+callback, validate and parse the ISO 7816-4 structure, dispatch to the router,
+and manage the `net_buf` ownership (unref after dispatch returns). Minimal
+lifecycle (init/shutdown), Pattern A state (WQ thread only).
 
-**What this layer does NOT do:** PCB parsing, WTX, R-block handling, CRC — nrfxlib handles all of this internally.
+**What this layer does NOT do:** byte accumulation (the HAL ISR does this), PCB
+parsing, WTX, R-block handling, CRC — nrfxlib handles all framing internally.
 
-**APDU accumulation contract:**
-- On each `on_fragment(data, len, more=true)`: copy `data[0..len-1]` into static assembly buffer, append.
-- On `on_fragment(data, len, more=false)`: append final fragment. If assembled length > `NFC_APDU_MAX_LEN` (32767), respond with SW `6700` (Wrong Length) and discard.
-- Forward complete APDU to `aid_router_dispatch()`.
-- On `on_field_off`: reset assembly buffer, notify router.
+**APDU dispatch contract:**
+- On `on_apdu(apdu_buf)`: the buffer already holds one complete C-APDU (assembled
+  in the HAL ISR). Parse CLA/INS/P1/P2/Lc/data/Le into `nfc_apdu_t`. Oversized
+  APDUs cannot occur here (the ISR caps at pool buffer size and responds `6700` /
+  drops on overflow before enqueue).
+- Forward the parsed APDU to `aid_router_dispatch()`.
+- `net_buf_unref()` the buffer after dispatch returns (one owner — see
+  CONVENTIONS §5).
+- On `on_field_off`: notify the router; no assembly state to reset.
 
-**Thread model:** Fragment copy and work submission happen in ISR. All assembly, routing, and service logic run in a dedicated high-priority k_work queue (`nfc_work_q`). Response buffer lives in static service memory — valid from work submission until the next `DATA_IND` callback.
+**Thread model:** Assembly + work submission happen in the HAL ISR. Parsing,
+routing, and service logic run on the dedicated high-priority `nfc_work_q`.
+Response buffer lives in static service memory — valid from `send_response`
+until the next callback.
 
 **APDU types (`apdu_types.h`):**
 ```c
-#define NFC_APDU_MAX_LEN        32767U   /* ISO 7816-4 extended APDU max */
+/* Inbound APDU bound = FIXED net_buf pool buffer size (CONVENTIONS §5),
+ * not the 32767 extended-APDU ceiling. Oversize → 6700 + drop in the ISR. */
+#define NFC_APDU_BUF_SIZE       CONFIG_NFC_APDU_BUF_SIZE   /* default 512 */
+
 #define NFC_SW_OK               0x9000U
 #define NFC_SW_FILE_NOT_FOUND   0x6A82U
 #define NFC_SW_WRONG_LENGTH     0x6700U
@@ -192,10 +238,18 @@ typedef struct {
 #define NFC_SW_CONDITIONS_NOT_SATISFIED 0x6985U
 #define NFC_SW_SECURITY_STATUS  0x6982U
 
+/* Parsed view over a complete C-APDU held in a net_buf. Points into the
+ * net_buf's data — valid only while the buffer is held. */
 typedef struct {
-    uint8_t  buf[NFC_APDU_MAX_LEN];
-    uint16_t len;
-} nfc_apdu_buf_t;
+    uint8_t        cla;
+    uint8_t        ins;
+    uint8_t        p1;
+    uint8_t        p2;
+    const uint8_t *data;     /* command data field (may be NULL) */
+    uint16_t       lc;       /* command data length */
+    uint16_t       le;       /* expected response length */
+    bool           has_le;
+} nfc_apdu_t;
 ```
 
 **Stats struct:**
@@ -215,21 +269,20 @@ typedef struct {
 
 **Responsibility:** Maintain an AID registration table. On SELECT AID, look up the matching service and call `on_select`. Route all subsequent APDUs to the active service until DESELECT or field-off.
 
-**Service vtable (`service.h`):**
+**Service vtable (`service.h`):** (Pattern A; context pointer named `user_ctx`)
 ```c
-typedef void (*nfc_service_on_select_fn)(void *ctx,
-                                         const uint8_t *aid, size_t aid_len);
-typedef void (*nfc_service_on_apdu_fn)(void *ctx,
-                                       const uint8_t *cmd, size_t cmd_len);
-typedef void (*nfc_service_on_deselect_fn)(void *ctx);
-typedef void (*nfc_service_on_field_off_fn)(void *ctx);
+typedef void (*nfc_service_on_select_fn)(const uint8_t *aid, size_t aid_len,
+                                         void *user_ctx);
+typedef void (*nfc_service_on_apdu_fn)(const nfc_apdu_t *apdu, void *user_ctx);
+typedef void (*nfc_service_on_deselect_fn)(void *user_ctx);
+typedef void (*nfc_service_on_field_off_fn)(void *user_ctx);
 
 typedef struct {
     nfc_service_on_select_fn    on_select;
     nfc_service_on_apdu_fn      on_apdu;     /* calls nfc_transport_send_response() internally */
     nfc_service_on_deselect_fn  on_deselect;
     nfc_service_on_field_off_fn on_field_off;
-    void *ctx;
+    void *user_ctx;
 } nfc_service_t;
 ```
 
@@ -451,8 +504,8 @@ int nfc_stack_stop(void);
 /* Rotate UID: stop → set NFCID1 → start. Safe to call while running. */
 int nfc_stack_set_uid(const nfc_uid_t *uid);
 
-/* Tear down. Call nfc_stack_stop() first. */
-void nfc_stack_deinit(void);
+/* Tear down. Legal from any state; performs implicit stop() if started. */
+int nfc_stack_shutdown(void);
 
 /* Profile enum — which services are registered in the router.
  * Only profiles whose Kconfig is enabled are valid at runtime.

@@ -35,17 +35,20 @@ stack interface is locked.
 
 ## Reference Sources
 
-| Source | Path |
-|--------|------|
-| Architecture spec | `docs/superpowers/specs/2026-06-08-nfc-emulation-stack-design.md` |
-| nrfxlib NFC headers | `/opt/nordic/ncs/v3.2.4/nrfxlib/nfc/include/` |
-| Zephyr kernel headers | `/opt/nordic/ncs/v3.2.4/zephyr/include/` |
-| Flipper Zero firmware | `/Users/majidfaroud/flipperzero/` |
-| Aliro codebase | `/Users/majidfaroud/writable_ndef_msg/aliro/` |
-| Project stats API | `/Users/majidfaroud/writable_ndef_msg/src/stats.h` |
+| Source | Path | Role |
+|--------|------|------|
+| **Stack conventions** | `docs/NFC_STACK_CONVENTIONS.md` | **Mandatory — read first, every wave.** Binding rules for lifecycle, structs, callbacks, buffers, stats, threading. |
+| Architecture spec | `docs/superpowers/specs/2026-06-08-nfc-emulation-stack-design.md` | The *what*: protocols, AIDs, layer responsibilities |
+| Firmware design docs | `docs/{API_DESIGN_CREED,CALLBACK_REGISTRATION_GUIDE,STATS_API_DESIGN,NETWORK_BUFFERS,STACK_SPEC}.md` | Governing authority behind the conventions doc — consult when conventions points to them |
+| nrfxlib NFC headers | `/opt/nordic/ncs/v3.2.4/nrfxlib/nfc/include/` | `nfc_t4t_lib.h`, `nfc_platform.h`, `nrf_nfc_errno.h` |
+| Zephyr kernel headers | `/opt/nordic/ncs/v3.2.4/zephyr/include/` | k_work, k_fifo, net_buf, k_spinlock, smf |
+| Flipper Zero firmware | `/Users/majidfaroud/flipperzero/` | Protocol references (DeSFire/Ultralight constants, EMV parser) |
+| Aliro codebase | `/Users/majidfaroud/writable_ndef_msg/aliro/` | PSA crypto wrappers for the Aliro service |
+| Project stats API | `/Users/majidfaroud/writable_ndef_msg/src/stats.h` | `STATS_*` macros |
 
 All agents have unrestricted read access to every source. They decide what is
-relevant — do not prescribe a narrow reading list.
+relevant — do not prescribe a narrow reading list beyond the mandatory
+conventions doc.
 
 **Ignore entirely:** `src/nfc_emulation.c/.h`. It is replaced by this stack. Do
 not read it, reference it, or carry its patterns forward.
@@ -78,9 +81,10 @@ Every wave follows this sequence, in order. Do not skip ahead — later steps
 depend on the vocabulary locked in earlier ones.
 
 ### 1. Context sweep
-Read the spec section for this layer. Read all prior wave plan outputs in full.
-Read the upstream sources you need (nrfxlib, Flipper, aliro, Zephyr). No writing
-yet — gather first.
+Read `docs/NFC_STACK_CONVENTIONS.md` first — it is binding for every layer. Then
+read the spec section for this layer, all prior wave plan outputs in full, and the
+upstream sources you need (nrfxlib, Flipper, aliro, Zephyr). No writing yet —
+gather first.
 
 ### 2. Types and constants
 Define every type this layer introduces: structs, enums, typedefs, `#define`
@@ -145,7 +149,10 @@ Every wave plan uses this exact skeleton:
 
 ## 6. Implementation Notes
 
-## 7. Tasks
+## 7. Conventions Compliance
+<!-- The CONVENTIONS §12 checklist, filled in for this layer -->
+
+## 8. Tasks
 - [ ] Task 1 ...
 - [ ] Task 2 ...
 ```
