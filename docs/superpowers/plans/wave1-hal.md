@@ -373,10 +373,10 @@ const nfc_transport_caps_t *nfc_transport_get_capabilities(void);
   - `-EIO` — state == ERROR.
 
 ### `nfc_transport_stop(void)`
-- **Pre:** state ≥ INITIALIZED.
+- **Pre:** any state (idempotent no-op unless STARTED).
 - **Post (0):** `s_uid_mutex` acquired **before** emulation stop and released only after the WQ teardown steps that must not interleave with `set_uid` — this serializes stop against a concurrent UID rotation so a mid-callback rotation cannot re-enable emulation after stop. Under the mutex: backend emulation stop (callbacks cease); in-flight assembly buffer discarded (irq-locked); `s_field_on/off_work` + `s_apdu_work` cancelled via `k_work_cancel_sync`; `nfc_apdu_pool` fifo drained (remaining bufs unref'd); `nfc_work_q` drained then stopped; state == STOPPED; mutex released. `start()` may be called again. A concurrent `set_uid` either completes fully before stop proceeds, or observes the stopped state and fails cleanly with `-ENODEV`.
-- **Idempotent:** state ∈ {INITIALIZED, STOPPED} → return 0.
-- **Errors:** `-ENODEV` (UNINITIALIZED) · `-EIO` (ERROR, or backend emulation-stop error + `STATS_ERROR`).
+- **Idempotent:** state ∈ {UNINITIALIZED, INITIALIZED, STOPPED} → return 0.
+- **Errors:** `-EIO` (ERROR, or backend emulation-stop error + `STATS_ERROR`). All non-STARTED states return 0 (idempotent); call `shutdown()` to recover from ERROR.
 
 ### `nfc_transport_shutdown(void)`
 - **Pre:** any state.
@@ -483,7 +483,7 @@ Init/shutdown use CAS (`atomic_cas`) — never `atomic_get`+`atomic_set` (creed 
 | `s_config` | `init()` (thread) | getter, ISR | frozen after init |
 | `s_ops`/`s_user_ctx` | `register_callbacks` (thread, not running) | WQ handlers | no race (only set when not STARTED; only read when STARTED) |
 | `s_active_uid` | `start`/`set_uid` (thread) | `set_uid` | `s_uid_mutex` (also held by `stop()` across emulation-stop + WQ teardown, serializing stop against rotation) |
-| `s_cur_buf`,`s_asm_drop` | t4t cb (ISR) | t4t cb (ISR); discarded by `stop`/`set_uid` | single ISR context; `irq_lock` only for thread-side discard |
+| `s_cur_buf`,`s_asm_drop` | t4t cb (ISR) | t4t cb (ISR); discarded by `stop`/`set_uid`/field events | single ISR context; `irq_lock` only for thread-side discard; `discard_cur_buf` resets **both** `s_cur_buf` and `s_asm_drop` |
 | `s_apdu_fifo` | ISR put / WQ get | ISR + WQ | `k_fifo` (ISR-safe) |
 
 ### 4.4 t4t callback (ISR/library context) — the assembly state machine
@@ -709,7 +709,7 @@ changes.
 - [ ] **6. Getters.** `get_config` (`&s_config`), `get_state` (`state_get`), `get_stats` (`STATS_COPY_OUT`). **Commit.**
 - [ ] **7. init/shutdown.** `init`: `state_claim(UNINIT,INIT)` (`-EALREADY`) → `STATS_RESET` (**first statement after the guard** — CONVENTIONS §6) → `k_fifo_init`, `k_work_init` x3, `k_mutex_init` → `nfc_t4t_setup(nfc_isr_cb,NULL)` → `parameter_set(FWI)` → on any lib error roll back to UNINIT + `nfc_t4t_done` + `STATS_ERROR` + `-EIO`. `shutdown`: idempotent; implicit stop if STARTED; `nfc_t4t_done`; `state_set(UNINIT)`; always return 0. **Commit.**
 - [ ] **8. register_callbacks.** Guard table (`-ENODEV`/`-EBUSY`/`-EIO`); store/clear `s_ops`,`s_user_ctx`. **Commit.**
-- [ ] **9. WQ handlers + assembly helper.** `field_on_handler`, `field_off_handler`, `apdu_handler` (drain loop, callee-owns or unref+`apdu_dropped_no_consumer`); `discard_cur_buf()` (irq-locked unref of `s_cur_buf`); `nfc_hal_on_fragment()` per §4.4; private `nfc_transport_stats_on_fragment()` single `STATS_SCOPE`. **Commit.**
+- [ ] **9. WQ handlers + assembly helper.** `field_on_handler`, `field_off_handler`, `apdu_handler` (drain loop, callee-owns or unref+`apdu_dropped_no_consumer`); `discard_cur_buf()` (irq-locked unref of `s_cur_buf` **and reset `s_asm_drop = ASM_OK`** so a mid-chain field loss / stop / rotation cannot bleed a `DROP_*` flag into the next session); `nfc_hal_on_fragment()` per §4.4; private `nfc_transport_stats_on_fragment()` single `STATS_SCOPE`. **Commit.**
 - [ ] **10. (TDD) oversize decision.** Factor the oversize test into pure `static bool frag_fits(size_t cur_len, size_t add, size_t cap)`. Ztest boundary cases (fits exactly, one over). Use it in `nfc_hal_on_fragment`. **Commit.**
 - [ ] **11. t4t callback.** `nfc_isr_cb` per §4.4 (`ARG_UNUSED(context)`, `switch` with `default`, MORE-flag Boolean test, inline 6700 on oversize, no-response on no-buffer). **Commit.**
 - [ ] **12. start/stop.** `start`: state guard + idempotent; `nfc_uid_len_valid` (`-EINVAL`); `parameter_set(NFCID1)`; `k_work_queue_start(&s_work_q, s_workq_stack, K_THREAD_STACK_SIZEOF(...), CONFIG_NFC_HAL_WORKQ_PRIORITY, &(struct k_work_queue_config){.name="nfc_work_q"})`; `emulation_start`; rollback on error. `stop`: idempotent; `k_mutex_lock(&s_uid_mutex, K_FOREVER)` **before** `emulation_stop` (serializes against `set_uid` — a mid-callback rotation cannot re-enable emulation after stop); `emulation_stop`; `discard_cur_buf`; `k_work_cancel_sync` x3; drain `s_apdu_fifo` (unref); `k_work_queue_drain(...,true)`; `k_work_queue_stop`; `k_mutex_unlock`. **Commit.**
