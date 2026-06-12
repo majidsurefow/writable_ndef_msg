@@ -1,8 +1,20 @@
-# NFC Emulation Stack Design
+# NFC Emulation Stack Design (v2)
 
-**Date:** 2026-06-08  
-**Project:** writable_ndef_msg (nRF52840, Nordic NCS v3.2.2)  
-**Status:** Approved for implementation — updated with profile switching and reference paths
+> **⚠ SUBORDINATED — This document is no longer the architecture of record.**
+>
+> The authoritative architecture entry point is:
+> **[`docs/superpowers/specs/2026-06-12-nfc-stack-architecture.md`](./2026-06-12-nfc-stack-architecture.md)
+> (v3, 2026-06-12)**
+>
+> This v2 document is **retained as the card-mode / NFCT first-slice implementation
+> detail**: APDU framing, AID table, service interfaces, NFCT driver specifics,
+> threading model, and Kconfig layout for the card-only slice remain valid and are
+> referenced by the wave plans. For the overall architecture (dual-role, multi-backend,
+> lane model, capability descriptor, file format), consult v3.
+
+**Date:** 2026-06-08 (v1) · 2026-06-12 (v2)  
+**Project:** writable_ndef_msg (nRF52840, Nordic NCS v3.2.4)  
+**Status:** v2 — aligned with the LOCKED Wave 1–4 plans and user scope decisions. Where this spec and a locked wave plan differ on implementation detail, the wave plan governs. See Changelog (§14).
 
 ---
 
@@ -67,8 +79,8 @@ Key conventions that shape the API below:
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │  main.c                                                         │
-│  nfc_stack_init() / nfc_stack_start(uid) / nfc_stack_stop()    │
-│  nfc_stack_set_uid(uid)                                         │
+│  nfc_stack_init(cfg) / nfc_stack_start(uid) / nfc_stack_stop() │
+│  nfc_stack_set_uid(uid) · nfc_stack_register_event_cb(cb, ctx) │
 ├─────────────────────────────────────────────────────────────────┤
 │  src/nfc/nfc_stack.c/.h          ← public wiring layer         │
 ├────────────────┬────────────────────────────────────────────────┤
@@ -76,19 +88,21 @@ Key conventions that shape the API below:
 │                │  each exposes serialize() / deserialize()       │
 ├────────────────┴────────────────────────────────────────────────┤
 │  store/    nfc_store.c/.h                                        │
-│  gather services' serialize() → save cb (stub: shell hex dump)  │
-│  load cb (stub: compiled-in .h) → scatter to deserialize()      │
+│  load cb (PRIMARY: compiled-in .h / shell) → deserialize()      │
+│  save cb (debug capture: shell hex dump) ← serialize()          │
 ├─────────────────────────────────────────────────────────────────┤
 │  router/           aid_router.c/.h   service.h                  │
 │  SELECT AID → registered service lookup → dispatch APDUs        │
 ├─────────────────────────────────────────────────────────────────┤
 │  framing/          apdu_assembler.c/.h   apdu_types.h           │
-│  complete APDU (net_buf) → parse → router; unref after dispatch │
+│  complete APDU (net_buf) → parse → router (parsed nfc_apdu_t);  │
+│  unref after dispatch                                            │
 ├─────────────────────────────────────────────────────────────────┤
-│  hal/              nfc_transport.c/.h                           │
-│  T4T lifecycle · UID rotation · ISR assembles APDU into net_buf │
+│  hal/   nfc_transport.h (vendor-clean) + backend .c             │
+│  T4T lifecycle · UID rotation · backend assembles APDU→net_buf  │
 ├─────────────────────────────────────────────────────────────────┤
-│  nrfxlib nfc_t4t_lib   (libnfc_t4t.a — closed binary)          │
+│  backend: nrfxlib nfc_t4t_lib (NFC_HAL_BACKEND_NRFX, current)   │
+│           PN7160/NCI (NFC_HAL_BACKEND_PN7160, future — §13)     │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -104,8 +118,9 @@ src/
     ├── nfc_stack.c
     ├── nfc_stack.h
     ├── hal/
-    │   ├── nfc_transport.c
-    │   └── nfc_transport.h
+    │   ├── nfc_transport.h           (vendor-clean public API — §6.1)
+    │   ├── nfc_transport_nrfx.c      (nRFX backend — current)
+    │   └── nfc_transport_pn7160.c    (PN7160 backend — future mini-wave, §13)
     ├── framing/
     │   ├── apdu_assembler.c
     │   ├── apdu_assembler.h
@@ -144,7 +159,23 @@ src/
 
 ### 6.1 HAL Layer (`hal/`)
 
-**Responsibility:** Own the nrfxlib T4T library lifecycle, UID rotation, and deliver raw events upward. Nothing else.
+**Responsibility:** Own the NFC transport backend lifecycle, UID rotation, and deliver field events and complete C-APDUs upward. Nothing else.
+
+**Backend architecture (vendor-clean HAL):** the public header `hal/nfc_transport.h`
+is **vendor-clean** — no nrfxlib (or other vendor) types, includes, or constants
+appear in it. The response length limit is a **transport-owned `#define`**
+(e.g. `NFC_TRANSPORT_MAX_RESPONSE_LEN`), not a vendor constant. The
+implementation is a backend file selected by a Kconfig backend choice (§9):
+
+| Backend | File | Kconfig |
+|---|---|---|
+| nRF NFCT via nrfxlib `nfc_t4t_lib` (current) | `hal/nfc_transport_nrfx.c` | `NFC_HAL_BACKEND_NRFX` |
+| NXP PN7160 (future mini-wave — §13) | `hal/nfc_transport_pn7160.c` | `NFC_HAL_BACKEND_PN7160` |
+
+**Transport contract guarantees (backend-independent):**
+- The transport delivers **complete C-APDUs** upward via `on_apdu` — fragment assembly is internal to the backend.
+- Inbound fragments are **copied immediately** in the backend callback context; vendor buffer lifetimes are never relied upon.
+- The buffer passed to `nfc_transport_send_response()` is **borrowed until the next transport event**; the caller keeps it valid and unmodified until then.
 
 **Lifecycle states:**
 ```
@@ -154,7 +185,7 @@ RUNNING──nfc_transport_stop()──► IDLE
 IDLE   ──nfc_transport_shutdown()► UNINIT
 ```
 
-**Public API:** (full lifecycle; state storage Pattern B / `atomic_t` — ISR reads state)
+**Public API:** (full lifecycle; state storage Pattern B / `atomic_t` — backend callback reads state)
 ```c
 int  nfc_transport_init(const nfc_transport_config_t *cfg);            /* @caller_sync */
 int  nfc_transport_register_callbacks(const nfc_transport_ops_t *ops,
@@ -162,50 +193,51 @@ int  nfc_transport_register_callbacks(const nfc_transport_ops_t *ops,
 int  nfc_transport_start(const nfc_uid_t *uid);                       /* @caller_sync */
 int  nfc_transport_stop(void);                                        /* @caller_sync */
 int  nfc_transport_shutdown(void);                                    /* @caller_sync — replaces deinit */
-int  nfc_transport_set_uid(const nfc_uid_t *uid);                     /* @threadsafe — stop → set NFCID1 → start */
-int  nfc_transport_send_response(const uint8_t *buf, size_t len);     /* @threadsafe — borrows buf until next callback */
+int  nfc_transport_set_uid(const nfc_uid_t *uid);                     /* @threadsafe — emulation stop → set UID → restart */
+int  nfc_transport_send_response(const uint8_t *buf, size_t len);     /* @threadsafe — borrows buf until next transport event */
 const nfc_transport_config_t *nfc_transport_get_config(void);         /* @isr_safe — never NULL */
 int  nfc_transport_get_stats(nfc_transport_stats_t *out);             /* @threadsafe — copy-out */
 nfc_transport_state_t nfc_transport_get_state(void);                  /* @isr_safe */
 ```
 
+**Stop vs. UID rotation:** `nfc_transport_stop()` **serializes against
+`nfc_transport_set_uid()` via the HAL's UID mutex** — stop acquires the mutex
+before stopping emulation. This closes the stop-vs-rotation race: a concurrent
+`set_uid` either completes fully before the stop proceeds, or observes the
+stopped state and fails cleanly with `-ENODEV`.
+
 **Callbacks delivered upward (Pattern A ops struct, dispatch thread = `nfc_work_q`):**
 ```c
+/* Function pointers ONLY — NO user_ctx member (Wave 1 locked form).
+ * user_ctx is a SEPARATE argument to nfc_transport_register_callbacks(ops,
+ * user_ctx), stored alongside and passed back to every handler. */
 typedef struct {
     void (*on_field_on)(void *user_ctx);
     void (*on_field_off)(void *user_ctx);
-    void (*on_apdu)(struct net_buf *apdu, void *user_ctx); /* complete APDU; callee owns the ref */
-    void *user_ctx;
+    void (*on_apdu)(struct net_buf *apdu, void *user_ctx); /* complete APDU; CALLEE owns the ref */
 } nfc_transport_ops_t;
 ```
 
-**APDU assembly:** The ISR allocates a FIXED-pool `net_buf` on the first `DATA_IND`
-fragment, appends each fragment with `net_buf_add_mem` (immediate copy — nrfxlib
-buffer lifetime undocumented), and on the final fragment (`MORE` clear) enqueues
-the complete-APDU `net_buf` to `nfc_work_q`. `on_apdu` then fires on the work
-thread with the assembled buffer. See `docs/NFC_STACK_CONVENTIONS.md` §5.
+**APDU assembly:** The backend callback allocates a FIXED-pool `net_buf` on the
+first fragment, appends each fragment with `net_buf_add_mem` (immediate copy),
+and on the final fragment enqueues the complete-APDU `net_buf` to `nfc_work_q`.
+`on_apdu` then fires on the work thread with the assembled buffer; the callee
+(framing) owns the ref and unrefs after dispatch. See
+`docs/NFC_STACK_CONVENTIONS.md` §5.
 
-**Key nrfxlib contracts respected:**
+**nRFX backend implementation notes** (`nfc_transport_nrfx.c` only — these
+vendor specifics never appear in the public header):
 - Raw PICC mode = `nfc_t4t_setup()` + `nfc_t4t_emulation_start()` with no payload set call. Header: `/opt/nordic/ncs/v3.2.4/nrfxlib/nfc/include/nfc_t4t_lib.h`
+- The t4t callback fires from ISR context — treat as ISR: no sleep/blocking, FIXED-pool `K_NO_WAIT` allocation only.
 - `DATA_IND` delivers PCB-stripped APDU fragments. `data` pointer must be copied immediately — lifetime undocumented.
 - `NFC_T4T_DI_FLAG_MORE` set = more fragments follow. Clear = final fragment.
-- `nfc_t4t_response_pdu_send(buf, len)` borrows `buf` until the next callback — caller must hold it valid.
+- `nfc_t4t_response_pdu_send(buf, len)` borrows `buf` until the next callback — the backend source of the generic borrow guarantee above.
 - UID rotation: `nfc_t4t_emulation_stop()` → `nfc_t4t_parameter_set(NFC_T4T_PARAM_NFCID1, ...)` → `nfc_t4t_emulation_start()`.
-- FWI set to 8 (max, ~5s window) before first `emulation_start()`.
-- Callback fires from ISR context.
+- FWI set to 8 (max, ~5 s window) before first `emulation_start()` — backs the transport's response-time headroom.
 
-**Stats struct:**
-```c
-typedef struct {
-    uint32_t field_on_count;
-    uint32_t field_off_count;
-    uint32_t fragment_rx_count;
-    uint32_t response_tx_count;
-    uint32_t uid_rotation_count;
-    uint32_t error_count;
-    int32_t  last_error_code;
-} nfc_transport_stats_t;
-```
+**Stats struct:** exact stats fields are locked by the corresponding wave plan
+(`wave1-hal.md` §1.3, `nfc_transport_stats_t`). Every drop path has a named
+counter per CONVENTIONS §6; `error_count`/`last_error_code` are mandatory.
 
 ---
 
@@ -216,21 +248,26 @@ callback, validate and parse the ISO 7816-4 structure, dispatch to the router,
 and manage the `net_buf` ownership (unref after dispatch returns). Minimal
 lifecycle (init/shutdown), Pattern A state (WQ thread only).
 
-**What this layer does NOT do:** byte accumulation (the HAL ISR does this), PCB
-parsing, WTX, R-block handling, CRC — nrfxlib handles all framing internally.
+**What this layer does NOT do:** byte accumulation (the HAL backend does this),
+PCB parsing, WTX, R-block handling, CRC — the transport backend handles all
+ISO-DEP framing internally (§6.1 transport contract).
 
 **APDU dispatch contract:**
-- On `on_apdu(apdu_buf)`: the buffer already holds one complete C-APDU (assembled
-  in the HAL ISR). Parse CLA/INS/P1/P2/Lc/data/Le into `nfc_apdu_t`. Oversized
-  APDUs cannot occur here (the ISR caps at pool buffer size and responds `6700` /
-  drops on overflow before enqueue).
-- Forward the parsed APDU to `aid_router_dispatch()`.
+- On `on_apdu(apdu_buf)`: the buffer already holds one complete C-APDU
+  (assembled by the HAL backend). Parse CLA/INS/P1/P2/Lc/data/Le into
+  `nfc_apdu_t`. Oversized APDUs cannot occur here (the backend caps at pool
+  buffer size and responds `6700` / drops on overflow before enqueue).
+- Forward the validated parse view to the router: `aid_router_dispatch(&apdu)`
+  — the **parsed form** (`const nfc_apdu_t *`) is the locked signature (Wave 3
+  DECISION-7). The router does **not** re-parse; framing's `nfc_apdu_t` is
+  passed through unchanged to the service vtable.
 - `net_buf_unref()` the buffer after dispatch returns (one owner — see
   CONVENTIONS §5).
 - On `on_field_off`: notify the router; no assembly state to reset.
 
-**Thread model:** Assembly + work submission happen in the HAL ISR. Parsing,
-routing, and service logic run on the dedicated high-priority `nfc_work_q`.
+**Thread model:** Assembly + work submission happen in the HAL backend callback
+(ISR context on the nRFX backend). Parsing, routing, and service logic run on
+the dedicated high-priority `nfc_work_q`.
 Response buffer lives in static service memory — valid from `send_response`
 until the next callback.
 
@@ -240,37 +277,31 @@ until the next callback.
  * not the 32767 extended-APDU ceiling. Oversize → 6700 + drop in the ISR. */
 #define NFC_APDU_BUF_SIZE       CONFIG_NFC_APDU_BUF_SIZE   /* default 512 */
 
-#define NFC_SW_OK               0x9000U
-#define NFC_SW_FILE_NOT_FOUND   0x6A82U
-#define NFC_SW_WRONG_LENGTH     0x6700U
-#define NFC_SW_INS_NOT_SUPPORTED 0x6D00U
-#define NFC_SW_CONDITIONS_NOT_SATISFIED 0x6985U
-#define NFC_SW_SECURITY_STATUS  0x6982U
+/* The full ISO 7816 status-word / CLA / INS / SELECT-P1 constant vocabulary is
+ * locked by wave2-framing.md §1.1 — including NFC_SW_COMMAND_NOT_ALLOWED
+ * (0x6986), used by the router's no-service-selected response. */
 
 /* Parsed view over a complete C-APDU held in a net_buf. Points into the
- * net_buf's data — valid only while the buffer is held. */
+ * net_buf's data — valid only during the dispatch call chain (until framing
+ * unrefs the buffer). Services copy any data they need to keep. */
 typedef struct {
     uint8_t        cla;
     uint8_t        ins;
     uint8_t        p1;
     uint8_t        p2;
-    const uint8_t *data;     /* command data field (may be NULL) */
+    const uint8_t *data;     /* command data field; NULL when lc == 0 */
     uint16_t       lc;       /* command data length */
     uint16_t       le;       /* expected response length */
     bool           has_le;
+    bool           extended; /* Lc/Le used extended (3-byte) encoding */
 } nfc_apdu_t;
 ```
 
-**Stats struct:**
-```c
-typedef struct {
-    uint32_t apdu_assembled_count;
-    uint32_t apdu_oversized_count;
-    uint32_t response_sent_count;
-    uint32_t error_count;
-    int32_t  last_error_code;
-} nfc_framing_stats_t;
-```
+Extended-format parsing is gated by `CONFIG_NFC_APDU_EXTENDED_SUPPORT` (§9);
+when disabled, extended APDUs are rejected with `6700`.
+
+**Stats struct:** exact stats struct name and fields are locked by
+`wave2-framing.md` §1.3 (`apdu_assembler_stats_t`).
 
 ---
 
@@ -299,44 +330,47 @@ typedef struct {
     nfc_service_on_apdu_fn      on_apdu;     /* calls nfc_transport_send_response() internally */
     nfc_service_on_deselect_fn  on_deselect;
     nfc_service_on_field_off_fn on_field_off;
-    nfc_service_serialize_fn    serialize;   /* optional — store layer */
-    nfc_service_deserialize_fn  deserialize; /* optional — store layer */
-    uint8_t                     persist_id;  /* stable id for TLV framing in a saved blob */
+    nfc_service_serialize_fn    serialize;   /* NULLABLE — NULL = service not persistable */
+    nfc_service_deserialize_fn  deserialize; /* NULLABLE — NULL = service not persistable */
+    uint8_t                     persist_id;  /* stable id for TLV framing in a saved blob; 0 = not persistable */
     void *user_ctx;
 } nfc_service_t;
 ```
+
+The vtable is the CONVENTIONS §4 base form (four callbacks + `user_ctx`)
+extended with the persistence fields per Wave 3 DECISION-A. **Persist IDs are
+stable — do not renumber** (`NFC_PERSIST_ID_*` in `service.h`, wave3 §1.1):
+NDEF `0x01`, DeSFire `0x02`, Ultralight `0x03`, EMV `0x04`, Aliro `0x05`.
 
 **Service send pattern (Flipper-aligned):** Each service calls `nfc_transport_send_response(buf, len)` imperatively inside `on_apdu`. The service owns a static response buffer. This correctly handles both synchronous (NDEF, Ultralight) and deferred (Aliro — crypto on work queue) response paths.
 
 **Router API:**
 ```c
 int  aid_router_init(void);
+int  aid_router_shutdown(void);   /* minimal lifecycle per CONVENTIONS §2 */
 int  aid_router_register(const uint8_t *aid, size_t aid_len,
                           const nfc_service_t *svc);
-void aid_router_clear(void);      /* deregisters all services — called by nfc_stack_set_profile() */
-void aid_router_dispatch(const uint8_t *apdu, size_t len);
+void aid_router_clear(void);      /* deregisters all services — used by nfc_stack
+                                   * profile switching at field-off (§7) */
+void aid_router_dispatch(const nfc_apdu_t *apdu);  /* PARSED form — LOCKED
+                                   * (Wave 3 DECISION-7). The router receives
+                                   * framing's validated parse view and never
+                                   * re-parses. */
 void aid_router_field_off(void);
 ```
 
 **Dispatch logic:**
-- First APDU in a session: check for SELECT AID (`CLA=00 INS=A4 P1=04`). Extract AID from Lc+data field. Linear scan of registration table. If match: call `svc->on_select(aid, aid_len)`, mark as active service.
-- Subsequent APDUs: forward to active service `on_apdu`.
-- If no service matched SELECT: respond with `6A82` (File Not Found).
-- `FIELD_OFF`: call active service `on_field_off`, clear active service.
+- Every APDU is checked for SELECT-by-AID (`CLA=00 INS=A4 P1=04`, `lc > 0`). AID = `apdu->data[0..lc-1]`. Linear scan of the registration table, exact-length match.
+- SELECT match: call `on_deselect` on the previously active service (if any), mark the matched service active, call `svc->on_select(aid, aid_len, user_ctx)`. **The matched service's `on_select` sends its own SELECT response** (FCI blob for EMV/Aliro, plain `9000` for NDEF/DeSFire) — **the router sends nothing on a match**.
+- SELECT with no matching AID (or empty AID data field): **the router sends `6A82`** (File Not Found).
+- Non-SELECT APDU with an active service: forward to the active service's `on_apdu`.
+- Non-SELECT APDU with **no service selected**: **the router sends `6986`** (Command Not Allowed).
+- `FIELD_OFF`: call active service `on_field_off`, clear the active service. The registration table is not cleared.
 
 **Registration:** One AID per table entry. Multiple entries may point to the same `nfc_service_t` (used by Aliro — two AIDs, one service). Table size defined by `CONFIG_NFC_ROUTER_MAX_AIDS` (default 8).
 
-**Stats struct:**
-```c
-typedef struct {
-    uint32_t select_matched_count;
-    uint32_t select_unmatched_count;
-    uint32_t apdu_routed_count;
-    uint32_t field_off_count;
-    uint32_t error_count;
-    int32_t  last_error_code;
-} nfc_router_stats_t;
-```
+**Stats struct:** exact stats struct name and fields are locked by
+`wave3-router.md` §1.3 (`aid_router_stats_t`).
 
 ---
 
@@ -511,18 +545,33 @@ IDLE
 
 ### 6.5 Store Layer (`store/`)
 
-**Responsibility:** Save/load the emulated card's data as a flat blob. This is a
-**stub seam**, not a persistence backend: the destination (save) and source
-(load) are *registered callbacks* (CALLBACK_REGISTRATION_GUIDE canonical pattern).
-The default stubs require no filesystem — save dumps to the shell, load reads a
-compiled-in `.h`. A real NVS/LittleFS backend is added later by registering a
+**Responsibility:** Load/save the emulated card's data as a flat blob through
+*registered callbacks* (CALLBACK_REGISTRATION_GUIDE canonical pattern). This is
+a **stub seam**, not a persistence backend.
+
+**Load is the PRIMARY operation:** it provisions card images into the services
+from a compiled-in defaults header (`nfc_store_default_cards.h`) or a shell
+backend. This device has **no NFC reader mode**, so card content can never be
+captured from physical cards — provisioning data always originates off-device.
+
+**Save is DEMOTED to a debug/capture facility:** it exists to dump
+reader-written state (e.g. NDEF content a phone wrote to us) for inspection or
+re-provisioning. It is not a persistence path.
+
+The default stubs require no filesystem — load reads a compiled-in `.h`, save
+dumps to the shell. A real NVS/LittleFS backend is added later by registering a
 different callback; nothing else changes.
 
-**What it does:** Given a set of services, it calls each service's `serialize()`,
-frames the blobs into one TLV buffer keyed by `persist_id`, and hands the buffer
-to the registered **save** callback. For load, it fetches the buffer from the
-registered **load** callback and scatters each TLV entry to the matching service's
-`deserialize()`.
+**What it does:** For load, it fetches the blob from the registered **load**
+callback and scatters each TLV entry to the matching service's `deserialize()`.
+For save, it calls each service's `serialize()`, frames the blobs into one TLV
+buffer keyed by `persist_id`, and hands the buffer to the registered **save**
+callback. `serialize`/`deserialize` are **nullable per service** — services
+with NULL hooks are silently skipped.
+
+**Lifecycle gating:** both `nfc_stack_save()` and `nfc_stack_load()` return
+**`-EBUSY` while the stack is STARTED** — save/load only run against a quiesced
+stack (before `start()` or after `stop()`).
 
 **Minimal lifecycle (init/shutdown), Pattern A state (caller/WQ thread).**
 
@@ -552,11 +601,12 @@ nfc_store_state_t nfc_store_get_state(void);
 ```
 
 **Default stubs:**
-- **Save stub** (`nfc_store_save_stub`): emits the blob to the shell as a pastable
-  C array under a sentinel tag (e.g. `@@NFCDUMP@@ <tag> <hex>`), so a saved card
-  can be copied straight into `nfc_store_default_cards.h`.
-- **Load stub** (`nfc_store_load_stub`): looks up `tag` in the compiled-in table
-  in `nfc_store_default_cards.h` and copies the bytes out.
+- **Load stub** (`nfc_store_load_stub`, PRIMARY): looks up `tag` in the
+  compiled-in table in `nfc_store_default_cards.h` and copies the bytes out.
+- **Save stub** (`nfc_store_save_stub`, debug capture): emits the blob to the
+  shell as a pastable C array under a sentinel tag (e.g. `@@NFCDUMP@@ <tag>
+  <hex>`), so reader-written state can be copied straight into
+  `nfc_store_default_cards.h` for future provisioning.
 
 **Shell (`nfc_store_shell_cmds.c`):** `nfc save <tag>` → `nfc_stack_save(tag)`;
 `nfc load <tag>` → `nfc_stack_load(tag)`; plus `config`/`stats`/`state`.
@@ -568,9 +618,21 @@ ids are skipped on load and services can be added without breaking old blobs.
 
 ## 7. Public Stack API (`nfc_stack.h`)
 
+**Orchestration (Wave 4 locked):** `nfc_stack` registers its **own wrapper ops**
+(`s_transport_ops`) with the HAL — not `apdu_assembler_get_ops()` directly.
+Each wrapper handler chains to the corresponding `apdu_assembler_get_ops()`
+handler **at runtime**, then adds stack-level logic: on field-off, the framing
+chain runs first (router/service session cleanup), then the pending profile is
+applied, then the application event callback fires. All cross-layer wiring
+lives in `nfc_stack.c` (CONVENTIONS §3).
+
 ```c
-/* One-time hardware and layer initialization. Call before nfc_stack_start(). */
-int nfc_stack_init(void);
+/* One-time hardware and layer initialization. Call before nfc_stack_start().
+ * Initializes framing, router, store, transport; eagerly inits ALL compiled-in
+ * services (so a profile switch never inits a service on the work queue);
+ * registers the wrapper ops with the HAL; registers the default profile's AIDs
+ * (CONFIG_NFC_STACK_DEFAULT_PROFILE). cfg == NULL → built-in defaults. */
+int nfc_stack_init(const nfc_stack_config_t *cfg);
 
 /* Start field sensing with the given initial UID. */
 int nfc_stack_start(const nfc_uid_t *uid);
@@ -578,15 +640,38 @@ int nfc_stack_start(const nfc_uid_t *uid);
 /* Stop field sensing. */
 int nfc_stack_stop(void);
 
-/* Rotate UID: stop → set NFCID1 → start. Safe to call while running. */
+/* Rotate UID: nrfxlib-level emulation stop → set NFCID1 → restart. The module
+ * stays STARTED; the work queue is not torn down. Safe to call while running
+ * (@threadsafe) — including from the event callback below. */
 int nfc_stack_set_uid(const nfc_uid_t *uid);
 
 /* Tear down. Legal from any state; performs implicit stop() if started. */
 int nfc_stack_shutdown(void);
 
+/* ── Application event callback ───────────────────────────────────────────────
+ * Registered AFTER nfc_stack_init(), BEFORE nfc_stack_start(). Dispatch
+ * thread: nfc_work_q — the callback must not block, sleep, or allocate.
+ *
+ * NFC_STACK_EVENT_FIELD_OFF fires AFTER (a) field-off session cleanup
+ * (router/service on_field_off, active service cleared) AND (b) application of
+ * any pending profile — the app observes the post-cleanup, post-switch state.
+ *
+ * Calling nfc_stack_set_uid() from the callback on FIELD_OFF is the CANONICAL
+ * per-field-off UID-rotation pattern (deadlock-free; wave4 §6).
+ * Calling nfc_stack_stop()/nfc_stack_shutdown() from the callback is FORBIDDEN
+ * (they wait on the work queue the callback occupies — self-deadlock). */
+typedef enum {
+    NFC_STACK_EVENT_FIELD_ON,
+    NFC_STACK_EVENT_FIELD_OFF,
+} nfc_stack_event_t;
+
+typedef void (*nfc_stack_event_cb_fn)(nfc_stack_event_t event, void *user_ctx);
+
+int nfc_stack_register_event_cb(nfc_stack_event_cb_fn cb, void *user_ctx);
+
 /* Profile enum — which services are registered in the router.
  * Only profiles whose Kconfig is enabled are valid at runtime.
- * ALL registers every compiled-in service. */
+ * ALL registers every compiled-in service. (Sentinel per wave4 §1.1.) */
 typedef enum {
     NFC_PROFILE_NDEF,
     NFC_PROFILE_DESFIRE,
@@ -594,39 +679,62 @@ typedef enum {
     NFC_PROFILE_EMV,
     NFC_PROFILE_ALIRO,
     NFC_PROFILE_ALL,
+    NFC_PROFILE_COUNT_,   /* sentinel — do not use */
 } nfc_profile_t;
 
-/* Switch active profile. Pending flag set immediately; applied on next field-off.
- * In-memory only — does not persist across reboots.
- * Internally calls aid_router_clear() then re-registers the new profile's AIDs. */
+/* Switch active profile. Sets an ATOMIC pending value and returns immediately
+ * (@threadsafe). The switch is applied on the NEXT field-off, on nfc_work_q:
+ * aid_router_clear() then re-registration of the new profile's AIDs.
+ * Returns -ENOTSUP for a profile whose service is not compiled in.
+ * If re-registration of the new profile fails, the OLD profile is re-registered
+ * as a fallback — the router table is never left empty while STARTED.
+ * In-memory only — does not persist across reboots. */
 int nfc_stack_set_profile(nfc_profile_t profile);
 
-/* Save / load the active profile's card data via the store layer.
- * save: gather active services' serialize() → nfc_store_save() → save cb.
+/* Load / save the active profile's card data via the store layer (§6.5 —
+ * load is the PRIMARY operation; save is a debug/capture facility).
  * load: nfc_store_load() → load cb → scatter to active services' deserialize().
- * With default stubs: save dumps to shell, load reads compiled-in .h. */
-int nfc_stack_save(const char *tag);   /* @caller_sync */
-int nfc_stack_load(const char *tag);   /* @caller_sync */
+ * save: gather active services' serialize() → nfc_store_save() → save cb.
+ * Both return -EBUSY while the stack is STARTED. */
+int nfc_stack_load(const char *tag);   /* @caller_sync; -EBUSY while STARTED */
+int nfc_stack_save(const char *tag);   /* @caller_sync; -EBUSY while STARTED */
 ```
 
 `main.c` usage:
 ```c
-nfc_stack_init();
+/* Canonical per-field-off UID rotation — runs on nfc_work_q; must not block. */
+static void app_nfc_event_cb(nfc_stack_event_t event, void *user_ctx)
+{
+    if (event == NFC_STACK_EVENT_FIELD_OFF) {
+        /* pending profile (if any) is already applied at this point */
+        (void)nfc_stack_set_uid(&next_uid);
+    }
+}
+
+nfc_stack_init(NULL);
+nfc_stack_register_event_cb(app_nfc_event_cb, NULL);  /* after init, before start */
+nfc_stack_load("my_card");      /* provision before start (-EBUSY while STARTED) */
 nfc_stack_start(&initial_uid);
 /* ... main loop ... */
-/* on button press: nfc_stack_set_profile(NFC_PROFILE_ALIRO) */
-/* on field-off event: profile applied, call nfc_stack_set_uid() to rotate */
+/* on button press: nfc_stack_set_profile(NFC_PROFILE_ALIRO) — applied at next field-off */
 ```
 
 ---
 
 ## 8. Thread Model
 
+(nRFX backend shown — ISR context, `DATA_IND` events. The §6.1 transport
+contract guarantees are backend-independent. On the WQ, all upward events flow
+through nfc_stack's wrapper ops, which chain to framing — §7; on field-off the
+wrapper additionally applies any pending profile, then fires the application
+event callback.)
+
 ```
 ISR (NFCT interrupt)
   │
   ├── FIELD_ON  → submit k_work to nfc_work_q → router/services notified
   ├── FIELD_OFF → submit k_work to nfc_work_q → router/services reset
+  │               → pending profile applied → app event cb (FIELD_OFF)
   └── DATA_IND  → alloc/append FIXED net_buf (immediate copy)
                   on final fragment → k_fifo_put → wake nfc_work_q
                                                                │
@@ -653,69 +761,51 @@ time; the WQ unrefs after dispatch. Pool exhaustion → drop + stat, never asser
 
 ## 9. Kconfig
 
+**Sourcing mechanism:** the application's top-level `Kconfig` `rsource`s
+`src/nfc/Kconfig`, which in turn `rsource`s the per-layer Kconfigs
+(`hal/Kconfig`, `framing/Kconfig`, `router/Kconfig`, `services/*/Kconfig`,
+`store/Kconfig`). The top-level `CMakeLists.txt` adds `src/nfc` via
+`add_subdirectory(src/nfc)`; `src/nfc/CMakeLists.txt` adds each layer
+subdirectory (wave4 §5.5).
+
+**Symbol map** (full definitions — types, ranges, help text, `select`s — are
+locked by `wave4-stack.md` §1.6 and the per-layer wave plans):
+
+| Symbol | Default | Defined in | Introduced by |
+|---|---|---|---|
+| `NFC_STACK` (parent) | — | `src/nfc/Kconfig` | spec |
+| `NFC_APDU_BUF_SIZE` | 512 | `src/nfc/Kconfig` | spec (stack-level per wave4 DECISION-5) |
+| `NFC_APDU_POOL_COUNT` | 4 | `src/nfc/Kconfig` | spec (stack-level per wave4 DECISION-5) |
+| `NFC_STACK_DEFAULT_PROFILE` | 0 (NDEF) | `src/nfc/Kconfig` | wave 4 |
+| `NFC_SERVICE_NDEF / _DESFIRE / _ULTRALIGHT / _EMV / _ALIRO` | — | `src/nfc/Kconfig` | spec (PSA `select`s per wave4 §1.6) |
+| `NFC_STORE` | y | `src/nfc/Kconfig` | spec |
+| `NFC_NDEF_MAX_SIZE` | 256 | `src/nfc/Kconfig` | spec |
+| `NFC_HAL_BACKEND_NRFX` / `NFC_HAL_BACKEND_PN7160` (choice) | NRFX | `src/nfc/hal/Kconfig` | HAL portability decision (§6.1) |
+| `NFC_HAL_WORKQ_STACK_SIZE` | 2048 | `src/nfc/hal/Kconfig` | wave 1 |
+| `NFC_HAL_WORKQ_PRIORITY` | 5 | `src/nfc/hal/Kconfig` | wave 1 |
+| `NFC_APDU_EXTENDED_SUPPORT` | y | `src/nfc/framing/Kconfig` | wave 2 |
+| `NFC_ROUTER_MAX_AIDS` | 8 | `src/nfc/router/Kconfig` | wave 3 |
+
+**HAL backend choice** (`src/nfc/hal/Kconfig` — see §6.1):
+
 ```kconfig
-config NFC_STACK
-    bool "NFC emulation stack"
+choice NFC_HAL_BACKEND
+    prompt "NFC HAL transport backend"
+    default NFC_HAL_BACKEND_NRFX
+    depends on NFC_STACK
+
+config NFC_HAL_BACKEND_NRFX
+    bool "nRF NFCT via nrfxlib nfc_t4t_lib"
     depends on NFC_T4T_NRFXLIB
-    help
-      Layered NFC card emulation stack (hal/framing/router/services).
 
-config NFC_SERVICE_NDEF
-    bool "NDEF T4T service"
-    depends on NFC_STACK
+config NFC_HAL_BACKEND_PN7160
+    bool "NXP PN7160 (future — see §13)"
 
-config NFC_SERVICE_DESFIRE
-    bool "MF DeSFire EV1/EV2 service"
-    depends on NFC_STACK
-    select PSA_WANT_ALG_AES
-    select PSA_WANT_ALG_CMAC
-
-config NFC_SERVICE_ULTRALIGHT
-    bool "MF Ultralight NDEF wrapper service"
-    depends on NFC_STACK && NFC_SERVICE_NDEF
-
-config NFC_SERVICE_EMV
-    bool "EMV PPSE service"
-    depends on NFC_STACK
-
-config NFC_SERVICE_ALIRO
-    bool "Aliro credential service"
-    depends on NFC_STACK
-    select PSA_WANT_ALG_ECDH
-    select PSA_WANT_ALG_ECDSA
-    select PSA_WANT_ALG_SHA_256
-    select PSA_WANT_ALG_GCM
-    select PSA_WANT_KEY_TYPE_ECC_KEY_PAIR
-
-config NFC_STORE
-    bool "Card save/load (stub seam)"
-    depends on NFC_STACK
-    default y
-    help
-      Serialize/deserialize the active card via registered save/load
-      callbacks. Default stubs dump to shell and load from a compiled-in
-      header — no filesystem required.
-
-config NFC_ROUTER_MAX_AIDS
-    int "Maximum registered AIDs"
-    default 8
-    depends on NFC_STACK
-
-config NFC_NDEF_MAX_SIZE
-    int "NDEF file buffer size in bytes"
-    default 256
-    depends on NFC_SERVICE_NDEF
-
-config NFC_APDU_BUF_SIZE
-    int "Inbound APDU net_buf size in bytes"
-    default 512
-    depends on NFC_STACK
-
-config NFC_APDU_POOL_COUNT
-    int "Inbound APDU net_buf pool count"
-    default 4
-    depends on NFC_STACK
+endchoice
 ```
+
+The `NFC_T4T_NRFXLIB` dependency lives on the NRFX backend symbol, not on
+`NFC_STACK` — the stack itself is backend-neutral (§6.1).
 
 ---
 
@@ -758,3 +848,38 @@ config NFC_APDU_POOL_COUNT
 - BLE-triggered UID rotation (separate concern, can call `nfc_stack_set_uid()`)
 - DeSFire write operations (read + auth first; write is a follow-on)
 - Aliro step-up phase AccessDocument (skeleton stub only in first implementation)
+
+---
+
+## 13. Non-goals and Future Extensions
+
+- **Reader/initiator mode is an explicit non-goal of this library.** The stack
+  is card-emulation only, end to end.
+- **Role is determined by which transport API exists, NOT by backend choice.**
+  Selecting `NFC_HAL_BACKEND_PN7160` does not add reader capability — it swaps
+  the emulation backend behind the same `nfc_transport_*` (card-side) API.
+- A future reader role would arrive as a **sibling `nfc_reader_*` transport**
+  plus its own client-protocol stack, sharing only the `apdu_types.h`
+  vocabulary with this library.
+- The **PN7160 emulation backend is a future mini-wave**, to be planned against
+  the PN7160 datasheet + NCI specification (`hal/nfc_transport_pn7160.c`,
+  §6.1).
+
+---
+
+## 14. Changelog
+
+**v2 — 2026-06-12** — alignment with the LOCKED Wave 1–4 plans and user scope
+decisions:
+
+1. §6.2/§6.3 — dispatch is the parsed form `aid_router_dispatch(const nfc_apdu_t *)`; framing forwards its validated parse view; the router never re-parses; raw-bytes form removed everywhere. (wave3 DECISION-7)
+2. §6.1 — `nfc_transport_ops_t` carries function pointers only, no `user_ctx` member; `user_ctx` is a separate argument to `nfc_transport_register_callbacks(ops, user_ctx)`; `on_apdu(struct net_buf *, user_ctx)` with callee owning the ref. (wave1 DECISION-2)
+3. §6.3 — service vtable confirmed as four callbacks + `user_ctx` + nullable `serialize`/`deserialize` + `persist_id` (stable IDs per wave3 §1.1); SELECT response ownership: the matched service's `on_select` sends its own response, the router sends nothing on a match, 6A82 for unmatched SELECT, 6986 for non-SELECT with no service selected. (wave3 DECISION-A/B/C)
+4. §7 — nfc_stack registers its own wrapper ops with the HAL, chaining to `apdu_assembler_get_ops()` at runtime; application event callback added (`nfc_stack_event_t`, `nfc_stack_register_event_cb`), fired on `nfc_work_q` after field-off cleanup and pending-profile application; `set_uid` from the callback is the canonical per-field-off rotation pattern; stop/shutdown from the callback forbidden; profile switching: atomic pending value applied at next field-off via `aid_router_clear()` + re-register, `-ENOTSUP` for non-compiled profiles, eager init of all compiled-in services, old-profile fallback on re-registration failure. (wave4 DECISION-1/3/4/8; user decision: app event callback)
+5. §6.5 — load is PRIMARY (provisioning from compiled-in defaults or shell; this device has no reader mode, so card content can never be captured from physical cards); save DEMOTED to a debug/capture facility for reader-written state; `nfc_stack_save/load` return `-EBUSY` while STARTED; serialize/deserialize hooks nullable per service. (user scope decisions: save demotion, -EBUSY rule)
+6. §6.1 — vendor-clean `nfc_transport.h` (no nrfxlib types/includes/constants; transport-owned response length `#define`); backend files `nfc_transport_nrfx.c` (current) / `nfc_transport_pn7160.c` (future) behind the `NFC_HAL_BACKEND_*` Kconfig choice; transport contract guarantees stated generically; nrfxlib specifics moved to nRFX backend implementation notes. (user scope decision: HAL portability)
+7. §13 added — non-goals and future extensions: reader mode is a non-goal; role = transport API, not backend choice; future `nfc_reader_*` sibling stack; PN7160 backend as a future mini-wave. (user scope decision: reader non-goal)
+8. §6.1/§6.2/§6.3 — exact stats field lists replaced with deferrals to the locked wave plans (`nfc_transport_stats_t` per wave1 §1.3, `apdu_assembler_stats_t` per wave2 §1.3, `aid_router_stats_t` per wave3 §1.3). (wave1 DECISION-1, wave2 DECISION-3, wave3 DECISION-E)
+9. §6.1 — `nfc_transport_stop()` serializes against `nfc_transport_set_uid()` via the HAL's UID mutex; stop acquires the mutex before stopping emulation. (cross-review finding: stop-vs-rotation race)
+10. §9 — symbol table extended with `NFC_APDU_EXTENDED_SUPPORT` (wave 2), `NFC_STACK_DEFAULT_PROFILE` (wave 4), `NFC_ROUTER_MAX_AIDS` (wave 3), `NFC_HAL_WORKQ_STACK_SIZE/PRIORITY` (wave 1), and the HAL backend choice; sourcing mechanism stated explicitly (top-level Kconfig rsources `src/nfc/Kconfig` → per-layer Kconfigs; top-level CMake adds `src/nfc` via `add_subdirectory`). (waves 1–4; HAL portability)
+11. Header/title block marked v2; this changelog added. (process)

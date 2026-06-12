@@ -42,7 +42,8 @@ services build them in from the start.
 | Source | Path | Role |
 |--------|------|------|
 | **Stack conventions** | `docs/NFC_STACK_CONVENTIONS.md` | **Mandatory — read first, every wave.** Binding rules for lifecycle, structs, callbacks, buffers, stats, threading. |
-| Architecture spec | `docs/superpowers/specs/2026-06-08-nfc-emulation-stack-design.md` | The *what*: protocols, AIDs, layer responsibilities |
+| **Architecture spec (v3 — architecture-of-record)** | `docs/superpowers/specs/2026-06-12-nfc-stack-architecture.md` | Authoritative entry point: dual-role, multi-backend, lane model, capability descriptor, file format |
+| Architecture spec (v2 — card-mode detail) | `docs/superpowers/specs/2026-06-08-nfc-emulation-stack-design.md` | Retained as card-mode / NFCT implementation detail: protocols, AIDs, layer responsibilities |
 | Firmware design docs | `docs/{API_DESIGN_CREED,CALLBACK_REGISTRATION_GUIDE,STATS_API_DESIGN,NETWORK_BUFFERS,STACK_SPEC}.md` | Governing authority behind the conventions doc — consult when conventions points to them |
 | nrfxlib NFC headers | `/opt/nordic/ncs/v3.2.4/nrfxlib/nfc/include/` | `nfc_t4t_lib.h`, `nfc_platform.h`, `nrf_nfc_errno.h` |
 | Zephyr kernel headers | `/opt/nordic/ncs/v3.2.4/zephyr/include/` | k_work, k_fifo, net_buf, k_spinlock, smf |
@@ -70,9 +71,9 @@ All plans target **MISRA C:2012** and the project's embedded-C best practices:
 - No dynamic allocation in the running phase — static buffers only.
 - `switch` always has `default`; no dead code.
 - Zephyr-specific MISRA deviations are pre-approved — see
-  `rules/coding-standards/zephyr-misra-deviations.md` (CONTAINER_OF, k_work,
-  K_MSEC, LOG_*, etc.). Plans should cite the relevant DEV-ZEP record where a
-  deviation applies.
+  `/Users/majidfaroud/.claude/rules/misra-coding-standards-zephyr-misra-deviations.md`
+  (CONTAINER_OF, k_work, K_MSEC, LOG_*, etc.). Plans should cite the relevant
+  DEV-ZEP record where a deviation applies.
 
 Each plan's **Implementation Notes** section must call out the MISRA-relevant
 decisions for that layer.
@@ -182,7 +183,8 @@ These are hard stops. Do not cross a gate without explicit user approval.
 docs/
 ├── superpowers/
 │   └── specs/
-│       └── 2026-06-08-nfc-emulation-stack-design.md   (the spec — source of truth)
+│       ├── 2026-06-12-nfc-stack-architecture.md    (v3 — architecture of record)
+│       └── 2026-06-08-nfc-emulation-stack-design.md (v2 — card-mode/NFCT detail)
 ├── NFC_WAVE_PLANNING_GUIDE.md                          (this file)
 └── superpowers/
     └── plans/

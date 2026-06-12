@@ -1,6 +1,7 @@
 # NFC Emulation Stack — Conventions
 
 **Status:** LOCKED — binding for every layer and service in `src/nfc/`.
+**Last updated:** 2026-06-12. Architecture-of-record: `docs/superpowers/specs/2026-06-12-nfc-stack-architecture.md` (v3).
 
 This is the single conventions reference every wave agent reads in Step 1. It
 adapts the firmware-wide design docs to the NFC stack and pre-resolves the
@@ -78,10 +79,10 @@ is the HAL (closest to hardware); top is the services.
 |----------|-----------|---------|-----------|
 | nrfxlib → HAL | up | Zephyr/nrfxlib API | `nfc_t4t_lib` callback (ISR) |
 | HAL → framing (field events + complete APDU) | up | **A** ops struct | `nfc_transport_register_callbacks(ops, user_ctx)` |
-| framing → router (complete APDU) | up | **A** direct call to fixed singleton | `aid_router_dispatch(buf, len)` |
+| framing → router (parsed APDU) | up | **A** direct call to fixed singleton | `aid_router_dispatch(&apdu)` — `const nfc_apdu_t *` (locked by Wave 3) |
 | router → service (SELECT-matched dispatch) | up | **A** service vtable | `aid_router_register(aid, len, svc)` |
 | service → HAL (response) | down | direct call | `nfc_transport_send_response(buf, len)` |
-| `nfc_stack` → store (save/load active card) | down | direct call | `nfc_store_save/load(tag, svcs, n)` |
+| `nfc_stack` → store (save/load active card) | down | direct call | `nfc_store_save/load(tag, svcs, n)` — both return `-EBUSY` while the stack is STARTED (no save/load during a live session); load (provisioning) is the primary path, save is a debug/capture facility |
 | store → service (serialize/deserialize) | down | direct call via vtable | `svc->serialize` / `svc->deserialize` |
 | store → save/load backend | out | **register-cb** (canonical §4) | `nfc_store_register_save_cb/load_cb` — default stubs (shell / `.h`) |
 | `nfc_stack` → hal/framing/router/store | down | direct call | orchestration |
@@ -131,6 +132,10 @@ typedef struct {
     void *user_ctx;
 } nfc_service_t;
 ```
+
+This is the base callback shape. The full locked form (Wave 3 `service.h`) adds the
+persistence fields `serialize` / `deserialize` (nullable) and `persist_id` on top —
+see `docs/superpowers/plans/wave3-router.md` §1.
 
 `on_apdu` calls `nfc_transport_send_response()` imperatively (synchronous
 services) or defers crypto to `nfc_work_q` and sends from the work handler
@@ -193,8 +198,9 @@ static struct k_spinlock  s_stats_lock;   /* NOT K_SPINLOCK_DEFINE — unavailab
   struct. Every non-fatal failure path: `STATS_ERROR(&s_stats_lock, s_stats, code)`.
 - Every silent-drop path has a named counter (e.g. `frag_dropped_no_buffer`,
   `apdu_oversized_count`).
-- `STATS_RESET(s_stats)` as the **first** statement in `init()` (before any
-  `mod_claim_init`); under `s_stats_lock` if a runtime `reset_stats()` exists.
+- `STATS_RESET(s_stats)` as the first statement of the init body **after the
+  `-EALREADY` lifecycle guard** (a rejected double-`init()` must not wipe live
+  stats); under `s_stats_lock` if a runtime `reset_stats()` exists.
 - Getter is copy-out: `int <module>_get_stats(<module>_stats_t *out)` via
   `STATS_COPY_OUT(&s_stats_lock, s_stats, out)`. Never return a pointer to
   `s_stats`.
