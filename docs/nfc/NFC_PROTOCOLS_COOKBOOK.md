@@ -4,7 +4,7 @@
 **Authority:** [`NFC_STACK_CONVENTIONS.md`](NFC_STACK_CONVENTIONS.md) · [`NFC_HAL_GUIDE.md`](NFC_HAL_GUIDE.md) §2–3 · [`specs/2026-06-13-nfc-final-design.md`](specs/2026-06-13-nfc-final-design.md) §3.3 · Flipper `lib/nfc/protocols/<name>/` layout  
 **Plan:** Step A (HAL unblock) **before** Gate 2; Gate 2 = NDEF poller + clone; Gate 3 = listener + router; Gate 4 = PN7160 loop; Gate 5 = NFCT ([`NFC_STACK_PLAN.md`](NFC_STACK_PLAN.md))
 
-This document answers: **where files go**, **what each file owns**, **which APIs are locked**, **how protocols couple to HAL/reader/router/store**, **per-protocol recipes for agent dispatch**, **§14 unit test recipe** (Tiers A/B/C mocks + fixtures), and **how to land Gate 2 then Gate 3**.
+This document answers: **where files go**, **what each file owns**, **which APIs are locked**, **how protocols couple to HAL/reader/router/store**, **per-protocol recipes for agent dispatch**, **§14 unit test recipe** (Tiers A/B/C/D + Tier E applet mocks + fixtures), and **how to land Gate 2 then Gate 3**.
 
 **Prerequisite:** Step A HAL gaps closed (`nfc_reader_session_end()`, PN7160 listen recv → `nfc_apdu_pool`, NFCT `NFC_T4T_EMUMODE_PICC`) — see STACK_PLAN HAL gaps table. Gate 3 PN7160 listen **requires Step A2 complete**.
 
@@ -1239,6 +1239,24 @@ Each per-protocol agent receives **one** §5 stub tag (e.g. `<!-- PROTOCOL_AGENT
 
 PN7160 driver IRQ drains on **`pn7160_wq`** — protocols never run there.
 
+### 7.1 Product applets and DK primitives (LOCKED)
+
+**Applets** are end-to-end user commands under the top-level `nfc` shell. **DK primitives** are developer-kit sub-trees used by applets and HIL scripts — not product applets themselves.
+
+| Applet | Behavior | Gate | DK primitive / alias |
+|--------|----------|------|----------------------|
+| `nfc scan` | Type-agnostic discover + print tag info (UID, tech, interface) | 1 | `nfc reader scan` |
+| `nfc read <slot>` | One-shot scan + poller walk + `nfc_store_save` | 2 | **`nfc reader clone`** (alias — both names registered) |
+| `nfc emulate <slot> [profile]` | `nfc_store_load` + `nfc_stack_start` + listen | 3–4 (PN7160 CE); 5 (NFCT) | `nfc stack start` |
+| `nfc verify <slot>` | Poll emulated tag + diff vs stored `.card` | 4 | — |
+| `nfc loop <slot>` | `read` → `emulate` → `verify` HIL sign-off | 4 | — |
+
+**NOT applets (LOCKED):** `unlock`, `attack`, extra actions, per-protocol shells. **Exception:** `aliro provision` stays a protocol shell under `nfc aliro *`, not an applet.
+
+**DK primitive trees (LOCKED):** `nfc reader *`, `nfc stack *`, `nfc store *`, `nfc_transport *` — wired in `reader/`, `nfc_stack/`, `store/`, `hal/` respectively. Applets call into these; CI HIL may invoke primitives directly for debugging.
+
+**Gate alignment:** Gate 4 = PN7160 CE loop (`emulate` + `verify` + `loop` on same chip). Gate 5 = NFCT `emulate` with PN7160 `verify`. Classic post–Gate 5; Ultralight emulate via NDEF T4 adapter (no native T2 listener). Summary: [NFC_APPLETS_AND_TESTING.md](NFC_APPLETS_AND_TESTING.md).
+
 ---
 
 ## 8. Coupling cheat sheet
@@ -1464,11 +1482,13 @@ tests/
     include/  nfc_session_mock.h, nfc_response_spy.h, nfc_test_apdu.h
     src/      matching .c files (INTERFACE lib nfc_test_common)
   fixtures/
-    ndef/     *.inc (TX/RX scripts), *.bin (Tier A goldens)
-    <proto>/  per backlog agent
+    nfc/flipper/  # 12 GPL .nfc references (offline only)
+    ndef/         # *.inc (TX/RX scripts), *.bin (Tier A goldens)
+    <proto>/      # per backlog agent — CI links .inc/.bin only
   unit/
     nfc_apdu_asm/     # HAL framing (exists)
-    nfc_ndef/         # template — copy per protocol
+    nfc_ndef/         # Tier A/B/C template — copy per protocol
+    nfc_reader/       # Tier E applet scaffold (Gate 2+)
 ```
 
 **`nfc_session_mock`:** load `static const` script; test build links mock as `nfc_reader_session_transceive()` (no `reader_engine.c` in unit app).
@@ -1492,6 +1512,20 @@ west twister -T "$REPO/tests/unit/nfc_ndef" -p qemu_cortex_m3 --no-sysbuild \
 | 5 | NFCT emulate → PN7160 verify |
 
 Flipper `nfc_test.c` RF loopback ≈ Tier D, not unit Tier B/C.
+
+### 14.6a Tier E — Applet (store / verify QEMU)
+
+**Compile:** `store/` + reader orchestration stubs + `tests/unit/nfc_reader/`. **Gate 2+** scaffold; tests land with `nfc read` / `nfc reader clone`.
+
+| Test pattern | Assert |
+|--------------|--------|
+| `test_store_save_envelope` | TLV header + CRC valid for mock `.card` |
+| `test_store_load_roundtrip` | save → load → `memcmp` model |
+| `test_reader_clone_slot` | poller walk invokes `nfc_store_save` for named slot |
+| `test_verify_diff_pass` | mock read matches stored blob → PASS |
+| `test_verify_diff_fail` | intentional model drift → FAIL with diff summary |
+
+Not a substitute for Tier D HIL (`nfc loop`). See §14.11 applet matrix and [NFC_APPLETS_AND_TESTING.md](NFC_APPLETS_AND_TESTING.md).
 
 ### 14.7 Flipper → tier quick map
 
@@ -1530,3 +1564,117 @@ On ndef (or template) mismatch: fix code → patch cookbook facts (C-APDU hex, S
 - [ ] Gate 3 HIL: one PN7160 CE READ (optional for CI merge gate)
 
 Do **not** start backlog F1+ protocol implementation until all boxes checked.
+
+### 14.11 Per-protocol registration checklist (LOCKED)
+
+Normative checklist for landing any `protocols/<name>/` module **and** its derived fixtures. Copy after NDEF §14.10 exit criteria. Standalone summary: [NFC_APPLETS_AND_TESTING.md](NFC_APPLETS_AND_TESTING.md).
+
+#### Fixture layout (LOCKED)
+
+```
+tests/
+  fixtures/
+    nfc/flipper/          # 12 upstream .nfc copies (GPL reference only)
+    <proto>/              # CI-consumed artifacts only
+      *.inc               # Tier B TX/RX mock scripts (nfc_session_mock)
+      *.bin               # Tier A serialize goldens
+      *.h                 # optional shared constants (e.g. ndef_fixture.h)
+  common/                 # nfc_session_mock, nfc_response_spy, nfc_test_apdu
+  unit/
+    nfc_<proto>/          # Tier A/B/C ztest (copy nfc_ndef template)
+    nfc_reader/           # Tier E applet scaffold (Gate 2+)
+```
+
+**CI rule (LOCKED):** Twister and ztest link **`tests/fixtures/<proto>/*.inc` and `*.bin` only** — never parse FlipperFormat at runtime. Source `.nfc` files live under `tests/fixtures/nfc/flipper/` for offline conversion only.
+
+#### Flipper `.nfc` catalog (12 files)
+
+**Canonical copy:** `tests/fixtures/nfc/flipper/` (manifest in `README.md`).
+
+**Upstream (GPL-3.0):** `flipperzero/applications/debug/unit_tests/resources/unit_tests/nfc/`
+
+| Basename | Tier B protocol | Notes |
+|----------|-----------------|-------|
+| `Ultralight_11.nfc` | ultralight | 11-page EV1 |
+| `Ultralight_21.nfc` | ultralight | 21-page EV1 |
+| `Ultralight_C.nfc` | ultralight | MIFARE Ultralight C |
+| `Ntag213_locked.nfc` | ultralight / NTAG | locked NTAG213 |
+| `Ntag215.nfc` | ultralight / NTAG | |
+| `Ntag216.nfc` | ultralight / NTAG | |
+| `Felica.nfc` | felica | NFC-F poller scripts |
+| `Slix_cap_default.nfc` | slix | default CAP |
+| `Slix_cap_missed.nfc` | slix | missed CAP |
+| `Slix_cap_accept_all_pass.nfc` | slix | accept-all CAP |
+| `nfc_nfca_signal_short.nfc` | HAL / framing | NFC-A signal capture |
+| `nfc_nfca_signal_long.nfc` | HAL / framing | NFC-A signal capture |
+
+**Regen workflow:** re-copy basenames from upstream → `python3 scripts/nfc/flipper_nfc_to_fixture.py --input … --out-dir tests/fixtures/<proto>/` → commit derived `.inc`/`.bin` only.
+
+#### Golden policy (LOCKED)
+
+| Artifact | Owner | Rule |
+|----------|-------|------|
+| `.nfc` | `tests/fixtures/nfc/flipper/` | GPL reference; not linked by ztest |
+| `.bin` | `tests/fixtures/<proto>/` | Tier A round-trip goldens; `memcmp` after serialize |
+| `.inc` | `tests/fixtures/<proto>/` | Tier B `nfc_session_mock_step_t` scripts; TX order locked |
+| Listener R-APDU | inline in `test_listener_*.c` or `.inc` | Tier C; SW + payload asserted via `nfc_response_spy` |
+| `.card` envelope | store tests / Tier E | TLV + CRC; same layout as product `nfc_store_save` |
+
+On mismatch: fix code → patch cookbook §5.x facts → update fixture in same commit (§14.9 hiccup). **Never** maintain a second golden outside `tests/fixtures/<proto>/`.
+
+#### Per-protocol registration checklist
+
+Complete **before** marking a protocol module done or dispatching the next §6 agent.
+
+| # | Item | Tier | Exit |
+|---|------|------|------|
+| 1 | `protocols/<name>/` scaffold per §1 (`.h`, `.c`, `_poller.c`, optional `_listener.c`) | — | CMake + Kconfig compile |
+| 2 | `NFC_PERSIST_ID_*` in `service.h`; serialize round-trip | A | ≥8 universal §14.2 tests + §5.x extensions |
+| 3 | Poller `detect`/`read` vs Flipper or wave5 facts | B | ≥8 §14.3 tests; fixtures from `.nfc` via converter |
+| 4 | Listener vtable (or **skip** + T4 adapter note in §5.x) | C | ≥ wave5 §8 count for NDEF; skip row for clone-only |
+| 5 | `tests/fixtures/<proto>/` committed `.inc` + `.bin` | A/B | No `.nfc` parser in unit app |
+| 6 | `tests/unit/nfc_<name>/` Twister green | A/B/C | See Twister tags below |
+| 7 | Cookbook §5.x **Unit test matrix** row filled | — | Named ztest cases listed |
+| 8 | HIL row in §14.6 / applet matrix (if gate applies) | D | Manual or tagged HIL job |
+| 9 | Shell alias documented in §7.1 if applet touches protocol | E | `nfc read` ↔ `nfc reader clone` for NDEF |
+
+**Clone-only protocols** (classic, felica, iso15693, slix, st25tb): checklist rows 4 and Tier C = **skip** (§14.4); emulate path via NDEF T4 adapter for ultralight only.
+
+#### Applet test matrix (Tier E)
+
+Tier E exercises **store + reader orchestration** in QEMU where mocks suffice; complements Tier D HIL.
+
+| Applet / alias | Tier | QEMU scope | HIL (Tier D) |
+|----------------|------|------------|--------------|
+| `nfc scan` | — | DK only (`nfc reader scan` compile) | UID + tech printed |
+| `nfc read <slot>` / `nfc reader clone` | E | `tests/unit/nfc_reader/` — save envelope, slot naming | Gate 2: valid `.card` |
+| `nfc emulate <slot>` | — | stack load/start mocked | Gate 3–4: PN7160 CE |
+| `nfc verify <slot>` | E | diff stored vs mock-read model | Gate 4: PASS on PN7160 |
+| `nfc loop <slot>` | — | not QEMU | Gate 4: read → emulate → verify |
+
+Scaffold: `tests/unit/nfc_reader/` at Gate 2 (placeholder Twister entry; tests land with store + clone).
+
+#### Twister tags (LOCKED)
+
+| Tag | Scope |
+|-----|-------|
+| `ci_unit` | All protocol + applet unit suites on `qemu_cortex_m3` |
+| `nfc` | Any NFC ztest under `tests/unit/nfc_*` |
+| `writable_ndef.nfc.<name>` | Per-protocol filter (e.g. `writable_ndef.nfc.ndef`) |
+| `writable_ndef.nfc.reader` | Tier E applet suite (when enabled) |
+
+**Example (protocol):**
+
+```bash
+west twister -T "$REPO/tests/unit/nfc_ndef" -p qemu_cortex_m3 --no-sysbuild \
+  -t ci_unit -t writable_ndef.nfc.ndef -v
+```
+
+**Example (Tier E — when implemented):**
+
+```bash
+west twister -T "$REPO/tests/unit/nfc_reader" -p qemu_cortex_m3 --no-sysbuild \
+  -t ci_unit -t writable_ndef.nfc.reader -v
+```
+
+Split `prj_model.conf` / `prj_poller.conf` / `prj_listener.conf` per role (§14.5). Tier E uses a single `prj.conf` until applet tiers split.

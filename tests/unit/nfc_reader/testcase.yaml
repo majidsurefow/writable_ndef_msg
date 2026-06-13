@@ -1,0 +1,17 @@
+# Tier E — applet store/clone/verify (cookbook §14.6a, §14.11).
+# Placeholder: enable in Twister once tests replace test_placeholder.c.
+
+tests:
+  sample.nfc.unit.nfc_reader.placeholder:
+    tags:
+      - ci_unit
+      - nfc
+      - writable_ndef.nfc.reader
+    platform_allow:
+      - qemu_cortex_m3
+      - native_sim
+      - native_sim/native
+    integration_platforms:
+      - qemu_cortex_m3
+    # Skip until Tier E tests implemented (Gate 2 store + clone).
+    skip: true
