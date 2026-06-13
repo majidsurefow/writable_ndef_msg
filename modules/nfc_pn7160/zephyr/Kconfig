@@ -54,7 +54,7 @@ config PN7160_SHELL
 	default y
 	depends on SHELL
 	help
-	  Register pn7160 shell commands: probe, fwver, init, reset, xcv
+	  Register pn7160 shell commands: probe, fwver, init, settings, reset, xcv
 	  (raw NCI transceive), and dwl enter/leave/status.
 
 module = PN7160

@@ -61,4 +61,8 @@ int pn7160_nci_process(const struct device *dev, const uint8_t *rx, size_t rx_le
 void pn7160_nci_arm_rx(const struct device *dev);
 void pn7160_submit_rx_work(const struct device *dev);
 
+int pn7160_nci_transceive_unlocked(const struct device *dev, const uint8_t *tx, size_t tx_len,
+				   uint8_t *rx, size_t rx_max, size_t *rx_len, k_timeout_t timeout);
+int pn7160_nci_wait_rx_unlocked(const struct device *dev, k_timeout_t timeout);
+
 #endif /* PN7160_PRIV_H_ */

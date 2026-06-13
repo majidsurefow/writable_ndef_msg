@@ -82,7 +82,7 @@ void pn7160_nci_arm_rx(const struct device *dev)
 	}
 }
 
-static int pn7160_nci_wait_rx(const struct device *dev, k_timeout_t timeout)
+int pn7160_nci_wait_rx_unlocked(const struct device *dev, k_timeout_t timeout)
 {
 	struct pn7160_data *data = dev->data;
 	int ret;
@@ -119,7 +119,7 @@ int pn7160_nci_process(const struct device *dev, const uint8_t *rx, size_t rx_le
 	return 0;
 }
 
-static int pn7160_nci_transceive_unlocked(const struct device *dev, const uint8_t *tx,
+int pn7160_nci_transceive_unlocked(const struct device *dev, const uint8_t *tx,
 					  size_t tx_len, uint8_t *rx, size_t rx_max,
 					  size_t *rx_len, k_timeout_t timeout)
 {
@@ -135,7 +135,7 @@ static int pn7160_nci_transceive_unlocked(const struct device *dev, const uint8_
 		return ret;
 	}
 
-	ret = pn7160_nci_wait_rx(dev, timeout);
+	ret = pn7160_nci_wait_rx_unlocked(dev, timeout);
 	if (ret != 0) {
 		return ret;
 	}
@@ -183,7 +183,7 @@ static int pn7160_nci_check_dev_pres_unlocked(const struct device *dev)
 		return ret;
 	}
 
-	ret = pn7160_nci_wait_rx(dev, K_MSEC(100));
+	ret = pn7160_nci_wait_rx_unlocked(dev, K_MSEC(100));
 	if (ret != 0) {
 		/* NXP: empty second RX on timeout is OK. */
 		return 0;

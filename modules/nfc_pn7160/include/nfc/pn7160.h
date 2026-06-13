@@ -164,6 +164,18 @@ int pn7160_nci_transceive(const struct device *dev, const uint8_t *tx, size_t tx
 int pn7160_nci_host_transceive(const struct device *dev, const uint8_t *tx, size_t tx_len,
 			       uint8_t *rx, size_t rx_max, size_t *rx_len, k_timeout_t timeout);
 
+/**
+ * @brief Apply NXP RF / core settings blobs (NxpNci_ConfigureSettings).
+ *
+ * Sends CORE_STANDBY, CORE_CONF, and conditionally CLK/TVDD/RF blobs from
+ * Nfc_settings.h. Re-runs CORE_RESET + CORE_INIT when a controller reset is
+ * required. Call after @ref pn7160_nci_connect().
+ *
+ * @param dev PN7160 device.
+ * @return 0 on success, negative errno otherwise.
+ */
+int pn7160_nci_configure_settings(const struct device *dev);
+
 /** @} */
 
 #ifdef __cplusplus
