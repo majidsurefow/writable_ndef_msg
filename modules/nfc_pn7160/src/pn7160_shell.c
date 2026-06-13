@@ -306,6 +306,89 @@ static int cmd_pn7160_settings(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
+static int cmd_pn7160_discovery_start(const struct shell *sh, size_t argc, char **argv)
+{
+	const struct device *dev;
+	int ret;
+
+	ARG_UNUSED(argc);
+	ARG_UNUSED(argv);
+
+	ret = pn7160_shell_check_dev(sh, &dev);
+	if (ret != 0) {
+		return ret;
+	}
+
+	ret = pn7160_nci_discovery_start(dev, NULL, 0U);
+	if (ret != 0) {
+		shell_error(sh, "Discovery start failed: %d", ret);
+		return ret;
+	}
+
+	shell_print(sh, "Discovery started (NFC-A/B/V poll)");
+	return 0;
+}
+
+static int cmd_pn7160_discovery_stop(const struct shell *sh, size_t argc, char **argv)
+{
+	const struct device *dev;
+	int ret;
+
+	ARG_UNUSED(argc);
+	ARG_UNUSED(argv);
+
+	ret = pn7160_shell_check_dev(sh, &dev);
+	if (ret != 0) {
+		return ret;
+	}
+
+	ret = pn7160_nci_discovery_stop(dev);
+	if (ret != 0) {
+		shell_error(sh, "Discovery stop failed: %d", ret);
+		return ret;
+	}
+
+	shell_print(sh, "Discovery stopped");
+	return 0;
+}
+
+static int cmd_pn7160_discovery_status(const struct shell *sh, size_t argc, char **argv)
+{
+	const struct device *dev;
+	const struct pn7160_nci_rf_intf *rf;
+	int ret;
+
+	ARG_UNUSED(argc);
+	ARG_UNUSED(argv);
+
+	ret = pn7160_shell_check_dev(sh, &dev);
+	if (ret != 0) {
+		return ret;
+	}
+
+	shell_print(sh, "Discovery: %s", pn7160_nci_discovery_active(dev) ? "active" : "inactive");
+
+	rf = pn7160_nci_discovery_last(dev);
+	if (rf->uid_len > 0U) {
+		shell_fprintf(sh, SHELL_NORMAL, "Last UID (%u):", rf->uid_len);
+		for (uint8_t i = 0U; i < rf->uid_len; i++) {
+			shell_fprintf(sh, SHELL_NORMAL, " %02x", rf->uid[i]);
+		}
+		shell_print(sh, "");
+		shell_print(sh, "Protocol: 0x%02x  Interface: 0x%02x  ModeTech: 0x%02x",
+			    rf->protocol, rf->interface, rf->mode_tech);
+	}
+
+	return 0;
+}
+
+SHELL_STATIC_SUBCMD_SET_CREATE(pn7160_discovery_cmds,
+			       SHELL_CMD(start, NULL, "ConfigureMode RW + start discovery poll",
+					 cmd_pn7160_discovery_start),
+			       SHELL_CMD(stop, NULL, "Stop RF discovery loop", cmd_pn7160_discovery_stop),
+			       SHELL_CMD(status, NULL, "Show discovery state and last tag", cmd_pn7160_discovery_status),
+			       SHELL_SUBCMD_SET_END);
+
 SHELL_STATIC_SUBCMD_SET_CREATE(pn7160_dwl_cmds,
 			       SHELL_CMD(enter, NULL, "Enter firmware download mode (DWL high + reset)",
 					 cmd_pn7160_dwl_enter),
@@ -323,6 +406,8 @@ SHELL_STATIC_SUBCMD_SET_CREATE(pn7160_cmds,
 			       SHELL_CMD(init, NULL, "CORE_RESET probe + CORE_INIT connect", cmd_pn7160_init),
 			       SHELL_CMD(settings, NULL, "Apply Nfc_settings.h RF/core blobs",
 					 cmd_pn7160_settings),
+			       SHELL_CMD(discovery, &pn7160_discovery_cmds, "RF discovery (reader mode)",
+					 NULL),
 			       SHELL_CMD(xcv, NULL, "Raw NCI transceive (hex bytes)", cmd_pn7160_xcv),
 			       SHELL_CMD(dwl, &pn7160_dwl_cmds, "Firmware download mode (DWL GPIO)",
 					 NULL),

@@ -6,6 +6,8 @@
 #ifndef PN7160_PRIV_H_
 #define PN7160_PRIV_H_
 
+#include <nfc/pn7160.h>
+
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/i2c.h>
 #include <zephyr/drivers/spi.h>
@@ -38,8 +40,11 @@ struct pn7160_data {
 	int last_rx_err;
 	bool dwl_mode;
 	bool rf_settings_restored;
+	bool discovery_active;
+	uint8_t next_tag_protocol;
 	uint8_t fw_version[3];
 	uint8_t rx_buf[CONFIG_PN7160_RX_BUF_SIZE];
+	struct pn7160_nci_rf_intf last_rf_intf;
 };
 
 #if DT_ANY_INST_ON_BUS_STATUS_OKAY(i2c)

@@ -164,6 +164,40 @@ int pn7160_nci_transceive(const struct device *dev, const uint8_t *tx, size_t tx
 int pn7160_nci_host_transceive(const struct device *dev, const uint8_t *tx, size_t tx_len,
 			       uint8_t *rx, size_t rx_max, size_t *rx_len, k_timeout_t timeout);
 
+/** NCI mode / technology flags (NXP Nfc.h). */
+#define PN7160_NCI_INTF_UNDETERMINED 0x0U
+#define PN7160_NCI_INTF_FRAME        0x1U
+#define PN7160_NCI_INTF_ISODEP       0x2U
+#define PN7160_NCI_INTF_NFCDEP       0x3U
+#define PN7160_NCI_INTF_TAGCMD       0x80U
+
+#define PN7160_NCI_PROT_UNDETERMINED 0x0U
+#define PN7160_NCI_PROT_T1T          0x1U
+#define PN7160_NCI_PROT_T2T          0x2U
+#define PN7160_NCI_PROT_T3T          0x3U
+#define PN7160_NCI_PROT_ISODEP       0x4U
+#define PN7160_NCI_PROT_NFCDEP       0x5U
+#define PN7160_NCI_PROT_T5T          0x6U
+#define PN7160_NCI_PROT_MIFARE       0x80U
+
+#define PN7160_NCI_MODE_POLL         0x00U
+#define PN7160_NCI_MODE_LISTEN       0x80U
+#define PN7160_NCI_TECH_PASSIVE_NFCA 0U
+#define PN7160_NCI_TECH_PASSIVE_NFCB 1U
+#define PN7160_NCI_TECH_PASSIVE_NFCF 2U
+#define PN7160_NCI_TECH_PASSIVE_15693 6U
+#define PN7160_NCI_MODE_RW           (1U << 2)
+
+/** Discovered remote tag summary (UID + protocol). */
+struct pn7160_nci_rf_intf {
+	uint8_t interface;
+	uint8_t protocol;
+	uint8_t mode_tech;
+	bool more_tags;
+	uint8_t uid_len;
+	uint8_t uid[10];
+};
+
 /**
  * @brief Apply NXP RF / core settings blobs (NxpNci_ConfigureSettings).
  *
@@ -175,6 +209,61 @@ int pn7160_nci_host_transceive(const struct device *dev, const uint8_t *tx, size
  * @return 0 on success, negative errno otherwise.
  */
 int pn7160_nci_configure_settings(const struct device *dev);
+
+/**
+ * @brief Configure discovery map for the given mode bitmask.
+ *
+ * Reader-only port supports @ref PN7160_NCI_MODE_RW.
+ *
+ * @param dev PN7160 device.
+ * @param mode NXP NXPNCI_MODE_* flags.
+ * @return 0 on success, negative errno otherwise.
+ */
+int pn7160_nci_configure_mode(const struct device *dev, uint8_t mode);
+
+/**
+ * @brief Start RF discovery (ConfigureMode RW + RF_DISCOVER_CMD).
+ *
+ * Uses @p tech_tab or the default NFC-A / NFC-B / ISO15693 poll table when NULL.
+ *
+ * @param dev PN7160 device.
+ * @param tech_tab Mode|tech entries (see PN7160_NCI_MODE_POLL | PN7160_NCI_TECH_*).
+ * @param tech_count Number of entries in @p tech_tab.
+ * @return 0 on success, negative errno otherwise.
+ */
+int pn7160_nci_discovery_start(const struct device *dev, const uint8_t *tech_tab,
+			       size_t tech_count);
+
+/**
+ * @brief Stop RF discovery loop.
+ *
+ * @param dev PN7160 device.
+ * @return 0 on success, negative errno otherwise.
+ */
+int pn7160_nci_discovery_stop(const struct device *dev);
+
+/**
+ * @brief Wait for a discovery notification (IRQ-driven, WQ drain).
+ *
+ * Blocks until RF_DISCOVER_NTF / RF_INTF_ACTIVATED_NTF or @p timeout.
+ *
+ * @param dev PN7160 device.
+ * @param rf_intf Output tag summary (UID when available).
+ * @param timeout Maximum wait time.
+ * @return 0 on success, `-ETIMEDOUT`, or other negative errno.
+ */
+int pn7160_nci_discovery_wait(const struct device *dev, struct pn7160_nci_rf_intf *rf_intf,
+			      k_timeout_t timeout);
+
+/**
+ * @brief Return whether discovery is active after @ref pn7160_nci_discovery_start.
+ */
+bool pn7160_nci_discovery_active(const struct device *dev);
+
+/**
+ * @brief Return the last tag summary cached by @ref pn7160_nci_discovery_wait.
+ */
+const struct pn7160_nci_rf_intf *pn7160_nci_discovery_last(const struct device *dev);
 
 /** @} */
 

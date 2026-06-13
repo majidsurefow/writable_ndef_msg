@@ -16,6 +16,7 @@
 #include <zephyr/logging/log.h>
 
 #include <errno.h>
+#include <string.h>
 
 LOG_MODULE_REGISTER(pn7160, CONFIG_PN7160_LOG_LEVEL);
 
@@ -246,6 +247,9 @@ static int pn7160_init(const struct device *dev)
 	data->last_rx_err = 0;
 	data->dwl_mode = false;
 	data->rf_settings_restored = false;
+	data->discovery_active = false;
+	data->next_tag_protocol = PN7160_NCI_PROT_UNDETERMINED;
+	memset(&data->last_rf_intf, 0, sizeof(data->last_rf_intf));
 	data->fw_version[0] = 0U;
 	data->fw_version[1] = 0U;
 	data->fw_version[2] = 0U;
