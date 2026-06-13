@@ -10,6 +10,7 @@ set(NFC_TEST_COMMON_SOURCES
   ${NFC_TEST_COMMON_DIR}/src/nfc_session_mock.c
   ${NFC_TEST_COMMON_DIR}/src/nfc_response_spy.c
   ${NFC_TEST_COMMON_DIR}/src/nfc_test_apdu.c
+  ${NFC_TEST_COMMON_DIR}/src/nfc_virtual_rf.c
 )
 
 set(NFC_TEST_COMMON_INCLUDES

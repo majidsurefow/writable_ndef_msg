@@ -6,6 +6,7 @@ tests:
       - ci_unit
       - nfc
       - writable_ndef.nfc.reader
+      - writable_ndef.nfc.ndef
     platform_allow:
       - qemu_cortex_m3
       - native_sim

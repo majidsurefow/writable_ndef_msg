@@ -92,6 +92,17 @@ static void ndef_listener_pad_ndef_file(void)
 	s_model.ndef_file_len = (uint16_t)NDEF_FILE_BUF_SIZE;
 }
 
+static bool ndef_listener_cc_is_zero_placeholder(const ndef_data_t *model)
+{
+	for (uint16_t i = 0U; i < NFC_NDEF_CC_LEN; i++) {
+		if (model->cc[i] != 0U) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
 static void ndef_listener_on_select(const uint8_t *aid, size_t aid_len, void *user_ctx)
 {
 	ARG_UNUSED(aid);
@@ -317,6 +328,11 @@ static int ndef_listener_deserialize(const uint8_t *in, size_t in_len, void *use
 	ret = ndef_deserialize(&s_model, in, in_len);
 	if (ret != 0) {
 		return ret;
+	}
+
+	if (ndef_listener_cc_is_zero_placeholder(&s_model)) {
+		ndef_listener_build_cc(s_model.cc, s_writable);
+		s_model.cc_len = NFC_NDEF_CC_LEN;
 	}
 
 	ndef_listener_pad_ndef_file();

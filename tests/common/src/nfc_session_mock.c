@@ -4,6 +4,7 @@
  */
 
 #include "nfc_session_mock.h"
+#include "nfc_virtual_rf.h"
 
 #include "hal/nfc_transport.h"
 
@@ -100,6 +101,10 @@ int nfc_reader_session_transceive(nfc_reader_session_t *session, const uint8_t *
 		(void)memcpy(s_tx_log[s_tx_count].buf, tx, copy_len);
 		s_tx_log[s_tx_count].len = copy_len;
 		s_tx_count++;
+	}
+
+	if (nfc_virtual_rf_is_enabled()) {
+		return nfc_virtual_rf_transceive(session, tx, tx_len, rx, rx_max, rx_len, timeout);
 	}
 
 	if ((s_steps == NULL) || (s_step_idx >= s_step_count)) {

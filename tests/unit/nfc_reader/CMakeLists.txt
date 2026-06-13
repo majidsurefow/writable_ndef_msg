@@ -14,7 +14,10 @@ set(REPO_SRC ${CMAKE_CURRENT_SOURCE_DIR}/../../../src)
 target_sources(app PRIVATE
   src/test_store_roundtrip.c
   src/test_verify_diff.c
+  src/test_virtual_loopback.c
   ${REPO_NFC}/protocols/ndef/ndef.c
+  ${REPO_NFC}/protocols/ndef/ndef_listener.c
+  ${REPO_NFC}/protocols/ndef/ndef_poller.c
   ${REPO_NFC}/store/nfc_store.c
   ${REPO_NFC}/applets/nfc_applet_verify_compare.c
   ${NFC_TEST_COMMON_SOURCES}
