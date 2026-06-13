@@ -27,6 +27,13 @@ LOG_MODULE_REGISTER(nfc_transport_nrfx, CONFIG_LOG_DEFAULT_LEVEL);
 /* HAL caps 255 B; T4T lib allows 0xFFF0 — send_response enforces the HAL limit. */
 BUILD_ASSERT(NFC_TRANSPORT_MAX_RESPONSE_LEN <= NFC_T4T_MAX_PAYLOAD_SIZE);
 
+/* nrfxlib selects PICC vs NDEF by payload registration, not a runtime setter. */
+enum {
+	NFC_TRANSPORT_T4T_EMU_MODE = NFC_T4T_EMUMODE_PICC,
+};
+
+BUILD_ASSERT(NFC_TRANSPORT_T4T_EMU_MODE == NFC_T4T_EMUMODE_PICC);
+
 #if IS_ENABLED(CONFIG_NFC_ROLE_READER)
 BUILD_ASSERT(!IS_ENABLED(CONFIG_NFC_ROLE_READER),
 	     "NFCT backend is listen-only; disable CONFIG_NFC_ROLE_READER or use PN7160");
@@ -303,6 +310,12 @@ int nfc_transport_init(void)
 		STATS_ERROR(&s_stats_lock, s_stats, nrf_to_errno(ret));
 		return nrf_to_errno(ret);
 	}
+
+	/*
+	 * Raw ISO-DEP / PICC mode: do not call nfc_t4t_ndef_* before emulation_start.
+	 * NFC_TRANSPORT_T4T_EMU_MODE documents the locked listen profile for aid_router.
+	 */
+	ARG_UNUSED(NFC_TRANSPORT_T4T_EMU_MODE);
 
 	ret = nfc_t4t_parameter_set(NFC_T4T_PARAM_FWI, &fwi, sizeof(fwi));
 	if (ret != 0) {
