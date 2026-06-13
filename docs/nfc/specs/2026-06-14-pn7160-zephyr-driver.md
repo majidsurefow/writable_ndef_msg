@@ -1,10 +1,11 @@
 # PN7160 Zephyr Device Driver — Phase 0 Architecture
 
 **Date:** 2026-06-14  
-**Status:** LOCKED (architecture + integration design; Phase 0 implementation gated on § Phase 0 Implementation Checklist approval and § Upstream Quality Bar)  
+**Status:** FROZEN @ `21bdd71` — architecture + Phase 0 implementation complete  
 **Platform:** Zephyr / Nordic NCS v3.2.4 · nRF54L15 + PN7160 eval shield
 
-**Related:** [`2026-06-13-implementation-phases.md`](2026-06-13-implementation-phases.md) Phase 0 · [`../plans/wave7-pn7160-reader.md`](../plans/wave7-pn7160-reader.md)
+**Execution:** [`../NFC_STACK_PLAN.md`](../NFC_STACK_PLAN.md)  
+**Related:** [`../archive/waves/wave7-pn7160-reader.md`](../archive/waves/wave7-pn7160-reader.md)
 
 ---
 
@@ -718,6 +719,197 @@ Tasks are ordered; each item must meet the upstream quality bar, not merely "wor
 
 ---
 
+## § Pattern Reference Analysis (NCS v3.2.4)
+
+**Date:** 2026-06-13  
+**Scope:** Compare current `modules/nfc_pn7160/` scaffold against exemplar I2C+GPIO-IRQ drivers in NCS v3.2.4. Analysis only — no code changes in this section.
+
+### Reference drivers studied
+
+| Driver | NCS path | Why chosen |
+|---|---|---|
+| **ENS160** | `/opt/nordic/ncs/v3.2.4/zephyr/drivers/sensor/ens160/` (`ens160.c`, `ens160_i2c.c`, `ens160_trigger.c`) | Dual I2C/SPI via `DT_INST_ON_BUS` + `COND_CODE_1`; separate bus `.c` files; `DT_INST_FOREACH_STATUS_OKAY` |
+| **BMM150** | `/opt/nordic/ncs/v3.2.4/zephyr/drivers/sensor/bosch/bmm150/` (`bmm150.c`, `bmm150_i2c.c`, `bmm150_trigger.c`) | I2C client + `drdy-gpios`; GPIO ISR → `k_work` / `k_sem`; `device_is_ready` on IRQ port |
+| **APDS9960** | `/opt/nordic/ncs/v3.2.4/zephyr/drivers/sensor/apds9960/` (`apds9960.c`, `apds9960_trigger.c`) | I2C + `int-gpios`; `gpio_is_ready_dt` + `gpio_pin_interrupt_configure_dt(GPIO_INT_EDGE_TO_ACTIVE)`; ISR submits `k_work` |
+
+### Pattern checklist
+
+| Pattern | Reference | PN7160 scaffold | Status |
+|---|---|---|---|
+| `DT_DRV_COMPAT` + `DT_INST_FOREACH_STATUS_OKAY` | ens160, bmm150, apds9960 | `pn7160_driver.c` | ✅ Aligned |
+| `DEVICE_DT_INST_DEFINE` / instance macro | ens160 `ENS160_DEFINE`, bmm150 `SENSOR_DEVICE_DT_INST_DEFINE` | `PN7160_DEFINE` → `DEVICE_DT_INST_DEFINE` | ✅ Aligned |
+| `DT_INST_ON_BUS` I2C/SPI split | ens160 `COND_CODE_1(DT_INST_ON_BUS(...))` | `PN7160_CONFIG_I2C` / `PN7160_CONFIG_SPI` | ✅ Aligned |
+| `config` static const / `data` static struct | All three | `pn7160_config_##inst` / `pn7160_data_##inst` | ✅ Aligned |
+| `LOG_MODULE_REGISTER` (main) + `LOG_MODULE_DECLARE` (helpers) | bmm150, ens160 | `pn7160_driver.c` register; TML/NCI declare | ✅ Aligned |
+| Init level `POST_KERNEL` + bus-ready priority | ens160 `POST_KERNEL`, bmm150 `CONFIG_SENSOR_INIT_PRIORITY` | `POST_KERNEL`, `CONFIG_PN7160_INIT_PRIORITY` (80) | ✅ Aligned |
+| Bus ready: `i2c_is_ready_dt` / `spi_is_ready_dt` | ens160 `ens160_i2c_init`, apds9960 `device_is_ready(config->i2c.bus)` | `pn7160_bus_is_ready()` via `cfg->tml_send` dispatch | ✅ Aligned |
+| GPIO ready: `gpio_is_ready_dt` | apds9960, ens160 | `pn7160_init()` irq + ven | ✅ Aligned |
+| GPIO ISR: `CONTAINER_OF` + no bus I/O | ens160, apds9960, bmm150 | `pn7160_gpio_isr` — atomic + `k_work_submit` only | ✅ Aligned |
+| GPIO IRQ config: `GPIO_INT_EDGE_TO_ACTIVE` | ens160, bmm150, apds9960 | `pn7160_init()` line 134 | ✅ Aligned |
+| Work queue deferral from ISR | ens160 `k_work_submit`, apds9960 `k_work_submit` | `k_work_submit(&data->irq_work)` | ✅ Scaffold OK |
+| ISR edge re-arm / disable during drain | ens160 `ens160_setup_int(dev, false)` in ISR | Not implemented — `irq_work` is empty stub | ⚠️ Gap (Slice 6) |
+| I2C transfers via `*_dt` helpers | ens160 `i2c_*_dt`, bmm150 `i2c_burst_read_dt` | `i2c_write_dt` / `i2c_read_dt` in TML | ✅ Aligned |
+| I2C bus mutex on transfer pairs | Not universal in sensor drivers; spec requires for multi-thread TML | No `k_mutex` in `pn7160_data` | ⚠️ Gap (Slice 5) |
+| TML send retry (NXP `tml_Tx`) | — | Single attempt, no retry | ⚠️ Gap (Slice 5) |
+| `device_is_ready()` contract documented | apds9960 checks bus in init | Spec + API doc; callers must check before NCI | ⚠️ Partial (Slice 3) |
+| Split DT bindings + `dt_compat_on_bus` Kconfig | ens160 yaml + Kconfig | `nxp,pn7160-{common,i2c,spi}.yaml` + Kconfig | ✅ Aligned |
+| NXP VEN timing (10 ms / 10 ms) | — | `pn7160_reset()` uses 1 ms / 3 ms | ⚠️ Gap (Slice 4) |
+| SPI TML implementation | ens160 `ens160_spi.c` full port | `pn7160_tml_spi.c` returns `-ENOTSUP` | ⚠️ Gap (Slice 5b) |
+| ztest + Twister `testcase.yaml` | Zephyr driver tests | Scaffold `test_scaffold_passes` only | ⚠️ Gap (Slice 5 / 11) |
+| Public API doxygen `@brief` | Upstream bar | `pn7160.h` has comments, not full doxygen | ⚠️ Gap (Slice 3) |
+| NXP copyright on ported `.c` | Upstream bar | Only SPI scaffold has NXP header | ⚠️ Gap (Slice 10) |
+| `irq_work` → `nfc_work_q` RX drain | HAL Model B | Empty `pn7160_irq_work_handler` | ⚠️ Gap (Slice 6) |
+| NCI `CORE_RESET_NTF` parse + FW version | — | `pn7160_nci_check_dev_pres` sends only; no parse | ⚠️ Gap (Slice 7) |
+
+### Gaps to fix by implementation slice
+
+Maps to § Phase 0 Implementation Checklist items **2–5** (and dependent slices):
+
+| Slice | Checklist # | Gaps from pattern audit |
+|---|---|---|
+| **Slice 2 — Kconfig** | 2 | Verify mixed I2C+SPI multi-instance builds; confirm `select I2C`/`SPI` when both compat buses present in DT |
+| **Slice 3 — API + privacy** | 3 | Add `@brief` doxygen on all `pn7160.h` symbols; document `device_is_ready()` contract in header; consider `pn7160_nci.h` split for HAL-only NCI |
+| **Slice 4 — Init + VEN** | 4 | Align `pn7160_reset()` to NXP **10 ms / 10 ms**; map GPIO configure failures to `-EIO` consistently; add `LOG_ERR` with dev name on all init failures |
+| **Slice 5 — TML I2C** | 5 | Add `k_mutex` on `pn7160_data` guarding send/recv pairs; port NXP `tml_Tx` retry; expand ztest for I2C framing bounds |
+| **Slice 5b — TML SPI** | 5b | Implement `0x7F`/`0xFF` SPI path; ztest for prefix/dummy; HIL on `pn7160_spi.overlay` |
+| **Slice 6 — IRQ path** | 6 | Implement `irq_work` → `k_work_submit_to_queue(nfc_work_q, …)`; optional ISR edge disable during drain (ens160 pattern) |
+| **Slice 7 — NCI probe** | 7 | Parse `CORE_RESET_NTF`; expose FW version bytes; run only on `nfc_work_q` |
+
+**Verdict:** Device-model skeleton (DT_INST, bus split, GPIO ISR → work, logging, init level) **matches NCS exemplars**. Remaining gaps are functional completeness (TML mutex/retry, VEN timing, SPI port, NCI parse, tests) — not structural Zephyr anti-patterns.
+
+---
+
+## § CI/CD Status (Phase 0)
+
+**Date:** 2026-06-13  
+**NCS pin:** v3.2.4 (via `west.yml` + `twister.yaml` `NCS_REVISION`)
+
+### Merge-gate workflows (auto on push/PR to `main`, `nfc-stack`, `v*-branch`, `collab-*`)
+
+| Workflow | Trigger | What it runs for PN7160 |
+|---|---|---|
+| `twister.yaml` | push + PR | **`ci_build`** — integration build-only (`sample.yaml` matrix incl. `pn7160.i2c` / `pn7160.spi`); **`ci_unit`** — `modules/nfc_pn7160/tests/unit/pn7160_tml` on `qemu_cortex_m3` |
+| `devicetree.yml` | push + PR (DT paths) | dtschema on `modules/nfc_pn7160/dts/bindings/`; Twister `-t pn7160` overlay builds |
+| `coding_guidelines.yml` | PR | checkpatch on `modules/` (among other paths) |
+| `compliance.yml` | PR | DCO / commit message compliance on `modules/` |
+| `license_check.yml` | PR | ScanCode license scan |
+| `codecov.yaml` | push + PR | Unit coverage upload for `ci_unit` (qemu_cortex_m33) |
+| `clang.yaml` | push + PR | LLVM toolchain `ci_build` build-only |
+| `doxygen-coverage-delta.yml` | PR (module headers) | Doxygen coverage delta on `modules/**/include/**` |
+
+### Scheduled / ancillary (not merge-blocking)
+
+| Workflow | Schedule | Notes |
+|---|---|---|
+| `twister.yaml` nightly | Sunday 02:00 UTC | `ci_build --all` full matrix |
+| `codeql.yml` | Saturday | Static analysis |
+| `footprint-tracking.yml` | Sunday | Size report + `ci_build` |
+| `doc-build.yml` / `doc-publish*.yml` | push/tags | Doxygen HTML |
+| `scorecards.yml` | push + schedule | OpenSSF scorecard |
+| `release.yml` | version tags | Release artifacts |
+
+### PN7160-specific CI tags
+
+| Tag | Test / build | Platform |
+|---|---|---|
+| `ci_build` | App integration (`sample.yaml`) | nRF DK matrix + PN7160 I2C/SPI overlays |
+| `ci_unit` | `modules.nfc_pn7160.unit.pn7160_tml` | `qemu_cortex_m3` (CI); `native_sim` local only |
+| `pn7160` | DT overlay builds (`devicetree.yml`) | Integration platforms from `sample.yaml` |
+
+### Status statement
+
+**CI/CD is complete for Phase 0 — no user input needed** unless:
+
+1. **Branch protection** — repo admin must require `Check Twister Status` / `Check Devicetree Status` (and other PR checks) as required status checks on the default branch.
+2. **GitHub secrets** — `CODECOV_TOKEN` (optional; coverage upload degrades gracefully without it).
+3. **Push to remote** — workflows run only after code is pushed to GitHub; local-only commits do not trigger CI.
+4. **HIL gates** — CORE_RESET / FW version on real PN7160 hardware are **manual** validation; not automated in CI today (by design for Phase 0).
+
+No further CI wiring is required before Slice 2–5 implementation begins.
+
+---
+
+## § Phase 0 DONE Definition
+
+**Phase 0 PN7160 driver is DONE when all of the following are true:**
+
+### Quality bar (§ Upstream Quality Bar)
+
+- [ ] All 10 upstream-quality areas pass (API, binding, Kconfig, init, errors, concurrency, testing, docs, license, style)
+- [ ] checkpatch clean on `modules/nfc_pn7160/**`
+- [ ] NXP copyright blocks on files ported from `tml.c` / `NxpNci20.c`
+
+### Functional gates
+
+- [ ] **I2C TML** — NXP framing parity; `k_mutex` on bus access; ztest framing tests pass
+- [ ] **SPI TML** — `0x7F`/`0xFF` implementation; ztest SPI tests pass; HIL validated on `pn7160_spi.overlay`
+- [ ] **VEN reset** — 10 ms / 10 ms sequence per NXP `tml_Connect`
+- [ ] **IRQ path** — ISR sets flag + submits work; RX drain on `nfc_work_q`; no bus I/O in ISR
+- [ ] **NCI probe** — `pn7160_nci_check_dev_pres()` parses `CORE_RESET_NTF`; FW version bytes available
+- [ ] **Host transceive** — blocking transceive on worker only; full errno mapping
+- [ ] **HAL integration** — `nfc_transport_nci.c` uses `DEVICE_DT_GET(DT_NODELABEL(pn7160))`; guards `device_is_ready()`
+- [ ] **Shell** — `nfc_transport pn7160 fwver` returns 3-byte FW version (HIL)
+- [ ] **Discovery** — `ConfigureMode(RW)`, tech table, `poll_start`/`poll_stop` (Phase 0.8)
+- [ ] **Reader scan shell** — `nfc reader scan` UID + protocol (Phase 0.9)
+
+### CI gates (automated — must be green on PR)
+
+- [ ] `twister.yaml` → `ci_build` (integration build-only, incl. `pn7160.i2c` + `pn7160.spi`)
+- [ ] `twister.yaml` → `ci_unit` (`pn7160_tml` ztest on `qemu_cortex_m3`)
+- [ ] `devicetree.yml` → binding validation + `pn7160` overlay builds
+- [ ] `coding_guidelines.yml` + `compliance.yml` pass on module sources
+
+### HIL gates (manual — hardware required)
+
+- [ ] Flash nRF54L15 DK + PN7160 eval shield; `nfc_transport pn7160 fwver` shows FW version
+- [ ] Logic analyzer: HOST_IRQ pulse on NCI response; no busy-poll in main thread
+- [ ] `nfc reader scan` detects a Type-A/B/F tag (Phase 0.9)
+
+### Deliverable file list
+
+```
+modules/nfc_pn7160/
+├── zephyr/module.yml
+├── zephyr/Kconfig
+├── dts/bindings/nfc/nxp,pn7160-{common,i2c,spi}.yaml
+├── include/nfc/pn7160.h          (+ optional pn7160_nci.h)
+├── src/pn7160_driver.c
+├── src/pn7160_tml_i2c.c
+├── src/pn7160_tml_spi.c
+├── src/pn7160_nci.c              (+ pn7160_nci_settings.c when RF blobs land)
+├── src/pn7160_priv.h
+├── tests/unit/pn7160_tml/        (framing ztests)
+├── CMakeLists.txt
+└── README.md
+
+boards/overlays/pn7160_i2c.overlay
+boards/overlays/pn7160_spi.overlay
+overlay-pn7160.conf
+overlay-pn7160-spi.conf
+
+src/nfc/hal/nci/nfc_transport_nci.c   (HAL integration)
+src/nfc/hal/nfc_transport_pn7160_shell_cmds.c
+src/nfc/reader/nfc_reader_engine.c    (scan only, Phase 0.9)
+```
+
+### Explicitly OUT of scope for Phase 0
+
+| Item | Deferred to |
+|---|---|
+| `nfc_transport` full SMART HAL (poll callbacks, event bridge) | Phase 0.5–0.6 completion; details in wave7 |
+| Reader engine (clone, store, multi-tag) | Phase 1 |
+| PN7160 listen / card emulation (Type-4 CE) | Phase 2 |
+| NFCT backend migration | Phase 3 |
+| SPI HIL fully signed-off in CI (build-only today) | Slice 5b HIL manual gate |
+| `pm_device` suspend/resume on VEN | Post-Phase 0 |
+| Upstream submission to `zephyr/drivers/nfc/` | Future; out-of-tree is locked for Phase 0 |
+| NxpNfcRdLib / RFAL integration | Skipped per library evaluation |
+| Flipper `lib/nfc` code | Skipped |
+| FW download mode (DWL) | Post-Phase 0 |
+| Full NCI discovery + tag protocol commands beyond scan | Phase 1 |
+
+---
+
 ## Changelog
 
 - **v1 (2026-06-14):** Initial architecture + scaffold decision; out-of-tree module in `writable_ndef_msg`.
@@ -726,3 +918,4 @@ Tasks are ordered; each item must meet the upstream quality bar, not merely "wor
 - **v1.3 (2026-06-14):** Added locked § Devicetree Integration, § Driver Lifecycle, § Run Context, § Layer Call Graph, § Phase 0 Implementation Checklist; NXP VEN/IRQ timing reference; `device_is_ready` and error-path contracts.
 - **v1.4 (2026-06-14):** Added § Upstream Quality Bar (zephyr main-tree PR standards, gap analysis, revised file tree); Phase 0 checklist rewritten as upstream-quality tasks; reference drivers ens160/bmm150/amg88xx.
 - **v1.5 (2026-06-14):** **DECISION-DRV-2** amended to dual transport (I2C + SPI); split DT bindings; DT-driven Kconfig TML backends; `pn7160_tml_spi.c` scaffold; `boards/overlays/pn7160_spi.overlay`; SPI TML port map from NXP `tml.c`.
+- **v1.6 (2026-06-13):** Added § Pattern Reference Analysis (NCS v3.2.4 ens160/bmm150/apds9960 audit), § CI/CD Status, § Phase 0 DONE Definition with out-of-scope list.

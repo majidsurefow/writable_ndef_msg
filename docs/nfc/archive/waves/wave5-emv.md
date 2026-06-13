@@ -19,7 +19,7 @@
 1. `docs/NFC_STACK_CONVENTIONS.md` — BINDING; read in full (§2 lifecycle/state, §3 coupling, §4 callbacks, §5 buffer model, §6 stats recipe, §7 threading, §8 profile switch, §9 errno, §10 shell, §11 MISRA, §12 checklist)
 2. `docs/superpowers/plans/wave3-router.md` §1 — `nfc_service_t` vtable VERBATIM; persist-ID table (EMV = `0x04`)
 3. `docs/superpowers/plans/wave4-stack.md` §1.5, §5.2 — `NFC_PROFILE_EMV` registers **one AID only** (`k_emv_aid` = PPSE 14 bytes); expected surface `emv_service_init/shutdown/get` confirmed; routing gap analysed — see DECISION-1
-4. `docs/superpowers/specs/2026-06-08-nfc-emulation-stack-design.md` (v2) §6.4.4, §6.5, §13 — scope, commands, store seam, non-goals
+4. `docs/nfc/archive/specs/2026-06-08-nfc-emulation-stack-design.md` (v2) §6.4.4, §6.5, §13 — scope, commands, store seam, non-goals
 5. `docs/superpowers/plans/wave1-hal.md` §2 — `nfc_transport_send_response(buf, len)`: borrows `buf` until next callback; `@threadsafe`; returns 0 / `-EINVAL` / `-ENODEV` / `-EIO`; cast return to `(void)` per MISRA Rule 17.7 at this layer
 6. `docs/superpowers/plans/wave2-framing.md` §1 — `nfc_apdu_t` fields (`cla`, `ins`, `p1`, `p2`, `data`, `lc`, `le`, `has_le`, `extended`); SW constants in `apdu_types.h`; `NFC_SW_OK 0x9000`, `NFC_SW_INS_NOT_SUPPORTED 0x6D00`, `NFC_SW_FILE_NOT_FOUND 0x6A82`, `NFC_SW_CONDITIONS_NOT_SATISFIED 0x6985`, `NFC_SW1`/`NFC_SW2` macros
 7. `flipperzero/applications/main/nfc/helpers/nfc_emv_parser.c/.h` — Flipper reader-side AID/country/currency name lookup using `Storage*`, `FuriString*`, `flipper_format`; **non-portable to Zephyr** — see DECISION-2; no EMV protocol directory found at `flipperzero/lib/nfc/protocols/emv/` (does not exist in this repo)
@@ -33,7 +33,7 @@
 
 > **Architecture Framing — spec v3 (2026-06-12):** This service is the
 > **NFCT/card-role first-slice** of the **EMV** protocol module as defined by the
-> [NFC Stack Architecture v3](../../specs/2026-06-12-nfc-stack-architecture.md) (§4.3).
+> [NFC Stack Architecture v3](../specs/2026-06-12-nfc-stack-architecture.md) (§4.3).
 > A protocol module owns: data model (`emv_card_image_t`) · (de)serialize ·
 > **listener** (this file, built under `CONFIG_NFC_ROLE_CARD`) · **poller**
 > (reader role — RESERVED, not implemented in this slice).

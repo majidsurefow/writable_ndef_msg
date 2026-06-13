@@ -4,7 +4,7 @@
 
 > **Architecture context (v3 reframe):** This plan is the NFCT/card first-slice of
 > the capability-driven, dual-role, multi-backend architecture described in
-> [`docs/superpowers/specs/2026-06-12-nfc-stack-architecture.md`](../specs/2026-06-12-nfc-stack-architecture.md)
+> [`docs/nfc/archive/specs/2026-06-12-nfc-stack-architecture.md`](../specs/2026-06-12-nfc-stack-architecture.md)
 > (v3, §9 row "Wave 1 HAL"). The existing listen contract, NFCT function signatures,
 > and ISR/WQ implementation details below are **unchanged and correct**. This reframe
 > adds the capability model (§1.8), role Kconfig symbols (§1.7), event-model note
@@ -27,7 +27,7 @@
 **Sources consulted (Step 1 context sweep):**
 - `docs/NFC_STACK_CONVENTIONS.md` (binding — read fully)
 - `docs/NFC_WAVE_PLANNING_GUIDE.md` (process + template)
-- `docs/superpowers/specs/2026-06-08-nfc-emulation-stack-design.md` (v2) §1a, §4, §5, §6.1, §6.2, §8, §9, §13 (architecture/threading/buffers/backend choice/non-goals)
+- `docs/nfc/archive/specs/2026-06-08-nfc-emulation-stack-design.md` (v2) §1a, §4, §5, §6.1, §6.2, §8, §9, §13 (architecture/threading/buffers/backend choice/non-goals)
 - `docs/API_DESIGN_CREED.md` (lifecycle, Pattern B atomic state, Pattern A ops, workqueue/memory/observability)
 - `docs/CALLBACK_REGISTRATION_GUIDE.md` (register/guard/NULL-clear/`user_ctx` rules)
 - `docs/STATS_API_DESIGN.md` + `src/stats.h` (`s_stats`/`s_stats_lock`, `STATS_*`, copy-out getter, hot-path helper)

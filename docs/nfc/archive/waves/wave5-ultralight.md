@@ -24,7 +24,7 @@
 1. `docs/NFC_STACK_CONVENTIONS.md` — BINDING; read in full (§2 lifecycle, §3 coupling, §4 callback pattern, §5 buffer model, §6 stats recipe, §7 threading, §9 errno, §10 shell, §11 MISRA, §12 compliance checklist)
 2. `docs/superpowers/plans/wave3-router.md` §1 — `nfc_service_t` vtable VERBATIM, `NFC_PERSIST_ID_ULTRALIGHT 0x03U`, `nfc_service_serialize_fn` / `nfc_service_deserialize_fn` typedefs
 3. `docs/superpowers/plans/wave4-stack.md` §1.5 + §4.5 + §5.3 — DECISION-6 (ULTRALIGHT profile registers NDEF AID using `ndef_service_get()`), save/load array construction for ULTRALIGHT profile, `ultralight_service_init/shutdown` call sites
-4. `docs/superpowers/specs/2026-06-08-nfc-emulation-stack-design.md` (v2) §6.4.3, §6.5, §13 — Ultralight scope ("NDEF wrapper only, T2T commands impossible on ISO-DEP hardware"), store TLV-blob format, hardware constraints table
+4. `docs/nfc/archive/specs/2026-06-08-nfc-emulation-stack-design.md` (v2) §6.4.3, §6.5, §13 — Ultralight scope ("NDEF wrapper only, T2T commands impossible on ISO-DEP hardware"), store TLV-blob format, hardware constraints table
 5. `flipperzero/lib/nfc/protocols/mf_ultralight/mf_ultralight.h` — `MfUltralightType` enum, `MfUltralightPage`, `MfUltralightVersion`, `MfUltralightCounter`, `MfUltralightConfigPages`, page count table (`MfUltralightTypeOrigin`=16, `MfUltralightTypeUL11`=20, `MfUltralightTypeUL21`=41); page-count values re-expressed in service-owned constants, GPL code not reproduced
 6. `flipperzero/lib/nfc/protocols/mf_ultralight/mf_ultralight.c` — `mf_ultralight_features[]` table for total_pages per variant (UL11=20, UL21=41, Origin=16); data format version 2 reference
 7. `src/stats.h` — `STATS_INC`, `STATS_ERROR`, `STATS_RESET`, `STATS_COPY_OUT` macro signatures
@@ -37,7 +37,7 @@
 
 > **Architecture Framing — spec v3 (2026-06-12):** This service is the
 > **NFCT/card-role first-slice** of the **Ultralight** protocol module as defined by the
-> [NFC Stack Architecture v3](../../specs/2026-06-12-nfc-stack-architecture.md) (§4.3).
+> [NFC Stack Architecture v3](../specs/2026-06-12-nfc-stack-architecture.md) (§4.3).
 > A protocol module owns: data model (`s_pages[]`) · (de)serialize ·
 > **listener** · **poller** (reader role — RESERVED, not implemented in this slice).
 > In this NFCT-only slice, the T4T listener role is fulfilled via the NDEF service

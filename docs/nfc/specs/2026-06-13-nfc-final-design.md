@@ -5,11 +5,11 @@
 **Platform:** Zephyr / Nordic NCS v3.2.4 · primary SoC nRF54L15 (`nrf54l15dk` bring-up)
 
 > **Read this first.** This is the single reconciled design. Detailed wave plans remain in
-> `docs/superpowers/plans/wave*.md`; this doc is the map, not a rewrite of those plans.
+> `docs/nfc/archive/waves/wave*.md`; this doc is the map, not a rewrite of those plans.
 >
 > **Implementation repo:** All firmware — `src/nfc/`, `modules/nfc_pn7160/`, tests, and
 > build wiring — lives in **writable_ndef_msg** (`/Users/majidfaroud/writable_ndef_msg`).
-> See [`2026-06-13-implementation-phases.md`](2026-06-13-implementation-phases.md) §Build from this repo.
+> See [`NFC_STACK_PLAN.md`](../NFC_STACK_PLAN.md) for current execution.
 
 ---
 
@@ -256,15 +256,15 @@ Condensed from [`2026-06-13-nfct-pn7160-capability-matrix.md`](2026-06-13-nfct-p
 
 > **Sequencing lock (2026-06-13):** PN7160 bring-up → clone → emulate → verify on one chip,
 > **then** port the proven stack to NFCT. Full phase detail:
-> [`2026-06-13-implementation-phases.md`](2026-06-13-implementation-phases.md).
+> [`archive/specs/2026-06-13-implementation-phases.md`](../archive/specs/2026-06-13-implementation-phases.md) (historical).
 
 **API shape is unchanged** (`nfc_transport`, `nfc_reader`, `nfc_stack`). Only build order changed.
 
 | Phase | Goal | Old wave mapping | Plan |
 |---|---|---|---|
-| **0** | PN7160 HAL, NCI, IRQ, worker, scan | Wave 7a Phase 1–2 | [`wave7-pn7160-reader.md`](../plans/wave7-pn7160-reader.md) |
-| **1** | PN7160 clone (NDEF first, then expand) | Wave 7a Phase 3–4 + Wave 6 minimal | wave7 + [`wave6-store.md`](../plans/wave6-store.md) |
-| **2** | PN7160 emulate (Type-4 CE, verify loop on same chip) | Wave 7b (required gate) | implementation-phases §Phase 2 |
+| **0** | PN7160 HAL, NCI, IRQ, worker, scan | Wave 7a Phase 1–2 | [`wave7-pn7160-reader.md`](../archive/waves/wave7-pn7160-reader.md) |
+| **1** | PN7160 clone (NDEF first, then expand) | Wave 7a Phase 3–4 + Wave 6 minimal | wave7 + [`wave6-store.md`](../archive/waves/wave6-store.md) |
+| **2** | PN7160 emulate (Type-4 CE, verify loop on same chip) | Wave 7b (required gate) | `NFC_STACK_PLAN.md` gate 4 |
 | **3** | NFCT migration (port proven protocols) | Waves 1–6 repurposed | wave1–6 plans |
 
 ### Sequencing (visual)
@@ -422,7 +422,7 @@ sequenceDiagram
 
 ## 7. Amendments to Prior Locks
 
-Reference: [`2026-06-13-locked-architecture-summary.md`](2026-06-13-locked-architecture-summary.md) (2026-06-13 early lock).
+Reference: [`archive/specs/2026-06-13-locked-architecture-summary.md`](../archive/specs/2026-06-13-locked-architecture-summary.md) (2026-06-13 early lock).
 
 | Prior lock | Final design | Why |
 |---|---|---|
@@ -459,11 +459,12 @@ Reference: [`2026-06-13-locked-architecture-summary.md`](2026-06-13-locked-archi
 | Document | Role after this final design |
 |---|---|
 | **This file** | **Master design — read first** |
-| [`2026-06-13-implementation-phases.md`](2026-06-13-implementation-phases.md) | **Locked build order — PN7160 first, then NFCT** |
-| [`2026-06-12-nfc-stack-architecture.md`](2026-06-12-nfc-stack-architecture.md) | Architecture principles + history; §1.1 points here |
-| [`2026-06-13-locked-architecture-summary.md`](2026-06-13-locked-architecture-summary.md) | Short summary; superseded for role split detail |
+| [`NFC_STACK_PLAN.md`](../NFC_STACK_PLAN.md) | **Current execution plan — gated commits** |
+| [`archive/specs/2026-06-13-implementation-phases.md`](../archive/specs/2026-06-13-implementation-phases.md) | Historical PN7160-first phase ordering |
+| [`archive/specs/2026-06-12-nfc-stack-architecture.md`](../archive/specs/2026-06-12-nfc-stack-architecture.md) | Architecture principles + history |
+| [`archive/specs/2026-06-13-locked-architecture-summary.md`](../archive/specs/2026-06-13-locked-architecture-summary.md) | Short summary; superseded for role split detail |
 | [`2026-06-13-nfct-pn7160-capability-matrix.md`](2026-06-13-nfct-pn7160-capability-matrix.md) | Per-protocol evidence tables |
-| `docs/superpowers/plans/wave*.md` | Implementation slices — not duplicated here |
+| `docs/nfc/archive/waves/wave*.md` | Implementation slices — not duplicated here |
 | `docs/NFC_STACK_CONVENTIONS.md` | Coding binding for all waves |
 
 ---
@@ -471,4 +472,4 @@ Reference: [`2026-06-13-locked-architecture-summary.md`](2026-06-13-locked-archi
 ## Changelog
 
 - **v1 (2026-06-13):** Final reconciled design; PN7160 CE evidence from NXP NCI examples; NFCT limits from nrfxlib; wave order 7a/7b; supersedes scattered role locks.
-- **v1.1 (2026-06-13):** Implementation order locked PN7160-first (Phases 0–3); see [`2026-06-13-implementation-phases.md`](2026-06-13-implementation-phases.md).
+- **v1.1 (2026-06-13):** Implementation order locked PN7160-first (Phases 0–3); superseded for execution by [`NFC_STACK_PLAN.md`](../NFC_STACK_PLAN.md).

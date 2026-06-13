@@ -16,7 +16,7 @@ rule by ID.
   scope — including improvements, refactors, helpers, and "obvious" additions.
 - **R2.** You may read: your wave plan, `NFC_STACK_CONVENTIONS.md`, the five
   upstream design docs it cites, spec v3.1
-  (`docs/superpowers/specs/2026-06-12-nfc-stack-architecture.md`), and the
+  (`docs/nfc/archive/specs/2026-06-12-nfc-stack-architecture.md`), and the
   **headers** of the layer below yours. You may NOT read or copy from
   `flipperzero/` (GPL reference tree — protocol facts are already distilled
   into the plans).

@@ -189,5 +189,5 @@ Related documents
 
 * Module README: ``modules/nfc_pn7160/README.md``
 * Architecture spec: ``docs/nfc/specs/2026-06-14-pn7160-zephyr-driver.md``
-* NXP library audit: ``docs/nfc/specs/2026-06-14-pn7160-nxp-library-audit.md``
+* NXP library audit: ``docs/nfc/archive/specs/2026-06-14-pn7160-nxp-library-audit.md``
 * Shell / examples map: ``docs/nfc/PN7160_SHELL_AND_EXAMPLES.md``

@@ -22,7 +22,7 @@
 1. `docs/NFC_STACK_CONVENTIONS.md` — BINDING; read in full
 2. `docs/superpowers/plans/wave3-router.md` §1 — `service.h` vtable VERBATIM + persist-ID table (`NFC_PERSIST_ID_ALIRO = 0x05`)
 3. `docs/superpowers/plans/wave4-stack.md` §1.5/§5.2 — ALIRO profile: two AIDs registered under one `nfc_service_t`; expected surface `aliro_service_init/shutdown/get`
-4. `docs/superpowers/specs/2026-06-08-nfc-emulation-stack-design.md` (v2) §6.4.5, §6.5, §10, §12, §13
+4. `docs/nfc/archive/specs/2026-06-08-nfc-emulation-stack-design.md` (v2) §6.4.5, §6.5, §10, §12, §13
 5. `aliro/interface_impl/crypto.cpp` — PSA call patterns (ECDH, HKDF-SHA-256, ECDSA-P256, AES-GCM, SHA-256, TRNG)
 6. `aliro/platform/crypto/utils.h/.cpp` — key import/export patterns (`ImportPrivateKey`, `ImportPublicKey`, `ExportPublicKey`, `DestroyKey`, `PreserveKey`)
 7. `aliro/storage/psa_key_ids.h` — key-ID namespace (range base, private key at `base+0x0000`, kpersistent range at `base+0x1000`)
@@ -42,7 +42,7 @@
 
 > **Architecture Framing — spec v3 (2026-06-12):** This service is the
 > **NFCT/card-role first-slice** of the **Aliro** protocol module as defined by the
-> [NFC Stack Architecture v3](../../specs/2026-06-12-nfc-stack-architecture.md) (§4.3).
+> [NFC Stack Architecture v3](../specs/2026-06-12-nfc-stack-architecture.md) (§4.3).
 > A protocol module owns: data model (credential pubkey + config) · (de)serialize ·
 > **listener** (this file, built under `CONFIG_NFC_ROLE_CARD`) · **poller**
 > (reader role — RESERVED, not implemented in this slice).

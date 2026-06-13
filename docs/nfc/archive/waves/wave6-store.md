@@ -2,7 +2,7 @@
 
 > **Architecture reframe — spec v3 (2026-06-12).**
 > This plan is part of the capability-driven, dual-role architecture defined in
-> [`docs/superpowers/specs/2026-06-12-nfc-stack-architecture.md`](../specs/2026-06-12-nfc-stack-architecture.md)
+> [`docs/nfc/archive/specs/2026-06-12-nfc-stack-architecture.md`](../specs/2026-06-12-nfc-stack-architecture.md)
 > §4.5 + §9 (Wave 6 row).
 >
 > **The Wave 6 store blob IS the unified, cross-device-portable `.card` interchange
@@ -47,7 +47,7 @@
 
 **Sources consulted:**
 1. `docs/NFC_STACK_CONVENTIONS.md` — BINDING; read in full (§2 minimal lifecycle/Pattern A, §3 coupling map + store row, §4 callback pattern, §6 stats recipe, §7 threading, §9 errno, §10 shell, §11 MISRA, §12 checklist)
-2. `docs/superpowers/specs/2026-06-08-nfc-emulation-stack-design.md` (v2) — §6.5 (store: stub seam, load primary/save debug, TLV format, save/load stubs, shell, `-EBUSY` gating), §9 (Kconfig symbol map), §12 (out of scope: real backend)
+2. `docs/nfc/archive/specs/2026-06-08-nfc-emulation-stack-design.md` (v2) — §6.5 (store: stub seam, load primary/save debug, TLV format, save/load stubs, shell, `-EBUSY` gating), §9 (Kconfig symbol map), §12 (out of scope: real backend)
 3. `docs/superpowers/plans/wave3-router.md` §1.1 — `nfc_service_t`, `serialize`/`deserialize` signatures, `persist_id` table
 4. `docs/superpowers/plans/wave4-stack.md` §5.3 + §3 (`nfc_stack_save/load` sequence, `-EBUSY` rule, quiescence contract)
 5. Wave 5 plans — `*_MAX_SERIALIZED` constants (§1 each)

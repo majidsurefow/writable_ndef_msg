@@ -2,7 +2,7 @@
 
 **Status:** Design draft — implement after Phase 0 DONE  
 **NXP reference:** `hals_temp/NXP-NCI2.0_LPC55S6x_examples/` (SW6705, gitignored; local only)  
-**Related:** [`2026-06-14-pn7160-nxp-library-audit.md`](specs/2026-06-14-pn7160-nxp-library-audit.md)
+**Related:** [`2026-06-14-pn7160-nxp-library-audit.md`](archive/specs/2026-06-14-pn7160-nxp-library-audit.md)
 
 ---
 
@@ -211,4 +211,4 @@ in ported file headers.
 | `nfc ce t4t start` | Phone reads emulated tag |
 
 Automated: framing ztests (Phase 0). Shell: manual HIL checklist in
-[`PN7160_REVIEW_CHECKLIST.md`](PN7160_REVIEW_CHECKLIST.md).
+[`PN7160_REVIEW_CHECKLIST.md`](archive/reviews/PN7160_REVIEW_CHECKLIST.md).

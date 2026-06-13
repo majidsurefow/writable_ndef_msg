@@ -8,7 +8,8 @@ Where conventions say `services/`, implement as `protocols/` in code.
 **Design:** [`specs/2026-06-13-nfc-final-design.md`](specs/2026-06-13-nfc-final-design.md),
 [`specs/2026-06-13-nfct-pn7160-capability-matrix.md`](specs/2026-06-13-nfct-pn7160-capability-matrix.md)  
 **Driver:** Frozen @ `21bdd71` —
-[`specs/2026-06-14-pn7160-zephyr-driver.md`](specs/2026-06-14-pn7160-zephyr-driver.md)
+[`specs/2026-06-14-pn7160-zephyr-driver.md`](specs/2026-06-14-pn7160-zephyr-driver.md)  
+**Archived specs:** [`archive/specs/`](archive/specs/README.md) (superseded wave-era docs)
 
 ---
 

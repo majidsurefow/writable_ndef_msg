@@ -22,8 +22,8 @@
 2. `docs/superpowers/plans/wave1-hal.md` — LOCKED; ground truth for `nfc_transport_send_response`, `nfc_work_q` dispatch context, `net_buf` model, `nfc_transport_ops_t` shape
 3. `docs/superpowers/plans/wave2-framing.md` — LOCKED; ground truth for `nfc_apdu_t` (in `apdu_types.h`), parse guarantees, framing→router call sites (§5.2), DECISION-7 text, zero-copy lifetime window (§6)
 4. `docs/NFC_WAVE_PLANNING_GUIDE.md` — per-wave process (8 steps) + plan template
-5. `docs/superpowers/specs/2026-06-08-nfc-emulation-stack-design.md` (v2) — §6.3 (router), §6.4.x (services, for SELECT response ownership and AID table sizing), §6.5 (store, for persistence hook expectations + save/load `-EBUSY` gating), §7 (stack orchestration), §8 (threading), §9 (Kconfig); retained as card-mode/NFCT implementation detail
-6. `docs/superpowers/specs/2026-06-12-nfc-stack-architecture.md` (v3) — **architecture-of-record**; §4.2 (lane framing: ISO-DEP lane scope, raw lane reserved seam), §4.3 (protocol modules / lane tags), §5 (Kconfig)
+5. `docs/nfc/archive/specs/2026-06-08-nfc-emulation-stack-design.md` (v2) — §6.3 (router), §6.4.x (services, for SELECT response ownership and AID table sizing), §6.5 (store, for persistence hook expectations + save/load `-EBUSY` gating), §7 (stack orchestration), §8 (threading), §9 (Kconfig); retained as card-mode/NFCT implementation detail
+6. `docs/nfc/archive/specs/2026-06-12-nfc-stack-architecture.md` (v3) — **architecture-of-record**; §4.2 (lane framing: ISO-DEP lane scope, raw lane reserved seam), §4.3 (protocol modules / lane tags), §5 (Kconfig)
 7. `docs/API_DESIGN_CREED.md` — module lifecycle, Pattern A/B state, FSM, shell, coupling
 8. `docs/CALLBACK_REGISTRATION_GUIDE.md` — `_fn`/`_cb` naming, `user_ctx`, guard/NULL-clear
 9. `docs/STATS_API_DESIGN.md` — `s_stats`/`s_stats_lock` recipe, `STATS_*`, copy-out getter

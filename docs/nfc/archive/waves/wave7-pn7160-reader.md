@@ -320,6 +320,6 @@ See [`2026-06-13-implementation-phases.md`](../specs/2026-06-13-implementation-p
 1. `hals_temp/NXP-NCI2.0_LPC55S6x_examples/` — NxpNci20, TML, RW examples
 2. `docs/superpowers/plans/wave1-hal.md` §A — poller sub-API
 3. `docs/NFC_HAL_AUTHORING_GUIDE.md` — Model B worker bridge
-4. `docs/superpowers/specs/2026-06-13-locked-architecture-summary.md`
+4. `docs/nfc/archive/specs/2026-06-13-locked-architecture-summary.md`
 5. `docs/superpowers/plans/wave6-store.md` — `.card` format + flags
 6. `flipperzero/lib/nfc/` — poller registry reference

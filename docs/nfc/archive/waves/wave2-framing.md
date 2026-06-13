@@ -18,8 +18,8 @@
 1. `docs/NFC_STACK_CONVENTIONS.md` — binding for all decisions (read in full)
 2. `docs/superpowers/plans/wave1-hal.md` — LOCKED Wave 1 ground truth: `nfc_transport_ops_t` shape, `on_apdu` callee-owns ref, `nfc_transport_send_response`, `nfc_work_q`, HAL duplicates 6700 locally
 3. `docs/NFC_WAVE_PLANNING_GUIDE.md` — process (8 steps) and template
-4. `docs/superpowers/specs/2026-06-08-nfc-emulation-stack-design.md` (v2) — architecture spec; §6.2 (framing), §6.3 (router), §8 (threading); retained as card-mode/NFCT implementation detail
-5. `docs/superpowers/specs/2026-06-12-nfc-stack-architecture.md` (v3) — **architecture-of-record**; §4.2 (ISO-DEP/APDU lane scope), §4.3 (protocol modules), §5 (Kconfig)
+4. `docs/nfc/archive/specs/2026-06-08-nfc-emulation-stack-design.md` (v2) — architecture spec; §6.2 (framing), §6.3 (router), §8 (threading); retained as card-mode/NFCT implementation detail
+5. `docs/nfc/archive/specs/2026-06-12-nfc-stack-architecture.md` (v3) — **architecture-of-record**; §4.2 (ISO-DEP/APDU lane scope), §4.3 (protocol modules), §5 (Kconfig)
 6. `docs/API_DESIGN_CREED.md` — lifecycle, Pattern A/B, workqueue, memory, shell, error codes
 7. `docs/CALLBACK_REGISTRATION_GUIDE.md` — `_fn`/`_cb`, `user_ctx`, guard/NULL-clear pattern
 8. `docs/STATS_API_DESIGN.md` — `s_stats`/`s_stats_lock`, copy-out getter, `STATS_*` macros

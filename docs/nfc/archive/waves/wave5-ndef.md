@@ -22,7 +22,7 @@
 1. `docs/NFC_STACK_CONVENTIONS.md` — BINDING; read in full (§2 minimal lifecycle, §3 coupling/wiring rule, §4 callback pattern, §5 buffer model, §6 stats recipe, §7 threading + annotations, §9 errno, §10 shell, §11 MISRA, §12 compliance checklist)
 2. `docs/superpowers/plans/wave3-router.md` §1 — `service.h` vtable, persist-ID table, `NFC_PERSIST_ID_NDEF=0x01`, persistence hook contracts and concurrency rule
 3. `docs/superpowers/plans/wave4-stack.md` §5.2 — expected `ndef_service_init/shutdown/get` surface; §1.6 — `NFC_SERVICE_NDEF`, `NFC_NDEF_MAX_SIZE` in `src/nfc/Kconfig`; DECISION-6 — Ultralight registration (confirmed by DECISION-7 below)
-4. `docs/superpowers/specs/2026-06-08-nfc-emulation-stack-design.md` (v2) §6.4.1 — NDEF service scope, commands, data model; §6.4.3 — Ultralight injection pattern; §6.5 — store/persistence scope; §13 — non-goals
+4. `docs/nfc/archive/specs/2026-06-08-nfc-emulation-stack-design.md` (v2) §6.4.1 — NDEF service scope, commands, data model; §6.4.3 — Ultralight injection pattern; §6.5 — store/persistence scope; §13 — non-goals
 5. `docs/superpowers/plans/wave1-hal.md` §2 — `nfc_transport_send_response` contract, borrow-until-next-event, `NFC_TRANSPORT_MAX_RESPONSE_LEN`
 6. `docs/superpowers/plans/wave2-framing.md` §1 — `nfc_apdu_t` fields and Le=0 semantics, `NFC_SW_*` vocabulary, `NFC_INS_SELECT / READ_BINARY / UPDATE_BINARY`, `NFC_SELECT_P1_BY_FILE_ID`
 7. `docs/API_DESIGN_CREED.md` — module lifecycle, Pattern A state, creed §9 (no static locals), FSM
@@ -39,7 +39,7 @@
 
 > **Architecture Framing — spec v3 (2026-06-12):** This service is the
 > **NFCT/card-role first-slice** of the **NDEF** protocol module as defined by the
-> [NFC Stack Architecture v3](../../specs/2026-06-12-nfc-stack-architecture.md) (§4.3).
+> [NFC Stack Architecture v3](../specs/2026-06-12-nfc-stack-architecture.md) (§4.3).
 > A protocol module owns: data model (`s_ndef_file`, CC) · (de)serialize ·
 > **listener** (this file, built under `CONFIG_NFC_ROLE_CARD`) · **poller**
 > (reader role — RESERVED, not implemented in this slice).

@@ -3,7 +3,7 @@
 **Status:** Authoring guide (non-normative). The normative contract is
 [`docs/superpowers/plans/wave1-hal.md`](superpowers/plans/wave1-hal.md) (LOCKED)
 and the architecture-of-record
-[`docs/superpowers/specs/2026-06-12-nfc-stack-architecture.md`](superpowers/specs/2026-06-12-nfc-stack-architecture.md)
+[`docs/nfc/archive/specs/2026-06-12-nfc-stack-architecture.md`](nfc/archive/specs/2026-06-12-nfc-stack-architecture.md)
 (v3). Where this guide and the locked contract disagree, **the contract wins** —
 open a spec change, do not diverge in code. Every API name used here is taken
 verbatim from `nfc_transport.h` as locked in wave1 §1–§2 and §A. This guide

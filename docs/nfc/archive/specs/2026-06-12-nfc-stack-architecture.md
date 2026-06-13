@@ -5,7 +5,7 @@
 **Status:** High-level architecture of record. Supersedes the framing of the v2 design
 spec (`2026-06-08-nfc-emulation-stack-design.md`), which remains valid as the
 **card-mode / NFCT first-slice implementation detail**. Detailed wave plans
-(`docs/superpowers/plans/wave1..6`) are the first slice of this architecture.
+(`docs/superpowe../waves/wave1..6`) are the first slice of this architecture.
 
 ---
 
@@ -65,7 +65,7 @@ See §10 for the sourcing discipline.
 > Summary: PN7160 = reader primary + prove emulate on same chip · NFCT = default product
 > emulator (built in Phase 3) · ST25R3916 demoted. Per-protocol matrix:
 > [`2026-06-13-nfct-pn7160-capability-matrix.md`](2026-06-13-nfct-pn7160-capability-matrix.md).
-> PN7160 reader plan: [`../plans/wave7-pn7160-reader.md`](../plans/wave7-pn7160-reader.md) (Phase 0/1).
+> PN7160 reader plan: [`../waves/wave7-pn7160-reader.md`](../waves/wave7-pn7160-reader.md) (Phase 0/1).
 
 When a card is **cloned**, the card role **emulates it fully** — not a partial or
 read-only stub unless the source card or capture metadata says otherwise.

@@ -228,7 +228,7 @@ cp doc/_build/doc-coverage.json /tmp/pr-coverage.json
 
 ## PN7160 driver — unit tests to add (Phase 0.2+)
 
-Do **not** expand the placeholder ztest alone; grow this suite as TML lands (Phase 0.2 in `docs/nfc/specs/2026-06-13-implementation-phases.md`).
+Do **not** expand the placeholder ztest alone; grow this suite as TML lands (see `docs/nfc/NFC_STACK_PLAN.md` gate 1).
 
 | Area | Approach |
 |------|----------|

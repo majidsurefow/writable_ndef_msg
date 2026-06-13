@@ -1,5 +1,8 @@
 # NFC Stack — Implementation Phases (PN7160 First)
 
+> **Execution:** Superseded for day-to-day work by [`../../NFC_STACK_PLAN.md`](../../NFC_STACK_PLAN.md).
+> Keep this file for historical PN7160-first phase ordering and gate criteria.
+
 **Date:** 2026-06-13  
 **Status:** LOCKED — supersedes the prior "Waves 1–6 first, then PN7160" sequencing  
 **Platform:** Zephyr / Nordic NCS v3.2.4 · nRF54L15
@@ -341,8 +344,8 @@ Module wiring: `ZEPHYR_EXTRA_MODULES` in root `CMakeLists.txt` points at
 | Document | Role |
 |---|---|
 | [`2026-06-13-nfc-final-design.md`](2026-06-13-nfc-final-design.md) | Master design — hardware topology, API, card matrix |
-| [`../plans/wave7-pn7160-reader.md`](../plans/wave7-pn7160-reader.md) | Phase 0/1 task detail |
-| `docs/superpowers/plans/wave1-hal.md` … `wave6-store.md` | Phase 3 port plans |
+| [`../waves/wave7-pn7160-reader.md`](../waves/wave7-pn7160-reader.md) | Phase 0/1 task detail |
+| `docs/superpowe../waves/wave1-hal.md` … `wave6-store.md` | Phase 3 port plans |
 | [`2026-06-13-nfct-pn7160-capability-matrix.md`](2026-06-13-nfct-pn7160-capability-matrix.md) | Per-protocol limits |
 
 ---

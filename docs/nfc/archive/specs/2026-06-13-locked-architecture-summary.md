@@ -121,4 +121,4 @@ Waves 1–6 **must complete** before Wave 7 implementation — reader needs `.ca
 | [`2026-06-13-nfc-final-design.md`](2026-06-13-nfc-final-design.md) | **Master design — start here** |
 | [`2026-06-12-nfc-stack-architecture.md`](2026-06-12-nfc-stack-architecture.md) | Architecture principles + history (v3.2+) |
 | [`2026-06-13-nfct-pn7160-capability-matrix.md`](2026-06-13-nfct-pn7160-capability-matrix.md) | Per-protocol PN7160 vs NFCT matrix |
-| [`../plans/wave7-pn7160-reader.md`](../plans/wave7-pn7160-reader.md) | Wave 7a PN7160 reader plan |
+| [`../waves/wave7-pn7160-reader.md`](../waves/wave7-pn7160-reader.md) | Wave 7a PN7160 reader plan |

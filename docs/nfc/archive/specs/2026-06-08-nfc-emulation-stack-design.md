@@ -3,7 +3,7 @@
 > **⚠ SUBORDINATED — This document is no longer the architecture of record.**
 >
 > The authoritative architecture entry point is:
-> **[`docs/superpowers/specs/2026-06-12-nfc-stack-architecture.md`](./2026-06-12-nfc-stack-architecture.md)
+> **[`docs/nfc/archive/specs/2026-06-12-nfc-stack-architecture.md`](./2026-06-12-nfc-stack-architecture.md)
 > (v3, 2026-06-12)**
 >
 > This v2 document is **retained as the card-mode / NFCT first-slice implementation

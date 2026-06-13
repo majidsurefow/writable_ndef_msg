@@ -21,8 +21,8 @@
 3. `docs/superpowers/plans/wave2-framing.md` — LOCKED; ground truth for `apdu_assembler_init/shutdown`, `apdu_assembler_get_ops()`, DECISION-7 resolution (parsed dispatch form), Wave 2 wiring expectations in §5.3
 4. `docs/superpowers/plans/wave3-router.md` — LOCKED; ground truth for `aid_router_init/shutdown/register/clear/dispatch/field_off`, `service.h` (`nfc_service_t` vtable with persistence hooks, `NFC_AID_MAX_LEN=16`), DECISION-J (profile-switch mechanism deferred to Wave 4), AID table sizing
 5. `docs/NFC_WAVE_PLANNING_GUIDE.md` — per-wave process (8 steps) + exact template
-6. `docs/superpowers/specs/2026-06-08-nfc-emulation-stack-design.md` (v2) — §3 (AID table per service), §7 (public stack API + profile enum + event callback + save/load + main.c usage), §8 (thread model), §9 (Kconfig sourcing + layout), §6.4 (service AIDs — all five services), §6.5 (store API form + save/load scope and `-EBUSY` gating); retained as card-mode/NFCT implementation detail
-7. `docs/superpowers/specs/2026-06-12-nfc-stack-architecture.md` (v3) — **architecture-of-record**; §4.4 (card-role orchestrator / reader-role sibling seam), §5 (Kconfig orthogonality — role symbols vs. service symbols), §9 (mapping to wave plans)
+6. `docs/nfc/archive/specs/2026-06-08-nfc-emulation-stack-design.md` (v2) — §3 (AID table per service), §7 (public stack API + profile enum + event callback + save/load + main.c usage), §8 (thread model), §9 (Kconfig sourcing + layout), §6.4 (service AIDs — all five services), §6.5 (store API form + save/load scope and `-EBUSY` gating); retained as card-mode/NFCT implementation detail
+7. `docs/nfc/archive/specs/2026-06-12-nfc-stack-architecture.md` (v3) — **architecture-of-record**; §4.4 (card-role orchestrator / reader-role sibling seam), §5 (Kconfig orthogonality — role symbols vs. service symbols), §9 (mapping to wave plans)
 8. `docs/API_DESIGN_CREED.md` — full lifecycle contract, Pattern A/B state, FSM, shell, coupling, error handling
 9. `docs/CALLBACK_REGISTRATION_GUIDE.md` — `_fn`/`_cb`, `user_ctx`, guard/NULL-clear
 10. `docs/STATS_API_DESIGN.md` — `s_stats`/`s_stats_lock` recipe, `STATS_*`, copy-out getter
