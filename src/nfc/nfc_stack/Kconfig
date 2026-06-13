@@ -1,0 +1,21 @@
+# NFC listen orchestrator.
+
+config NFC_LISTEN_STACK
+	bool "NFC listen stack orchestrator"
+	default n
+	depends on NFC_STACK && NFC_ROLE_LISTEN
+	select NFC_FRAMING
+	select NFC_ROUTER
+	select NFC_PROTOCOL_NDEF
+	help
+	  Gate 3 listen path: framing, router, NDEF listener registration.
+
+if NFC_LISTEN_STACK
+
+config NFC_STACK_DEFAULT_PROFILE
+	int "Default listen profile (nfc_profile_t)"
+	default 1
+	help
+	  1 = NFC_PROFILE_NDEF.
+
+endif

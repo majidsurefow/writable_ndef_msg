@@ -1,0 +1,17 @@
+# NFC AID router — Gate 3 listen dispatch.
+
+config NFC_ROUTER
+	bool "NFC AID router"
+	default n
+	depends on NFC_STACK && NFC_ROLE_LISTEN
+	help
+	  ISO-DEP SELECT-by-AID dispatch to registered service vtables.
+
+if NFC_ROUTER
+
+config NFC_ROUTER_MAX_AIDS
+	int "Maximum registered AIDs"
+	default 8
+	range 1 32
+
+endif

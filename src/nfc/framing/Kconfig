@@ -1,0 +1,16 @@
+# NFC framing — APDU parse/dispatch shim.
+
+config NFC_FRAMING
+	bool "NFC APDU framing layer"
+	default n
+	depends on NFC_STACK && NFC_ROLE_LISTEN
+	help
+	  Parse inbound C-APDUs and dispatch to aid_router.
+
+if NFC_FRAMING
+
+config NFC_APDU_EXTENDED_SUPPORT
+	bool "Accept extended-length C-APDUs"
+	default n
+
+endif
