@@ -2,4 +2,5 @@
 # SPDX-License-Identifier: Apache-2.0
 
 zephyr_library_sources_ifdef(CONFIG_NFC_PROTOCOL_NDEF ndef.c)
+zephyr_library_sources_ifdef(CONFIG_NFC_ROLE_READER ndef_poller.c)
 zephyr_library_include_directories_ifdef(CONFIG_NFC_PROTOCOL_NDEF ${CMAKE_CURRENT_SOURCE_DIR})
