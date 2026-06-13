@@ -2,10 +2,34 @@
  * PN7160 eval shield on nRF54L15 DK — adjust bus/pins for your wiring.
  *
  * Default: I2C on i2c21 @ 0x28, IRQ P1.10, VEN P1.11.
+ * I2C: SDA P1.8, SCL P1.9 (avoids IRQ/VEN on P1.10/P1.11).
  */
+
+&pinctrl {
+	i2c21_default: i2c21_default {
+		group1 {
+			psels = <NRF_PSEL(TWIM_SDA, 1, 8)>,
+				<NRF_PSEL(TWIM_SCL, 1, 9)>;
+			bias-pull-up;
+		};
+	};
+
+	i2c21_sleep: i2c21_sleep {
+		group1 {
+			psels = <NRF_PSEL(TWIM_SDA, 1, 8)>,
+				<NRF_PSEL(TWIM_SCL, 1, 9)>;
+			low-power-enable;
+		};
+	};
+};
 
 &i2c21 {
 	status = "okay";
+	pinctrl-0 = <&i2c21_default>;
+	pinctrl-1 = <&i2c21_sleep>;
+	pinctrl-names = "default", "sleep";
+	clock-frequency = <I2C_BITRATE_STANDARD>;
+
 	pn7160: pn7160@28 {
 		compatible = "nxp,pn7160";
 		reg = <0x28>;
