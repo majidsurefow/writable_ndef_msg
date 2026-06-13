@@ -320,7 +320,7 @@ Source: SW6705 `NfcLibrary/NdefLibrary/src/RW_NDEF_T4T.c` ([`PN7160_SHELL_AND_EX
 | `Reading_NDEF_Size` | `00 B0 00 00 02` | READ NLEN (2 bytes BE at offset 0) |
 | `Reading_NDEF` loop | `00 B0 P1 P2 Le` offset = `2 + bytes_read` | Chunk-read message body |
 
-NXP limits: `RW_MAX_NDEF_FILE_SIZE` = **500 B** — we use `CONFIG_NFC_NDEF_MAX_SIZE` (up to 4096). NXP chunks by **`min(remaining, MLe - 1)`**; we **also** cap each Le at **`NFC_TRANSPORT_MAX_RESPONSE_LEN` (255)** because PN7160 TML max payload is 255 ([`pn7160_tml.h`](modules/nfc_pn7160/include/nfc/pn7160_tml.h)).
+NXP limits: `RW_MAX_NDEF_FILE_SIZE` = **500 B** — we use `CONFIG_NFC_NDEF_MAX_SIZE` (up to 4096). NXP chunks by **`min(remaining, MLe - 1)`**; we **also** cap each Le at **`NFC_TRANSPORT_MAX_RESPONSE_LEN - 2` (253 B data)** because PN7160 TML `rx_max` is 255 B for the **whole R-APDU** (payload + SW1/SW2). The read loop still delivers **all NLEN bytes** across multiple READs — no message truncation.
 
 **Write path (NXP):** `RW_NDEF_T4T_Write_Next` — UPDATE BINARY, 54-byte chunks, NLEN last. **Out of scope Gate 2**; listener Gate 3+ handles UPDATE for emulate/persist.
 
@@ -355,13 +355,17 @@ Full sequence after successful detect (re-run SELECT v2.0 or v1.0 as in detect):
 
 **255 B READ chunking (normative):**
 
+PN7160 TML max payload is 255 B for the **full R-APDU** (data + SW1/SW2). Poller Le must reserve 2 B for status words in that buffer.
+
 ```
-chunk_le = MIN(remaining_payload, tag_mle - 1, 255)
-         /* tag_mle from CC bytes 3–4; if MLe < 2, treat as 2 */
+chunk_le = MIN(remaining_payload, tag_mle - 1, NFC_TRANSPORT_MAX_RESPONSE_LEN - 2)
+         /* tag_mle from CC bytes 3–4; if MLe < 2, treat as 2; effective max data = 253 B */
 offset   = 2 + bytes_already_read   /* NDEF file byte offset */
 ```
 
 Loop until `bytes_already_read == NLEN`. Each transceive: build `00 B0 (offset>>8) (offset&0xFF) chunk_le`, append `rx[0 .. rx_len-3]` to message area.
+
+**CC read:** SELECT CC file (`E103`) then separate `00 B0 00 00 0F` READ BINARY — two transceives (NXP `RW_NDEF_T4T` table).
 
 | Failure | Return |
 |---------|--------|
