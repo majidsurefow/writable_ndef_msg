@@ -159,6 +159,61 @@ static const nfc_service_t *nfc_store_find_service(const nfc_service_t *const *s
 	return NULL;
 }
 
+static int nfc_store_read_envelope(const char *tag, size_t *blob_len, uint16_t *payload_len,
+				   uint8_t *version)
+{
+	uint16_t crc_stored;
+	uint16_t crc_calc;
+	int ret;
+
+	if (s_load_cb == NULL) {
+		return -ENODEV;
+	}
+
+	ret = s_load_cb(tag, s_staging_buf, sizeof(s_staging_buf), blob_len, s_load_user_ctx);
+	if (ret == -ENOENT) {
+		return -ENOENT;
+	}
+	if (ret != 0) {
+		STATS_ERROR(&s_stats_lock, s_stats, ret);
+		return -EIO;
+	}
+
+	if (*blob_len < NFC_STORE_ENVELOPE_OVERHEAD) {
+		STATS_INC(&s_stats_lock, s_stats, corrupt_blob_count);
+		return -EBADMSG;
+	}
+
+	if ((s_staging_buf[0] != NFC_STORE_BLOB_MAGIC_0) ||
+	    (s_staging_buf[1] != NFC_STORE_BLOB_MAGIC_1)) {
+		STATS_INC(&s_stats_lock, s_stats, corrupt_blob_count);
+		return -EBADMSG;
+	}
+
+	if ((s_staging_buf[2] != NFC_STORE_BLOB_VERSION) &&
+	    (s_staging_buf[2] != NFC_STORE_BLOB_VERSION_V1)) {
+		STATS_INC(&s_stats_lock, s_stats, corrupt_blob_count);
+		return -EBADMSG;
+	}
+
+	*version = s_staging_buf[2];
+	*payload_len = (uint16_t)s_staging_buf[4] | ((uint16_t)s_staging_buf[5] << 8U);
+	if ((size_t)(NFC_STORE_BLOB_HDR_SIZE + *payload_len + NFC_STORE_BLOB_CRC_SIZE) != *blob_len) {
+		STATS_INC(&s_stats_lock, s_stats, corrupt_blob_count);
+		return -EBADMSG;
+	}
+
+	crc_stored = (uint16_t)s_staging_buf[NFC_STORE_BLOB_HDR_SIZE + *payload_len] |
+		     ((uint16_t)s_staging_buf[NFC_STORE_BLOB_HDR_SIZE + *payload_len + 1U] << 8U);
+	crc_calc = crc16_ccitt(0xFFFFU, s_staging_buf, NFC_STORE_BLOB_HDR_SIZE + *payload_len);
+	if (crc_calc != crc_stored) {
+		STATS_INC(&s_stats_lock, s_stats, corrupt_blob_count);
+		return -EBADMSG;
+	}
+
+	return 0;
+}
+
 int nfc_store_init(const nfc_store_config_t *cfg)
 {
 	if (s_state == NFC_STORE_STATE_INITIALIZED) {
@@ -364,13 +419,67 @@ int nfc_store_save(const char *tag, const nfc_service_t *const *svcs, size_t n)
 	return 0;
 }
 
+int nfc_store_peek_entry_meta(const char *tag, uint8_t *persist_id, uint8_t *flags)
+{
+	size_t blob_len = 0U;
+	uint16_t payload_len;
+	uint8_t version;
+	uint8_t entry_overhead;
+	size_t pos;
+	int ret;
+
+	if ((persist_id == NULL) || (flags == NULL)) {
+		return -EINVAL;
+	}
+
+	ret = nfc_store_check_quiescent();
+	if (ret != 0) {
+		return ret;
+	}
+
+	if (s_state != NFC_STORE_STATE_INITIALIZED) {
+		return -ENODEV;
+	}
+
+	ret = nfc_store_validate_tag(tag);
+	if (ret != 0) {
+		return ret;
+	}
+
+	ret = nfc_store_read_envelope(tag, &blob_len, &payload_len, &version);
+	if (ret != 0) {
+		return ret;
+	}
+
+	if (payload_len == 0U) {
+		STATS_INC(&s_stats_lock, s_stats, corrupt_blob_count);
+		return -EBADMSG;
+	}
+
+	entry_overhead = (version == NFC_STORE_BLOB_VERSION_V1) ? NFC_STORE_ENTRY_OVERHEAD_V1 :
+								  NFC_STORE_ENTRY_OVERHEAD;
+	pos = NFC_STORE_BLOB_HDR_SIZE;
+	if ((pos + entry_overhead) > (NFC_STORE_BLOB_HDR_SIZE + payload_len)) {
+		STATS_INC(&s_stats_lock, s_stats, corrupt_blob_count);
+		return -EBADMSG;
+	}
+
+	*persist_id = s_staging_buf[pos++];
+	if (version == NFC_STORE_BLOB_VERSION_V1) {
+		*flags = 0U;
+	} else {
+		*flags = s_staging_buf[pos++];
+	}
+
+	return 0;
+}
+
 int nfc_store_load(const char *tag, const nfc_service_t *const *svcs, size_t n)
 {
 	size_t blob_len = 0U;
 	size_t pos;
 	uint16_t payload_len;
-	uint16_t crc_stored;
-	uint16_t crc_calc;
+	uint8_t version;
 	int ret;
 	int last_err = 0;
 
@@ -392,48 +501,9 @@ int nfc_store_load(const char *tag, const nfc_service_t *const *svcs, size_t n)
 		return -EINVAL;
 	}
 
-	if (s_load_cb == NULL) {
-		return -ENODEV;
-	}
-
-	ret = s_load_cb(tag, s_staging_buf, sizeof(s_staging_buf), &blob_len, s_load_user_ctx);
-	if (ret == -ENOENT) {
-		return -ENOENT;
-	}
+	ret = nfc_store_read_envelope(tag, &blob_len, &payload_len, &version);
 	if (ret != 0) {
-		STATS_ERROR(&s_stats_lock, s_stats, ret);
-		return -EIO;
-	}
-
-	if (blob_len < NFC_STORE_ENVELOPE_OVERHEAD) {
-		STATS_INC(&s_stats_lock, s_stats, corrupt_blob_count);
-		return -EBADMSG;
-	}
-
-	if ((s_staging_buf[0] != NFC_STORE_BLOB_MAGIC_0) ||
-	    (s_staging_buf[1] != NFC_STORE_BLOB_MAGIC_1)) {
-		STATS_INC(&s_stats_lock, s_stats, corrupt_blob_count);
-		return -EBADMSG;
-	}
-
-	if ((s_staging_buf[2] != NFC_STORE_BLOB_VERSION) &&
-	    (s_staging_buf[2] != NFC_STORE_BLOB_VERSION_V1)) {
-		STATS_INC(&s_stats_lock, s_stats, corrupt_blob_count);
-		return -EBADMSG;
-	}
-
-	payload_len = (uint16_t)s_staging_buf[4] | ((uint16_t)s_staging_buf[5] << 8U);
-	if ((size_t)(NFC_STORE_BLOB_HDR_SIZE + payload_len + NFC_STORE_BLOB_CRC_SIZE) != blob_len) {
-		STATS_INC(&s_stats_lock, s_stats, corrupt_blob_count);
-		return -EBADMSG;
-	}
-
-	crc_stored = (uint16_t)s_staging_buf[NFC_STORE_BLOB_HDR_SIZE + payload_len] |
-		     ((uint16_t)s_staging_buf[NFC_STORE_BLOB_HDR_SIZE + payload_len + 1U] << 8U);
-	crc_calc = crc16_ccitt(0xFFFFU, s_staging_buf, NFC_STORE_BLOB_HDR_SIZE + payload_len);
-	if (crc_calc != crc_stored) {
-		STATS_INC(&s_stats_lock, s_stats, corrupt_blob_count);
-		return -EBADMSG;
+		return ret;
 	}
 
 	pos = NFC_STORE_BLOB_HDR_SIZE;
@@ -446,7 +516,7 @@ int nfc_store_load(const char *tag, const nfc_service_t *const *svcs, size_t n)
 
 		ARG_UNUSED(entry_flags);
 
-		if (s_staging_buf[2] == NFC_STORE_BLOB_VERSION_V1) {
+		if (version == NFC_STORE_BLOB_VERSION_V1) {
 			entry_overhead = NFC_STORE_ENTRY_OVERHEAD_V1;
 		} else {
 			entry_overhead = NFC_STORE_ENTRY_OVERHEAD;
@@ -458,7 +528,7 @@ int nfc_store_load(const char *tag, const nfc_service_t *const *svcs, size_t n)
 		}
 
 		persist_id = s_staging_buf[pos++];
-		if (s_staging_buf[2] != NFC_STORE_BLOB_VERSION_V1) {
+		if (version != NFC_STORE_BLOB_VERSION_V1) {
 			entry_flags = s_staging_buf[pos++];
 		}
 		entry_len = (uint16_t)s_staging_buf[pos] |

@@ -39,6 +39,10 @@ int nfc_applet_check_emulate(uint8_t persist_id, uint8_t store_flags)
 	nfc_applet_caps_t caps;
 	int ret;
 
+	if ((store_flags & NFC_STORE_ENTRY_FLAG_READ_ONLY_PARTIAL) != 0U) {
+		return -ENOTSUP;
+	}
+
 	ret = nfc_applet_caps_for_card(persist_id, store_flags, &caps);
 	if (ret != 0) {
 		return ret;

@@ -5,7 +5,8 @@
  * Tier E — nfc_store envelope save/load roundtrip (cookbook §14.6a).
  */
 
-#include "applets/nfc_applet.h"
+#include "applets/nfc_applet_policy.h"
+#include "hal/nfc_transport.h"
 #include "protocols/ndef/ndef.h"
 #include "store/nfc_store.h"
 #include "store_fixture.h"
@@ -103,6 +104,11 @@ static void fill_fixture_model(ndef_data_t *data)
 	data->ndef_file_len = (uint16_t)(NFC_NDEF_NLEN_FIELD_LEN + sizeof(uri));
 }
 
+const nfc_transport_caps_t *nfc_transport_get_capabilities(void)
+{
+	return NULL;
+}
+
 static void *suite_setup(void)
 {
 	s_saved_len = 0U;
@@ -188,4 +194,36 @@ ZTEST(nfc_reader_store, test_store_save_matches_golden_empty_card)
 	zassert_equal(s_saved_len, STORE_FIXTURE_NDEF_EMPTY_CARD_LEN);
 	zassert_mem_equal(s_saved_blob, store_fixture_ndef_empty_card,
 			  STORE_FIXTURE_NDEF_EMPTY_CARD_LEN);
+}
+
+ZTEST(nfc_reader_store, test_store_peek_golden_empty_card)
+{
+	uint8_t persist_id;
+	uint8_t flags;
+	int ret;
+
+	load_golden_blob(store_fixture_ndef_empty_card, STORE_FIXTURE_NDEF_EMPTY_CARD_LEN);
+	ret = nfc_store_peek_entry_meta("golden", &persist_id, &flags);
+	zassert_ok(ret);
+	zassert_equal(persist_id, NFC_PERSIST_ID_NDEF);
+	zassert_equal(flags, NFC_STORE_ENTRY_FLAG_READER_CAPTURED |
+			       NFC_STORE_ENTRY_FLAG_EMULATION_COMPLETE);
+}
+
+ZTEST(nfc_reader_store, test_store_peek_missing_slot)
+{
+	uint8_t persist_id;
+	uint8_t flags;
+
+	s_saved_len = 0U;
+	zassert_equal(nfc_store_peek_entry_meta("missing", &persist_id, &flags), -ENOENT);
+}
+
+ZTEST(nfc_reader_store, test_store_peek_rejects_read_only_partial)
+{
+	uint8_t persist_id = NFC_PERSIST_ID_NDEF;
+	uint8_t flags = NFC_STORE_ENTRY_FLAG_READER_CAPTURED |
+			NFC_STORE_ENTRY_FLAG_READ_ONLY_PARTIAL;
+
+	zassert_equal(nfc_applet_check_emulate(persist_id, flags), -ENOTSUP);
 }
