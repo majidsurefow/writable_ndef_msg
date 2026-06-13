@@ -101,8 +101,9 @@ int pn7160_nci_process(const struct device *dev, const uint8_t *rx, size_t rx_le
 	return 0;
 }
 
-int pn7160_nci_transceive(const struct device *dev, const uint8_t *tx, size_t tx_len,
-			  uint8_t *rx, size_t rx_max, size_t *rx_len, k_timeout_t timeout)
+static int pn7160_nci_transceive_unlocked(const struct device *dev, const uint8_t *tx,
+					  size_t tx_len, uint8_t *rx, size_t rx_max,
+					  size_t *rx_len, k_timeout_t timeout)
 {
 	struct pn7160_data *data = dev->data;
 	int ret;
@@ -131,6 +132,19 @@ int pn7160_nci_transceive(const struct device *dev, const uint8_t *tx, size_t tx
 	return 0;
 }
 
+int pn7160_nci_transceive(const struct device *dev, const uint8_t *tx, size_t tx_len,
+			  uint8_t *rx, size_t rx_max, size_t *rx_len, k_timeout_t timeout)
+{
+	struct pn7160_data *data = dev->data;
+	int ret;
+
+	k_mutex_lock(&data->api_mutex, K_FOREVER);
+	ret = pn7160_nci_transceive_unlocked(dev, tx, tx_len, rx, rx_max, rx_len, timeout);
+	k_mutex_unlock(&data->api_mutex);
+
+	return ret;
+}
+
 int pn7160_nci_check_dev_pres(const struct device *dev)
 {
 	struct pn7160_data *data = dev->data;
@@ -138,15 +152,17 @@ int pn7160_nci_check_dev_pres(const struct device *dev)
 	size_t rx_len;
 	int ret;
 
-	ret = pn7160_nci_transceive(dev, core_reset_cmd, sizeof(core_reset_cmd), rx,
-				    sizeof(data->rx_buf), &rx_len, K_MSEC(100));
+	k_mutex_lock(&data->api_mutex, K_FOREVER);
+
+	ret = pn7160_nci_transceive_unlocked(dev, core_reset_cmd, sizeof(core_reset_cmd), rx,
+					     sizeof(data->rx_buf), &rx_len, K_MSEC(100));
 	if (ret != 0) {
-		return ret;
+		goto out;
 	}
 
 	ret = pn7160_nci_parse_core_reset_rsp(rx, rx_len);
 	if (ret != 0) {
-		return ret;
+		goto out;
 	}
 
 	ret = pn7160_nci_wait_rx(dev, K_MSEC(100));
@@ -157,7 +173,11 @@ int pn7160_nci_check_dev_pres(const struct device *dev)
 		}
 	}
 
-	return 0;
+	ret = 0;
+
+out:
+	k_mutex_unlock(&data->api_mutex);
+	return ret;
 }
 
 int pn7160_nci_host_transceive(const struct device *dev, const uint8_t *tx, size_t tx_len,

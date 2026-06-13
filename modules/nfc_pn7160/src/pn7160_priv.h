@@ -30,6 +30,7 @@ struct pn7160_data {
 	struct k_work irq_work;
 	struct k_work irq_rx_work;
 	struct k_mutex bus_mutex;
+	struct k_mutex api_mutex;
 	struct k_sem rx_sem;
 	atomic_t irq_pending;
 	atomic_t rx_waiting;

@@ -38,6 +38,7 @@ static void pn7160_irq_rx_work_handler(struct k_work *work)
 {
 	struct pn7160_data *data = CONTAINER_OF(work, struct pn7160_data, irq_rx_work);
 	const struct device *dev = data->self;
+	const struct pn7160_config *cfg = dev->config;
 	size_t rx_len = 0U;
 	int ret;
 
@@ -45,14 +46,19 @@ static void pn7160_irq_rx_work_handler(struct k_work *work)
 		return;
 	}
 
+	(void)gpio_pin_interrupt_configure_dt(&cfg->irq, GPIO_INT_DISABLE);
+
 	ret = pn7160_tml_recv(dev, data->rx_buf, sizeof(data->rx_buf), &rx_len);
 	if (ret == 0) {
 		ret = pn7160_nci_process(dev, data->rx_buf, rx_len);
+		atomic_clear(&data->irq_pending);
 	}
 
 	data->last_rx_err = ret;
 	data->last_rx_len = rx_len;
 	k_sem_give(&data->rx_sem);
+
+	(void)gpio_pin_interrupt_configure_dt(&cfg->irq, GPIO_INT_EDGE_TO_ACTIVE);
 }
 
 static void pn7160_irq_work_handler(struct k_work *work)
@@ -228,6 +234,7 @@ static int pn7160_init(const struct device *dev)
 
 	data->self = dev;
 	k_mutex_init(&data->bus_mutex);
+	k_mutex_init(&data->api_mutex);
 	k_sem_init(&data->rx_sem, 0, 1);
 	k_work_init(&data->irq_work, pn7160_irq_work_handler);
 	k_work_init(&data->irq_rx_work, pn7160_irq_rx_work_handler);
