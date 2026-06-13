@@ -1697,6 +1697,37 @@ Repeatable checklist for **every** new protocol. NDEF is the reference walkthrou
   (`python3 scripts/nfc/ndef_to_card_bin.py --model … --output …`)
 - [ ] Commit all three artifact types (`.bin`, `.inc`, `.card.bin`); CI never parses `.nfc`.
 
+#### Phase 1b — Virtual loopback (QEMU) (REQUIRED)
+
+Software loopback chains **load → emulate (listener) → poller read → save → compare** on QEMU without RF hardware. Flipper analogue: `mf_ultralight_reader_test` (`listener_start` + `poller_sync_read` + data equal). NDEF cites cookbook §5.1 / NXP `RW_NDEF_T4T` when no Flipper `.nfc` exists.
+
+Per-protocol checklist:
+
+- [ ] Golden `.card.bin` committed under `tests/fixtures/store/`
+- [ ] `test_virtual_loopback.c` case in `tests/unit/nfc_reader/` (or `tests/unit/nfc_<proto>/`): load golden → `nfc_virtual_rf_enable` → poller read → save → compare
+- [ ] Flipper test function cited in file comment (or NDEF/NXP cite if no Flipper `.nfc`)
+- [ ] **Clone-only** protocols: SKIP virtual loopback — Tier B scripted poller + store save/load only
+- [ ] Twister tag `writable_ndef.nfc.<proto>` includes loopback test (`nfc_reader` or `nfc_<proto>` suite)
+
+Shared harness (`tests/common/`):
+
+| File | Role |
+|------|------|
+| `nfc_virtual_rf.c/h` | `nfc_virtual_rf_enable(listener_svc)` hooks `nfc_reader_session_transceive`: TX → `nfc_test_apdu` parse → listener `on_select` / `on_apdu` → `nfc_response_spy` capture → RX |
+| `nfc_session_mock.c` | Delegates to virtual RF when enabled; otherwise scripted Tier B steps |
+| `nfc_response_spy.c` | Captures `nfc_transport_send_response()` from listener |
+
+NDEF worked example (loopback):
+
+| Step | API / file |
+|------|------------|
+| Golden | `tests/fixtures/store/ndef_empty.card.bin` → `store_fixture.h` |
+| Load → emulate | `nfc_store_load` + `ndef_listener_get()` |
+| Virtual RF | `nfc_virtual_rf_enable(ndef_listener_get())` |
+| Poller read | `ndef_poller_detect` + `ndef_poller_read` |
+| Save + compare | `nfc_store_save("cloned")` + `nfc_applet_verify_compare` + blob `memcmp` vs golden |
+| Test | `tests/unit/nfc_reader/src/test_virtual_loopback.c` |
+
 #### Phase 2 — Implement
 
 - [ ] Scaffold `tests/unit/nfc_<proto>/` from `tests/unit/nfc_ndef/` (Tier A/B/C split).
@@ -1721,7 +1752,7 @@ Repeatable checklist for **every** new protocol. NDEF is the reference walkthrou
 | Goldens (Tier A/B) | `tests/fixtures/ndef/` (`empty.inc`, `empty.bin`, `ndef_fixture.h`) | Poller scripts + model serialize golden |
 | Store golden (Tier E) | `tests/fixtures/store/ndef_empty.card.bin` | `nfc_store_load` roundtrip without RF |
 | Tier A/B/C tests | `tests/unit/nfc_ndef/` | Template for all protocols |
-| Tier E tests | `tests/unit/nfc_reader/` | Store envelope + verify diff |
+| Tier E tests | `tests/unit/nfc_reader/` | Store envelope + verify diff + **virtual loopback** |
 
 **Regen:**
 

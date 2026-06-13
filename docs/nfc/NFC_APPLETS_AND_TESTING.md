@@ -48,6 +48,7 @@ Applets compose primitives. CI may call primitives directly for bring-up; produc
 | **C** | Listener `on_apdu` vs `nfc_test_apdu` | same + `nfc_response_spy` | QEMU |
 | **D** | HIL — physical tag / CE / NFCT | Manual or tagged HIL job | Not default Twister |
 | **E** | Applet — store envelope, clone slot, verify diff | `tests/unit/nfc_reader/` | QEMU (Gate 2+) |
+| **E+** | Virtual loopback — load → emulate → poller read → save → compare | `tests/unit/nfc_reader/` (`test_virtual_loopback.c`) | QEMU (emulatable protocols) |
 
 **NDEF first:** `tests/unit/nfc_ndef/` is the Tier A/B/C template. Other protocols copy after cookbook §14.10 exit criteria.
 
@@ -66,7 +67,7 @@ tests/
     ultralight/      # (post–F1) derived from flipper/
     classic/         # (post–F2)
     …
-  common/            # nfc_session_mock, nfc_response_spy, nfc_test_apdu
+  common/            # nfc_session_mock, nfc_response_spy, nfc_test_apdu, nfc_virtual_rf
   unit/
     nfc_ndef/        # Tier A/B/C template
     nfc_reader/      # Tier E scaffold
@@ -133,6 +134,7 @@ Tier E store tests load that golden via the store API — no RF, no runtime FF p
 | **B** | `.inc` | No | No |
 | **C** | `.inc` / helpers | No | No |
 | **E** (applet / store) | `.card.bin` golden | No | **Yes** — load via store API |
+| **E+** (virtual loopback) | `.card.bin` golden + `nfc_virtual_rf` | No | **Yes** — load, poller read, save, compare |
 | **E** (FF validation, host) | `.nfc` | **Yes** (our FF port) | Compare serialize output to `.card.bin` |
 | **D** / **HIL** | physical or emulated tag | No | Yes (from `nfc read`) |
 
