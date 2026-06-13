@@ -12,6 +12,28 @@
 #include <zephyr/shell/shell.h>
 
 #include <errno.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define PN7160_SHELL_XCV_MAX 258U
+
+static int pn7160_shell_parse_hex_byte(const char *s, uint8_t *out)
+{
+	char *end;
+	unsigned long val;
+
+	if (s == NULL || s[0] == '\0') {
+		return -EINVAL;
+	}
+
+	val = strtoul(s, &end, 16);
+	if (end == s || *end != '\0' || val > 0xFFU) {
+		return -EINVAL;
+	}
+
+	*out = (uint8_t)val;
+	return 0;
+}
 
 static const struct device *pn7160_shell_dev(void)
 {
@@ -121,6 +143,8 @@ static int cmd_pn7160_dwl_enter(const struct shell *sh, size_t argc, char **argv
 		shell_error(sh, "DWL GPIO not configured (add dwl-gpios to devicetree)");
 	} else if (ret != 0) {
 		shell_error(sh, "DWL enter failed: %d", ret);
+	} else {
+		shell_print(sh, "DWL mode entered (TML framing active)");
 	}
 	return ret;
 }
@@ -143,6 +167,8 @@ static int cmd_pn7160_dwl_leave(const struct shell *sh, size_t argc, char **argv
 		shell_error(sh, "DWL GPIO not configured (add dwl-gpios to devicetree)");
 	} else if (ret != 0) {
 		shell_error(sh, "DWL leave failed: %d", ret);
+	} else {
+		shell_print(sh, "DWL mode left (normal TML framing)");
 	}
 	return ret;
 }
@@ -164,6 +190,76 @@ static int cmd_pn7160_dwl_status(const struct shell *sh, size_t argc, char **arg
 	return 0;
 }
 
+static int cmd_pn7160_reset(const struct shell *sh, size_t argc, char **argv)
+{
+	const struct device *dev;
+	int ret;
+
+	ARG_UNUSED(argc);
+	ARG_UNUSED(argv);
+
+	ret = pn7160_shell_check_dev(sh, &dev);
+	if (ret != 0) {
+		return ret;
+	}
+
+	ret = pn7160_reset(dev);
+	if (ret != 0) {
+		shell_error(sh, "VEN reset failed: %d", ret);
+		return ret;
+	}
+
+	shell_print(sh, "VEN reset complete");
+	return 0;
+}
+
+static int cmd_pn7160_xcv(const struct shell *sh, size_t argc, char **argv)
+{
+	const struct device *dev;
+	uint8_t tx[PN7160_SHELL_XCV_MAX];
+	uint8_t rx[PN7160_SHELL_XCV_MAX];
+	size_t tx_len = 0U;
+	size_t rx_len = 0U;
+	int ret;
+
+	if (argc < 2) {
+		shell_error(sh, "Usage: pn7160 xcv <hex byte> [hex byte ...]");
+		return -EINVAL;
+	}
+
+	ret = pn7160_shell_check_dev(sh, &dev);
+	if (ret != 0) {
+		return ret;
+	}
+
+	for (size_t i = 1; i < argc; i++) {
+		if (tx_len >= sizeof(tx)) {
+			shell_error(sh, "TX buffer full (max %u bytes)", PN7160_SHELL_XCV_MAX);
+			return -EINVAL;
+		}
+
+		ret = pn7160_shell_parse_hex_byte(argv[i], &tx[tx_len]);
+		if (ret != 0) {
+			shell_error(sh, "Invalid hex byte: %s", argv[i]);
+			return ret;
+		}
+		tx_len++;
+	}
+
+	ret = pn7160_nci_transceive(dev, tx, tx_len, rx, sizeof(rx), &rx_len, K_SECONDS(1));
+	if (ret != 0) {
+		shell_error(sh, "NCI transceive failed: %d", ret);
+		return ret;
+	}
+
+	shell_fprintf(sh, SHELL_NORMAL, "RX (%u):", (unsigned int)rx_len);
+	for (size_t i = 0; i < rx_len; i++) {
+		shell_fprintf(sh, SHELL_NORMAL, " %02x", rx[i]);
+	}
+	shell_print(sh, "");
+	return 0;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(pn7160_dwl_cmds,
 			       SHELL_CMD(enter, NULL, "Enter firmware download mode (DWL high + reset)",
 					 cmd_pn7160_dwl_enter),
@@ -177,6 +273,8 @@ SHELL_STATIC_SUBCMD_SET_CREATE(pn7160_cmds,
 			       SHELL_CMD(probe, NULL, "CORE_RESET presence probe", cmd_pn7160_probe),
 			       SHELL_CMD(fwver, NULL, "Read firmware version from CORE_RESET_NTF",
 					 cmd_pn7160_fwver),
+			       SHELL_CMD(reset, NULL, "VEN hard reset (10 ms / 10 ms)", cmd_pn7160_reset),
+			       SHELL_CMD(xcv, NULL, "Raw NCI transceive (hex bytes)", cmd_pn7160_xcv),
 			       SHELL_CMD(dwl, &pn7160_dwl_cmds, "Firmware download mode (DWL GPIO)",
 					 NULL),
 			       SHELL_SUBCMD_SET_END);
