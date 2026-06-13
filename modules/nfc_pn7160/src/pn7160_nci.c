@@ -20,6 +20,8 @@ LOG_MODULE_DECLARE(pn7160);
 #define PN7160_NCI_CORE_RESET_RSP_MT_OID 0x40U
 #define PN7160_NCI_CORE_RESET_NTF_MT_OID 0x60U
 #define PN7160_NCI_CORE_RESET_OID        0x00U
+#define PN7160_NCI_CORE_GENERIC_ERROR_OID 0x07U
+#define PN7160_NCI_ANTI_TEARING_STATUS   0xE6U
 #define PN7160_NCI_STATUS_OK             0x00U
 
 /* NCI CORE_RESET_CMD — NXP NCICoreReset[] */
@@ -93,6 +95,17 @@ static int pn7160_nci_wait_rx(const struct device *dev, k_timeout_t timeout)
 
 int pn7160_nci_process(const struct device *dev, const uint8_t *rx, size_t rx_len)
 {
+	struct pn7160_data *data = dev->data;
+
+	if (rx_len >= 4U && rx[0] == PN7160_NCI_CORE_RESET_NTF_MT_OID &&
+	    rx[1] == PN7160_NCI_CORE_GENERIC_ERROR_OID) {
+		/* NXP NxpNci_CheckDevPres: CORE_GENERIC_ERROR_NTF anti-tearing. */
+		if (rx[3] == PN7160_NCI_ANTI_TEARING_STATUS) {
+			data->rf_settings_restored = true;
+		}
+		return 0;
+	}
+
 	if (rx_len >= 3U && rx[0] == PN7160_NCI_CORE_RESET_NTF_MT_OID &&
 	    rx[1] == PN7160_NCI_CORE_RESET_OID) {
 		return pn7160_nci_parse_core_reset_ntf(dev, rx, rx_len);
@@ -154,6 +167,8 @@ int pn7160_nci_check_dev_pres(const struct device *dev)
 
 	k_mutex_lock(&data->api_mutex, K_FOREVER);
 
+	data->rf_settings_restored = false;
+
 	ret = pn7160_nci_transceive_unlocked(dev, core_reset_cmd, sizeof(core_reset_cmd), rx,
 					     sizeof(data->rx_buf), &rx_len, K_MSEC(100));
 	if (ret != 0) {
@@ -166,14 +181,31 @@ int pn7160_nci_check_dev_pres(const struct device *dev)
 	}
 
 	ret = pn7160_nci_wait_rx(dev, K_MSEC(100));
-	if (ret == 0 && data->last_rx_len > 0U) {
-		if (data->rx_buf[0] == PN7160_NCI_CORE_RESET_NTF_MT_OID &&
-		    data->rx_buf[1] == PN7160_NCI_CORE_RESET_OID) {
-			(void)pn7160_nci_parse_core_reset_ntf(dev, data->rx_buf, data->last_rx_len);
-		}
+	if (ret != 0) {
+		/* NXP: empty second RX on timeout is OK. */
+		ret = 0;
+		goto out;
 	}
 
-	ret = 0;
+	if (data->last_rx_len == 0U) {
+		ret = 0;
+		goto out;
+	}
+
+	if (data->rx_buf[0] == PN7160_NCI_CORE_RESET_NTF_MT_OID &&
+	    data->rx_buf[1] == PN7160_NCI_CORE_GENERIC_ERROR_OID) {
+		/* Handled in pn7160_nci_process during IRQ drain. */
+		ret = 0;
+		goto out;
+	}
+
+	if (data->rx_buf[0] == PN7160_NCI_CORE_RESET_NTF_MT_OID &&
+	    data->rx_buf[1] == PN7160_NCI_CORE_RESET_OID) {
+		ret = pn7160_nci_parse_core_reset_ntf(dev, data->rx_buf, data->last_rx_len);
+		goto out;
+	}
+
+	ret = -EIO;
 
 out:
 	k_mutex_unlock(&data->api_mutex);

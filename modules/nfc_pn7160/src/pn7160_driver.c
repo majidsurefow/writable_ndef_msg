@@ -243,6 +243,7 @@ static int pn7160_init(const struct device *dev)
 	data->last_rx_len = 0U;
 	data->last_rx_err = 0;
 	data->dwl_mode = false;
+	data->rf_settings_restored = false;
 	data->fw_version[0] = 0U;
 	data->fw_version[1] = 0U;
 	data->fw_version[2] = 0U;
