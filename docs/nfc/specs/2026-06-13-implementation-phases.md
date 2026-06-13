@@ -1,5 +1,8 @@
 # NFC Stack — Implementation Phases (PN7160 First)
 
+> **Execution:** Superseded for day-to-day work by [`../NFC_STACK_PLAN.md`](../NFC_STACK_PLAN.md).
+> Keep this file for historical PN7160-first phase ordering and gate criteria.
+
 **Date:** 2026-06-13  
 **Status:** LOCKED — supersedes the prior "Waves 1–6 first, then PN7160" sequencing  
 **Platform:** Zephyr / Nordic NCS v3.2.4 · nRF54L15
