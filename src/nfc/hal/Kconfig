@@ -1,22 +1,37 @@
 # NFC HAL backend selection.
 
+config NFC_HAL_BACKEND_HAS_READER
+	bool
+	help
+	  Hidden: set by reader-capable HAL backends (PN7160).
+
 choice NFC_HAL_BACKEND
 	prompt "NFC HAL backend"
-	default NFC_HAL_BACKEND_PN7160
+	default NFC_HAL_BACKEND_PN7160 if PN7160
+	default NFC_HAL_BACKEND_NRFX if NFC_T4T_NRFXLIB
 	depends on NFC_STACK
 
 config NFC_HAL_BACKEND_PN7160
 	bool "PN7160 NCI (SMART tier)"
 	depends on PN7160
+	select NFC_HAL_BACKEND_HAS_READER
 	help
 	  Use the out-of-tree PN7160 Zephyr driver and NCI API.
+
+config NFC_HAL_BACKEND_NRFX
+	bool "NFCT T4T (nrfxlib listen-only)"
+	depends on NFC_T4T_NRFXLIB
+	select NET_BUF
+	help
+	  On-die NFCT card emulation via nrfxlib nfc_t4t_lib (raw PICC / ISO-DEP).
+	  Poll APIs return -ENOTSUP.
 
 endchoice
 
 config NFC_ROLE_READER
 	bool "Reader role"
 	default y
-	depends on NFC_STACK
+	depends on NFC_STACK && NFC_HAL_BACKEND_HAS_READER
 	help
 	  Enable reader-mode discovery and tag transceive APIs.
 

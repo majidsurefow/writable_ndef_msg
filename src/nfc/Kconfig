@@ -1,13 +1,26 @@
-# NFC stack — PN7160 reader scaffold (Gate 0).
+# NFC stack — HAL + orchestrators (backend-neutral).
 
 config NFC_STACK
-	bool "NFC stack (PN7160 reader scaffold)"
-	depends on PN7160
+	bool "NFC stack"
 	help
-	  Minimal NFC stack HAL wired to the out-of-tree PN7160 driver.
-	  Gate 0: transport init, discovery, and tag transceive only.
+	  NFC transport HAL and stack scaffolding. Select a HAL backend
+	  (PN7160 reader+listen or NFCT listen-only) in hal/Kconfig.
 
 if NFC_STACK
+
+config NFC_APDU_BUF_SIZE
+	int "Inbound APDU net_buf data size (bytes)"
+	default 512
+	range 64 512
+	help
+	  Data bytes per FIXED net_buf in the HAL listen path.
+
+config NFC_APDU_POOL_COUNT
+	int "Inbound APDU net_buf pool count"
+	default 4
+	range 1 16
+	help
+	  Number of FIXED net_bufs for ISR-to-WQ APDU assembly.
 
 rsource "run/Kconfig"
 rsource "hal/Kconfig"
