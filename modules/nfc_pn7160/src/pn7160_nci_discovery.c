@@ -42,27 +42,6 @@ static const uint8_t default_discovery_tech[] = {
 static uint8_t nci_start_discovery[PN7160_NCI_DISC_START_MAX];
 static size_t nci_start_discovery_len;
 
-static int pn7160_nci_recv_unlocked(const struct device *dev, uint8_t *rx, size_t rx_max,
-				    size_t *rx_len, k_timeout_t timeout)
-{
-	struct pn7160_data *data = dev->data;
-	int ret;
-
-	ret = pn7160_nci_wait_rx_unlocked(dev, timeout);
-	if (ret != 0) {
-		return ret;
-	}
-
-	if (data->last_rx_len > rx_max) {
-		return -EINVAL;
-	}
-
-	memcpy(rx, data->rx_buf, data->last_rx_len);
-	*rx_len = data->last_rx_len;
-
-	return 0;
-}
-
 static int pn7160_nci_rf_rsp_ok(const uint8_t *rx, size_t rx_len, uint8_t oid)
 {
 	if (rx_len < 4U) {

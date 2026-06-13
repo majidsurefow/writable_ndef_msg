@@ -213,6 +213,55 @@ static int cmd_pn7160_reset(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
+static int cmd_pn7160_tagcmd(const struct shell *sh, size_t argc, char **argv)
+{
+	const struct device *dev;
+	uint8_t cmd[PN7160_SHELL_XCV_MAX];
+	uint8_t answer[PN7160_SHELL_XCV_MAX];
+	size_t cmd_len = 0U;
+	size_t answer_len = 0U;
+	int ret;
+
+	if (argc < 2) {
+		shell_error(sh, "Usage: pn7160 tagcmd <hex byte> [hex byte ...]");
+		shell_print(sh, "Raw tag DATA_PACKET (NxpNci_ReaderTagCmd); use after discovery.");
+		return -EINVAL;
+	}
+
+	ret = pn7160_shell_check_dev(sh, &dev);
+	if (ret != 0) {
+		return ret;
+	}
+
+	for (size_t i = 1; i < argc; i++) {
+		if (cmd_len >= sizeof(cmd)) {
+			shell_error(sh, "Command buffer full (max %u bytes)", PN7160_SHELL_XCV_MAX);
+			return -EINVAL;
+		}
+
+		ret = pn7160_shell_parse_hex_byte(argv[i], &cmd[cmd_len]);
+		if (ret != 0) {
+			shell_error(sh, "Invalid hex byte: %s", argv[i]);
+			return ret;
+		}
+		cmd_len++;
+	}
+
+	ret = pn7160_nci_reader_tag_cmd(dev, cmd, cmd_len, answer, sizeof(answer), &answer_len,
+				      K_SECONDS(1));
+	if (ret != 0) {
+		shell_error(sh, "ReaderTagCmd failed: %d", ret);
+		return ret;
+	}
+
+	shell_fprintf(sh, SHELL_NORMAL, "Answer (%u):", (unsigned int)answer_len);
+	for (size_t i = 0; i < answer_len; i++) {
+		shell_fprintf(sh, SHELL_NORMAL, " %02x", answer[i]);
+	}
+	shell_print(sh, "");
+	return 0;
+}
+
 static int cmd_pn7160_xcv(const struct shell *sh, size_t argc, char **argv)
 {
 	const struct device *dev;
@@ -408,6 +457,8 @@ SHELL_STATIC_SUBCMD_SET_CREATE(pn7160_cmds,
 					 cmd_pn7160_settings),
 			       SHELL_CMD(discovery, &pn7160_discovery_cmds, "RF discovery (reader mode)",
 					 NULL),
+			       SHELL_CMD(tagcmd, NULL, "Raw tag command (ReaderTagCmd DATA_PACKET)",
+					 cmd_pn7160_tagcmd),
 			       SHELL_CMD(xcv, NULL, "Raw NCI transceive (hex bytes)", cmd_pn7160_xcv),
 			       SHELL_CMD(dwl, &pn7160_dwl_cmds, "Firmware download mode (DWL GPIO)",
 					 NULL),

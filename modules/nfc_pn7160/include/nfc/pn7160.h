@@ -265,6 +265,25 @@ bool pn7160_nci_discovery_active(const struct device *dev);
  */
 const struct pn7160_nci_rf_intf *pn7160_nci_discovery_last(const struct device *dev);
 
+/**
+ * @brief Send a raw tag command on the active RF interface (NxpNci_ReaderTagCmd).
+ *
+ * Wraps NCI DATA_PACKET (0x00 0x00 len + payload), then waits for the tag
+ * response DATA_PACKET. Requires an activated tag from discovery.
+ *
+ * @param dev PN7160 device.
+ * @param cmd Tag command payload (e.g. MIFARE READ).
+ * @param cmd_len Command length.
+ * @param answer Response buffer.
+ * @param answer_max Response buffer capacity.
+ * @param answer_len Actual response length on success.
+ * @param timeout Maximum wait per NCI exchange.
+ * @return 0 on success, negative errno otherwise.
+ */
+int pn7160_nci_reader_tag_cmd(const struct device *dev, const uint8_t *cmd, size_t cmd_len,
+			      uint8_t *answer, size_t answer_max, size_t *answer_len,
+			      k_timeout_t timeout);
+
 /** @} */
 
 #ifdef __cplusplus

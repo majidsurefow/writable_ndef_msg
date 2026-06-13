@@ -259,3 +259,82 @@ int pn7160_nci_host_transceive(const struct device *dev, const uint8_t *tx, size
 {
 	return pn7160_nci_transceive(dev, tx, tx_len, rx, rx_max, rx_len, timeout);
 }
+
+int pn7160_nci_recv_unlocked(const struct device *dev, uint8_t *rx, size_t rx_max,
+			     size_t *rx_len, k_timeout_t timeout)
+{
+	struct pn7160_data *data = dev->data;
+	int ret;
+
+	ret = pn7160_nci_wait_rx_unlocked(dev, timeout);
+	if (ret != 0) {
+		return ret;
+	}
+
+	if (data->last_rx_len > rx_max) {
+		return -EINVAL;
+	}
+
+	memcpy(rx, data->rx_buf, data->last_rx_len);
+	*rx_len = data->last_rx_len;
+
+	return 0;
+}
+
+int pn7160_nci_reader_tag_cmd(const struct device *dev, const uint8_t *cmd, size_t cmd_len,
+			      uint8_t *answer, size_t answer_max, size_t *answer_len,
+			      k_timeout_t timeout)
+{
+	struct pn7160_data *data = dev->data;
+	uint8_t tx[3U + CONFIG_PN7160_RX_BUF_SIZE];
+	uint8_t *rx = data->rx_buf;
+	size_t rx_len;
+	size_t out_len;
+	int ret;
+
+	if (cmd == NULL || answer == NULL || answer_len == NULL || cmd_len == 0U) {
+		return -EINVAL;
+	}
+
+	if (cmd_len > (sizeof(tx) - 3U)) {
+		return -EINVAL;
+	}
+
+	tx[0] = 0x00U;
+	tx[1] = 0x00U;
+	tx[2] = (uint8_t)cmd_len;
+	memcpy(&tx[3], cmd, cmd_len);
+
+	k_mutex_lock(&data->api_mutex, K_FOREVER);
+
+	/* NXP NxpNci_ReaderTagCmd: DATA_PACKET send + wait for tag response. */
+	ret = pn7160_nci_transceive_unlocked(dev, tx, cmd_len + 3U, rx, sizeof(data->rx_buf),
+					     &rx_len, timeout);
+	if (ret != 0) {
+		goto out;
+	}
+
+	ret = pn7160_nci_recv_unlocked(dev, rx, sizeof(data->rx_buf), &rx_len, timeout);
+	if (ret != 0) {
+		goto out;
+	}
+
+	if (rx_len < 3U || rx[0] != 0x00U || rx[1] != 0x00U) {
+		ret = -EIO;
+		goto out;
+	}
+
+	out_len = rx[2];
+	if (out_len > answer_max || (3U + out_len) > rx_len) {
+		ret = -EINVAL;
+		goto out;
+	}
+
+	memcpy(answer, &rx[3], out_len);
+	*answer_len = out_len;
+	ret = 0;
+
+out:
+	k_mutex_unlock(&data->api_mutex);
+	return ret;
+}
