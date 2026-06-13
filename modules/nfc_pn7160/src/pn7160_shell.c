@@ -260,6 +260,29 @@ static int cmd_pn7160_xcv(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
+static int cmd_pn7160_init(const struct shell *sh, size_t argc, char **argv)
+{
+	const struct device *dev;
+	int ret;
+
+	ARG_UNUSED(argc);
+	ARG_UNUSED(argv);
+
+	ret = pn7160_shell_check_dev(sh, &dev);
+	if (ret != 0) {
+		return ret;
+	}
+
+	ret = pn7160_nci_connect(dev);
+	if (ret != 0) {
+		shell_error(sh, "CORE_INIT connect failed: %d", ret);
+		return ret;
+	}
+
+	shell_print(sh, "PN7160 connected (CORE_INIT OK)");
+	return 0;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(pn7160_dwl_cmds,
 			       SHELL_CMD(enter, NULL, "Enter firmware download mode (DWL high + reset)",
 					 cmd_pn7160_dwl_enter),
@@ -274,6 +297,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(pn7160_cmds,
 			       SHELL_CMD(fwver, NULL, "Read firmware version from CORE_RESET_NTF",
 					 cmd_pn7160_fwver),
 			       SHELL_CMD(reset, NULL, "VEN hard reset (10 ms / 10 ms)", cmd_pn7160_reset),
+			       SHELL_CMD(init, NULL, "CORE_RESET probe + CORE_INIT connect", cmd_pn7160_init),
 			       SHELL_CMD(xcv, NULL, "Raw NCI transceive (hex bytes)", cmd_pn7160_xcv),
 			       SHELL_CMD(dwl, &pn7160_dwl_cmds, "Firmware download mode (DWL GPIO)",
 					 NULL),

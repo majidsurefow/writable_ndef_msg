@@ -99,6 +99,17 @@ int pn7160_wait_irq(const struct device *dev, k_timeout_t timeout);
 int pn7160_nci_check_dev_pres(const struct device *dev);
 
 /**
+ * @brief Connect to the controller (CORE_RESET probe + CORE_INIT).
+ *
+ * Port of NXP `NxpNci_Connect()`: probes with retries, then sends
+ * CORE_INIT `{20 01 02 00 00}` and validates CORE_INIT_RSP.
+ *
+ * @param dev PN7160 device (must be ready).
+ * @return 0 on success, negative errno otherwise.
+ */
+int pn7160_nci_connect(const struct device *dev);
+
+/**
  * @brief Return cached 3-byte firmware version from last CORE_RESET_NTF.
  *
  * Bytes may be zero until @ref pn7160_nci_check_dev_pres succeeds.
