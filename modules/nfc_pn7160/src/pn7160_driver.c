@@ -34,8 +34,23 @@ static void pn7160_work_q_start(void)
 
 static void pn7160_irq_rx_work_handler(struct k_work *work)
 {
-	ARG_UNUSED(work);
-	/* Phase 0.6: submit RX drain to nfc_work_q; IRQ flag already set by ISR. */
+	struct pn7160_data *data = CONTAINER_OF(work, struct pn7160_data, irq_rx_work);
+	const struct device *dev = data->self;
+	size_t rx_len = 0U;
+	int ret;
+
+	if (!atomic_cas(&data->rx_waiting, 1, 0)) {
+		return;
+	}
+
+	ret = pn7160_tml_recv(dev, data->rx_buf, sizeof(data->rx_buf), &rx_len);
+	if (ret == 0) {
+		ret = pn7160_nci_process(dev, data->rx_buf, rx_len);
+	}
+
+	data->last_rx_err = ret;
+	data->last_rx_len = rx_len;
+	k_sem_give(&data->rx_sem);
 }
 
 static void pn7160_irq_work_handler(struct k_work *work)
@@ -57,6 +72,13 @@ int pn7160_tml_recv(const struct device *dev, uint8_t *data, size_t max_len, siz
 	const struct pn7160_config *cfg = dev->config;
 
 	return cfg->tml_recv(dev, data, max_len, out_len);
+}
+
+void pn7160_submit_rx_work(const struct device *dev)
+{
+	struct pn7160_data *data = dev->data;
+
+	k_work_submit_to_queue(&pn7160_work_q, &data->irq_rx_work);
 }
 
 static void pn7160_gpio_isr(const struct device *port, struct gpio_callback *cb, uint32_t pins)
@@ -154,10 +176,15 @@ static int pn7160_init(const struct device *dev)
 		(void)gpio_pin_configure_dt(&cfg->dwl, GPIO_OUTPUT_INACTIVE);
 	}
 
+	data->self = dev;
 	k_mutex_init(&data->bus_mutex);
+	k_sem_init(&data->rx_sem, 0, 1);
 	k_work_init(&data->irq_work, pn7160_irq_work_handler);
 	k_work_init(&data->irq_rx_work, pn7160_irq_rx_work_handler);
 	atomic_clear(&data->irq_pending);
+	atomic_clear(&data->rx_waiting);
+	data->last_rx_len = 0U;
+	data->last_rx_err = 0;
 	data->fw_version[0] = 0U;
 	data->fw_version[1] = 0U;
 	data->fw_version[2] = 0U;
