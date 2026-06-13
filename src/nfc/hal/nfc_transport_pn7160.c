@@ -5,6 +5,8 @@
  * PN7160 SMART-tier nfc_transport backend (Gate 1).
  */
 
+#include "hal/nfc_apdu_asm.h"
+#include "hal/nfc_apdu_pool.h"
 #include "hal/nfc_transport.h"
 #include "run/nfc_stack_workq.h"
 
@@ -19,6 +21,7 @@
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/net_buf.h>
 #include <zephyr/sys/util.h>
 
 LOG_MODULE_REGISTER(nfc_transport_pn7160, CONFIG_LOG_DEFAULT_LEVEL);
@@ -46,7 +49,13 @@ static bool s_ops_registered;
 static nfc_uid_t s_pending_uid;
 
 static struct k_work s_listen_recv_work;
+static struct k_work s_apdu_work;
+static struct k_fifo s_apdu_fifo;
 static atomic_t s_listen_recv_stop;
+
+#if IS_ENABLED(CONFIG_NFC_ROLE_LISTEN)
+static const uint8_t s_sw_wrong_length[] = { 0x67U, 0x00U };
+#endif
 
 static const nfc_transport_caps_t s_caps = {
 	.roles = NFC_ROLE_READER | NFC_ROLE_LISTEN,
@@ -79,6 +88,58 @@ static bool uid_len_valid(uint8_t len)
 	return len == NFC_UID_LEN_SINGLE || len == NFC_UID_LEN_DOUBLE || len == NFC_UID_LEN_TRIPLE;
 }
 
+static void apdu_work_handler(struct k_work *work)
+{
+	struct net_buf *buf;
+
+	ARG_UNUSED(work);
+
+	while ((buf = k_fifo_get(&s_apdu_fifo, K_NO_WAIT)) != NULL) {
+		if (s_ops_registered && s_ops.on_apdu != NULL) {
+			/* Callee owns ref — must net_buf_unref after router returns. */
+			s_ops.on_apdu(buf, s_ops_user_ctx);
+		} else {
+			net_buf_unref(buf);
+			STATS_INC(&s_stats_lock, s_stats, apdu_dropped_no_consumer);
+		}
+	}
+}
+
+#if IS_ENABLED(CONFIG_NFC_ROLE_LISTEN)
+static void listen_on_apdu_fragment(const uint8_t *data, size_t data_len)
+{
+	struct net_buf *buf;
+
+	buf = net_buf_alloc(nfc_apdu_pool_get(), K_NO_WAIT);
+	if (buf == NULL) {
+		STATS_INC(&s_stats_lock, s_stats, frag_dropped_no_buffer);
+		return;
+	}
+
+	if (!nfc_apdu_frag_fits(0U, data_len, buf->size)) {
+		net_buf_unref(buf);
+		STATS_INC(&s_stats_lock, s_stats, apdu_oversized_count);
+		(void)nfc_transport_send_response(s_sw_wrong_length, sizeof(s_sw_wrong_length));
+		return;
+	}
+
+	net_buf_add_mem(buf, data, data_len);
+	k_fifo_put(&s_apdu_fifo, buf);
+	(void)k_work_submit_to_queue(nfc_stack_wq_get(), &s_apdu_work);
+	STATS_INC(&s_stats_lock, s_stats, apdu_assembled_count);
+	STATS_INC(&s_stats_lock, s_stats, fragment_rx_count);
+}
+#endif /* CONFIG_NFC_ROLE_LISTEN */
+
+static void listen_drain_apdu_fifo(void)
+{
+	struct net_buf *buf;
+
+	while ((buf = k_fifo_get(&s_apdu_fifo, K_NO_WAIT)) != NULL) {
+		net_buf_unref(buf);
+	}
+}
+
 static void listen_recv_work_handler(struct k_work *work)
 {
 	uint8_t data[NFC_TRANSPORT_MAX_RESPONSE_LEN];
@@ -99,17 +160,14 @@ static void listen_recv_work_handler(struct k_work *work)
 			break;
 		}
 
+#if IS_ENABLED(CONFIG_NFC_ROLE_LISTEN)
+		listen_on_apdu_fragment(data, data_len);
+#else
 		STATS_INC(&s_stats_lock, s_stats, fragment_rx_count);
-
-		/*
-		 * Gate 3 TODO: mirror nfc_transport_nrfx.c listen path —
-		 * nfc_apdu_pool_get(), WQ recv loop allocates/copies into net_buf,
-		 * k_fifo handoff, on_apdu (callee unref). No net_buf on poll
-		 * transceive or send_response.
-		 */
 		if (!s_ops_registered || s_ops.on_apdu == NULL) {
 			STATS_INC(&s_stats_lock, s_stats, apdu_dropped_no_consumer);
 		}
+#endif
 	}
 }
 
@@ -168,6 +226,9 @@ int nfc_transport_init(void)
 		return ret;
 	}
 
+	k_fifo_init(&s_apdu_fifo);
+	k_work_init(&s_apdu_work, apdu_work_handler);
+
 	atomic_set(&s_session, NFC_SESSION_NONE);
 	atomic_set(&s_state, NFC_TRANSPORT_STATE_INITIALIZED);
 	return 0;
@@ -184,6 +245,8 @@ int nfc_transport_shutdown(void)
 
 	atomic_clear(&s_listen_recv_stop);
 	(void)k_work_cancel_sync(&s_listen_recv_work, NULL);
+	(void)k_work_cancel_sync(&s_apdu_work, NULL);
+	listen_drain_apdu_fifo();
 
 	atomic_set(&s_session, NFC_SESSION_NONE);
 	atomic_set(&s_state, NFC_TRANSPORT_STATE_UNINITIALIZED);
@@ -364,6 +427,8 @@ int nfc_transport_stop(void)
 
 	atomic_set(&s_listen_recv_stop, 1);
 	(void)k_work_cancel_sync(&s_listen_recv_work, NULL);
+	(void)k_work_cancel_sync(&s_apdu_work, NULL);
+	listen_drain_apdu_fifo();
 
 	ret = pn7160_nci_listen_stop(s_dev);
 	if (ret != 0) {
