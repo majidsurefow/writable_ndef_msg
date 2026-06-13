@@ -1,0 +1,2 @@
+/* NDEF URI record payload (5 bytes) — cookbook §14.2 test_model */
+0xD1, 0x01, 0x03, 0x55, 0x01
