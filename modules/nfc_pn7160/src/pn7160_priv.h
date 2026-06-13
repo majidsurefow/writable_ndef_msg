@@ -35,6 +35,7 @@ struct pn7160_data {
 	atomic_t rx_waiting;
 	size_t last_rx_len;
 	int last_rx_err;
+	bool dwl_mode;
 	uint8_t fw_version[3];
 	uint8_t rx_buf[CONFIG_PN7160_RX_BUF_SIZE];
 };

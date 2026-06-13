@@ -22,8 +22,6 @@ LOG_MODULE_DECLARE(pn7160);
 
 #if DT_ANY_INST_ON_BUS_STATUS_OKAY(i2c)
 
-#define PN7160_TML_FOOTER_SZ 0U
-
 static int pn7160_tml_i2c_write(const struct i2c_dt_spec *i2c, const uint8_t *data, size_t len)
 {
 	if (i2c_write_dt(i2c, data, len) == 0) {
@@ -61,11 +59,21 @@ int pn7160_tml_i2c_recv(const struct device *dev, uint8_t *data, size_t max_len,
 {
 	const struct pn7160_config *cfg = dev->config;
 	struct pn7160_data *pdata = dev->data;
+	const bool dwl_mode = pdata->dwl_mode;
 	uint8_t payload_len;
+	size_t hdr_read_len;
+	size_t footer_sz;
 	size_t frame_len;
 	int ret;
 
-	if (data == NULL || out_len == NULL || max_len < PN7160_TML_NCI_HDR_LEN) {
+	if (data == NULL || out_len == NULL) {
+		return -EINVAL;
+	}
+
+	hdr_read_len = pn7160_tml_hdr_read_len_get(dwl_mode);
+	footer_sz = pn7160_tml_footer_sz_get(dwl_mode);
+
+	if (max_len < hdr_read_len) {
 		return -EINVAL;
 	}
 
@@ -74,24 +82,24 @@ int pn7160_tml_i2c_recv(const struct device *dev, uint8_t *data, size_t max_len,
 		return -EIO;
 	}
 
-	/* NXP tml_Rx: read HEADER_SZ + 1 bytes (NCI header prefix). */
-	ret = i2c_read_dt(&cfg->i2c, data, PN7160_TML_NCI_HDR_LEN);
+	/* NXP tml_Rx: read HEADER_SZ + 1 bytes (header prefix + length). */
+	ret = i2c_read_dt(&cfg->i2c, data, hdr_read_len);
 	if (ret != 0) {
 		ret = -EIO;
 		goto unlock;
 	}
 
-	ret = pn7160_tml_frame_len_validate(data, max_len);
+	ret = pn7160_tml_frame_len_validate_mode(data, max_len, dwl_mode);
 	if (ret != 0) {
 		goto unlock;
 	}
 
-	payload_len = pn7160_tml_payload_len_get(data);
-	frame_len = pn7160_tml_frame_len_get(data);
+	payload_len = pn7160_tml_payload_len_get_mode(data, dwl_mode);
+	frame_len = pn7160_tml_frame_len_get_mode(data, dwl_mode);
 
 	if (payload_len > 0U) {
-		ret = i2c_read_dt(&cfg->i2c, &data[PN7160_TML_NCI_HDR_LEN],
-				  (size_t)payload_len + PN7160_TML_FOOTER_SZ);
+		ret = i2c_read_dt(&cfg->i2c, &data[hdr_read_len],
+				  (size_t)payload_len + footer_sz);
 		if (ret != 0) {
 			ret = -EIO;
 			goto unlock;

@@ -10,6 +10,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 #include <zephyr/device.h>
 #include <zephyr/kernel.h>
@@ -40,6 +41,39 @@ extern "C" {
  * @return 0 on success, negative errno on GPIO failure.
  */
 int pn7160_reset(const struct device *dev);
+
+/**
+ * @brief Enter firmware-download mode (DWL active + VEN reset).
+ *
+ * Port of NXP `tml_EnterDwlMode()`: sets download TML framing (1-byte header,
+ * 2-byte footer on read), asserts **DWL_REQ** high, then applies the standard
+ * VEN reset sequence (inactive 10 ms, active 10 ms).
+ *
+ * Requires `dwl-gpios` in devicetree.
+ *
+ * @param dev PN7160 device.
+ * @return 0 on success, `-ENOTSUP` if DWL GPIO is absent, negative errno on GPIO failure.
+ */
+int pn7160_dwl_enter(const struct device *dev);
+
+/**
+ * @brief Leave firmware-download mode (DWL inactive + VEN reset).
+ *
+ * Port of NXP `tml_LeaveDwlMode()`: clears download TML framing, deasserts
+ * **DWL_REQ**, then applies the VEN reset sequence (10 ms / 10 ms).
+ *
+ * @param dev PN7160 device.
+ * @return 0 on success, `-ENOTSUP` if DWL GPIO is absent, negative errno on GPIO failure.
+ */
+int pn7160_dwl_leave(const struct device *dev);
+
+/**
+ * @brief Return whether download-mode TML framing is active.
+ *
+ * @param dev PN7160 device.
+ * @return True after @ref pn7160_dwl_enter until @ref pn7160_dwl_leave.
+ */
+bool pn7160_dwl_mode_get(const struct device *dev);
 
 /**
  * @brief Wait for HOST_IRQ assertion with timeout.

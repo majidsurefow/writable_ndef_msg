@@ -13,6 +13,8 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/logging/log.h>
 
+#include <errno.h>
+
 LOG_MODULE_REGISTER(pn7160, CONFIG_PN7160_LOG_LEVEL);
 
 static struct k_work_q pn7160_work_q;
@@ -124,6 +126,54 @@ int pn7160_reset(const struct device *dev)
 	return 0;
 }
 
+static bool pn7160_dwl_gpio_available(const struct pn7160_config *cfg)
+{
+	return cfg->dwl.port != NULL && gpio_is_ready_dt(&cfg->dwl);
+}
+
+int pn7160_dwl_enter(const struct device *dev)
+{
+	const struct pn7160_config *cfg = dev->config;
+	struct pn7160_data *data = dev->data;
+
+	if (!pn7160_dwl_gpio_available(cfg)) {
+		return -ENOTSUP;
+	}
+
+	/* NXP tml_EnterDwlMode: isDwlMode=true, DWL high, VEN reset (10 ms / 10 ms). */
+	data->dwl_mode = true;
+	if (gpio_pin_set_dt(&cfg->dwl, 1) != 0) {
+		return -EIO;
+	}
+
+	return pn7160_reset(dev);
+}
+
+int pn7160_dwl_leave(const struct device *dev)
+{
+	const struct pn7160_config *cfg = dev->config;
+	struct pn7160_data *data = dev->data;
+
+	if (!pn7160_dwl_gpio_available(cfg)) {
+		return -ENOTSUP;
+	}
+
+	/* NXP tml_LeaveDwlMode: isDwlMode=false, DWL low, VEN reset (10 ms / 10 ms). */
+	data->dwl_mode = false;
+	if (gpio_pin_set_dt(&cfg->dwl, 0) != 0) {
+		return -EIO;
+	}
+
+	return pn7160_reset(dev);
+}
+
+bool pn7160_dwl_mode_get(const struct device *dev)
+{
+	struct pn7160_data *data = dev->data;
+
+	return data->dwl_mode;
+}
+
 int pn7160_wait_irq(const struct device *dev, k_timeout_t timeout)
 {
 	struct pn7160_data *data = dev->data;
@@ -185,6 +235,7 @@ static int pn7160_init(const struct device *dev)
 	atomic_clear(&data->rx_waiting);
 	data->last_rx_len = 0U;
 	data->last_rx_err = 0;
+	data->dwl_mode = false;
 	data->fw_version[0] = 0U;
 	data->fw_version[1] = 0U;
 	data->fw_version[2] = 0U;
