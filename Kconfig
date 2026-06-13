@@ -6,6 +6,8 @@
 
 source "Kconfig.zephyr"
 
+rsource "src/nfc/Kconfig"
+
 config ZMS
 	select CRC
 	default y if (SOC_FLASH_NRF_RRAM || SOC_FLASH_NRF_MRAM)

@@ -1,0 +1,15 @@
+# NFC stack — PN7160 reader scaffold (Gate 0).
+
+config NFC_STACK
+	bool "NFC stack (PN7160 reader scaffold)"
+	depends on PN7160
+	help
+	  Minimal NFC stack HAL wired to the out-of-tree PN7160 driver.
+	  Gate 0: transport init, discovery, and tag transceive only.
+
+if NFC_STACK
+
+rsource "hal/Kconfig"
+rsource "reader/Kconfig"
+
+endif

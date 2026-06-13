@@ -1,0 +1,21 @@
+# NFC HAL backend selection.
+
+choice NFC_HAL_BACKEND
+	prompt "NFC HAL backend"
+	default NFC_HAL_BACKEND_PN7160
+	depends on NFC_STACK
+
+config NFC_HAL_BACKEND_PN7160
+	bool "PN7160 NCI (SMART tier)"
+	depends on PN7160
+	help
+	  Use the out-of-tree PN7160 Zephyr driver and NCI API.
+
+endchoice
+
+config NFC_ROLE_READER
+	bool "Reader role"
+	default y
+	depends on NFC_STACK
+	help
+	  Enable reader-mode discovery and tag transceive APIs.

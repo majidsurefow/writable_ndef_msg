@@ -17,3 +17,7 @@ FILE(GLOB app_sources src/*.c)
 # NORDIC SDK APP START
 target_sources(app  PRIVATE ${app_sources})
 # NORDIC SDK APP END
+
+if(CONFIG_NFC_STACK)
+  add_subdirectory(src/nfc)
+endif()

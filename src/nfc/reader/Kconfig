@@ -1,0 +1,36 @@
+config NFC_READER
+	bool "NFC reader engine"
+	default n
+	depends on NFC_STACK && NFC_ROLE_READER
+	help
+	  Reader discovery engine and shell commands (Gate 0: scan only).
+
+if NFC_READER
+
+config NFC_READER_SHELL
+	bool "NFC reader shell commands"
+	default y
+	depends on SHELL
+	help
+	  Register nfc reader scan shell command.
+
+config NFC_READER_SCAN_TIMEOUT_MS
+	int "Default reader scan timeout (milliseconds)"
+	default 10000
+	range 1000 60000
+	help
+	  Maximum time to wait for a tag during nfc reader scan.
+
+config NFC_READER_WORKQ_STACK_SIZE
+	int "Reader scan work queue stack size"
+	default 2048
+	help
+	  Stack for the dedicated reader scan work queue thread.
+
+config NFC_READER_WORKQ_PRIORITY
+	int "Reader scan work queue priority"
+	default 5
+	help
+	  Priority of the reader scan work queue thread.
+
+endif
