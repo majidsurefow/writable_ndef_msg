@@ -1816,10 +1816,11 @@ Register in `src/nfc/reader/nfc_reader_poller_registry.c` — **not** an NDEF-on
     .detect = ndef_poller_detect,
     .read = nfc_reader_poller_ndef_read,
     .listener_get = ndef_listener_get,  /* NULL for clone-only */
+    .clone_fn = nfc_reader_poller_ndef_clone,
 },
 ```
 
-`nfc_reader_pollers_run()` walks `s_pollers[]`, calls `detect` → `read` → `nfc_store_save(tag, persist_id, model)`. Add one row per protocol; stubs return `-ENOTSUP` until Step 1 lands.
+`nfc_reader_pollers_run()` walks `s_pollers[]`, calls `detect`, then the matched entry's `clone_fn(session, tag)` (read → listener bind → `nfc_store_save`). Add one row per protocol; set `clone_fn` NULL until Step 1 lands.
 
 #### Step 3 — `tests/unit/nfc_<name>/` from `nfc_ndef` template
 

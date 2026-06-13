@@ -20,6 +20,8 @@ extern "C" {
 
 typedef int (*nfc_reader_poller_detect_fn)(const nfc_reader_session_t *session);
 typedef int (*nfc_reader_poller_read_fn)(const nfc_reader_session_t *session, void *out);
+typedef int (*nfc_reader_poller_clone_fn)(const nfc_reader_session_t *session,
+					  const char *tag);
 
 /**
  * @brief One reader poller slot (NULL-terminated table).
@@ -27,6 +29,7 @@ typedef int (*nfc_reader_poller_read_fn)(const nfc_reader_session_t *session, vo
  * @p detect returns 0 when this poller owns the active tag, -ENOTSUP to try next.
  * @p read fills protocol-specific @p out (caller supplies correct buffer type).
  * @p listener_get supplies the nfc_service_t saved after a successful read (may be NULL).
+ * @p clone_fn read + listener bind + nfc_store_save for @p tag (NULL = stub).
  */
 typedef struct {
 	const char *name;
@@ -35,6 +38,7 @@ typedef struct {
 	nfc_reader_poller_detect_fn detect;
 	nfc_reader_poller_read_fn read;
 	const nfc_service_t *(*listener_get)(void);
+	nfc_reader_poller_clone_fn clone_fn;
 } nfc_reader_poller_entry_t;
 
 /** @brief NULL-terminated poller walk table (NDEF first). */

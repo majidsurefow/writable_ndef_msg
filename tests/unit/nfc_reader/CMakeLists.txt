@@ -15,6 +15,8 @@ target_sources(app PRIVATE
   src/test_store_roundtrip.c
   src/test_verify_diff.c
   src/test_virtual_loopback.c
+  src/test_poller_registry.c
+  ${REPO_NFC}/reader/nfc_reader_poller_registry.c
   ${REPO_NFC}/protocols/ndef/ndef.c
   ${REPO_NFC}/protocols/ndef/ndef_listener.c
   ${REPO_NFC}/protocols/ndef/ndef_poller.c

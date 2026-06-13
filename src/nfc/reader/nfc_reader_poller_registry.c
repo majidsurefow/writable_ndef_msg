@@ -43,6 +43,33 @@ static int nfc_reader_poller_ndef_read(const nfc_reader_session_t *session, void
 {
 	return ndef_poller_read(session, out);
 }
+
+static int nfc_reader_poller_ndef_clone(const nfc_reader_session_t *session, const char *tag)
+{
+	ndef_data_t data;
+	const nfc_service_t *svcs[] = { ndef_listener_get() };
+	int ret;
+
+	ndef_data_reset(&data);
+	ret = ndef_poller_read(session, &data);
+	if (ret != 0) {
+		LOG_WRN("NDEF poller read failed: %d", ret);
+		return ret;
+	}
+
+	ret = ndef_listener_init(&data, NULL);
+	if (ret != 0 && ret != -EALREADY) {
+		LOG_ERR("ndef_listener_init failed: %d", ret);
+		return ret;
+	}
+
+	ret = nfc_store_save(tag, svcs, ARRAY_SIZE(svcs));
+	if (ret != 0) {
+		LOG_ERR("nfc_store_save failed: %d", ret);
+	}
+
+	return ret;
+}
 #endif
 
 static const nfc_reader_poller_entry_t s_pollers[] = {
@@ -54,6 +81,7 @@ static const nfc_reader_poller_entry_t s_pollers[] = {
 		.detect = ndef_poller_detect,
 		.read = nfc_reader_poller_ndef_read,
 		.listener_get = ndef_listener_get,
+		.clone_fn = nfc_reader_poller_ndef_clone,
 	},
 #endif
 	{
@@ -63,6 +91,7 @@ static const nfc_reader_poller_entry_t s_pollers[] = {
 		.detect = ultralight_poller_detect_stub,
 		.read = ultralight_poller_read_stub,
 		.listener_get = NULL,
+		.clone_fn = NULL,
 	},
 	{
 		.detect = NULL,
@@ -94,41 +123,16 @@ int nfc_reader_pollers_run(const char *tag)
 
 		matched = true;
 
-		if (e->listener_get == NULL) {
-			LOG_WRN("Poller \"%s\" matched but has no listener (stub)", e->name);
+		if (e->clone_fn == NULL) {
+			LOG_WRN("Poller \"%s\" matched but has no clone hook (stub)", e->name);
 			ret = -ENOTSUP;
 			break;
 		}
 
-#if IS_ENABLED(CONFIG_NFC_PROTOCOL_NDEF)
-		if (e->persist_id == NFC_PERSIST_ID_NDEF) {
-			ndef_data_t data;
-			const nfc_service_t *svcs[] = { e->listener_get() };
-
-			ndef_data_reset(&data);
-			ret = e->read(session, &data);
-			if (ret != 0) {
-				LOG_WRN("NDEF poller read failed: %d", ret);
-				break;
-			}
-
-			ret = ndef_listener_init(&data, NULL);
-			if (ret != 0 && ret != -EALREADY) {
-				LOG_ERR("ndef_listener_init failed: %d", ret);
-				break;
-			}
-
-			ret = nfc_store_save(tag, svcs, ARRAY_SIZE(svcs));
-			if (ret != 0) {
-				LOG_ERR("nfc_store_save failed: %d", ret);
-			} else {
-				LOG_INF("Clone saved tag \"%s\" via %s poller", tag, e->name);
-			}
-			break;
+		ret = e->clone_fn(session, tag);
+		if (ret == 0) {
+			LOG_INF("Clone saved tag \"%s\" via %s poller", tag, e->name);
 		}
-#endif
-		LOG_WRN("Poller \"%s\" matched but clone path not implemented", e->name);
-		ret = -ENOTSUP;
 		break;
 	}
 
