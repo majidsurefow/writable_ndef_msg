@@ -1,0 +1,22 @@
+# Copyright (c) 2026
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  NXP PN7160 NFC controller on I2C bus (primary / default transport).
+
+  Example — nRF54L15 DK + PN7160 eval shield (adjust bus and pins):
+
+      &i2c21 {
+          status = "okay";
+          clock-frequency = <100000>;
+          pn7160: pn7160@28 {
+              compatible = "nxp,pn7160";
+              reg = <0x28>;
+              irq-gpios = <&gpio1 10 GPIO_ACTIVE_HIGH>;
+              ven-gpios = <&gpio1 11 GPIO_ACTIVE_HIGH>;
+          };
+      };
+
+compatible: "nxp,pn7160"
+
+include: ["i2c-device.yaml", "nxp,pn7160-common.yaml"]

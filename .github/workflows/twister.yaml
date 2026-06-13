@@ -1,0 +1,199 @@
+name: Run tests with twister
+
+on:
+  push:
+    branches:
+      - main
+      - nfc-stack
+      - v*-branch
+      - collab-*
+  pull_request:
+    branches:
+      - main
+      - nfc-stack
+      - v*-branch
+      - collab-*
+  schedule:
+    - cron: '0 2 * * 0'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+env:
+  NCS_REVISION: v3.2.4
+  APP_PATH: .
+
+jobs:
+  twister-build:
+    name: Twister build (${{ matrix.scope }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - scope: pr
+            twister_args: >-
+              -T . -t ci_build --integration --build-only
+              --force-color --inline-logs -v --clobber-output
+              -j $(nproc)
+          - scope: push
+            twister_args: >-
+              -T . -t ci_build --build-only
+              --force-color --inline-logs -v --clobber-output
+              -j $(nproc)
+          - scope: nightly
+            twister_args: >-
+              -T . -t ci_build --build-only --all
+              --force-color --inline-logs -v --clobber-output
+              -j $(nproc)
+    if: >-
+      (matrix.scope == 'pr' && (github.event_name == 'pull_request')) ||
+      (matrix.scope == 'push' && (github.event_name == 'push')) ||
+      (matrix.scope == 'nightly' && (github.event_name == 'schedule'))
+    timeout-minutes: ${{ matrix.scope == 'nightly' && 240 || 120 }}
+    env:
+      BASE_REF: ${{ github.base_ref }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Rebase onto target branch
+        if: github.event_name == 'pull_request'
+        run: |
+          git config --global user.email "actions@zephyrproject.org"
+          git config --global user.name "Github Actions"
+          rm -fr ".git/rebase-apply" ".git/rebase-merge"
+          git rebase "origin/${BASE_REF}"
+          git clean -f -d
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.12'
+
+      - name: Setup Zephyr project
+        uses: zephyrproject-rtos/action-zephyr-setup@5ec39f5cba83346d83a836dfed1524270c660e28 # v1.0.14
+        with:
+          app-path: ${{ env.APP_PATH }}
+          toolchains: arm-zephyr-eabi
+
+      - name: Run Twister (ci_build)
+        run: |
+          export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr"
+          export ZEPHYR_TOOLCHAIN_VARIANT=zephyr
+          west twister ${{ matrix.twister_args }}
+
+      - name: Upload Twister results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: twister-build (${{ matrix.scope }})
+          if-no-files-found: ignore
+          path: |
+            twister-out/twister.xml
+            twister-out/twister.json
+
+  twister-unit:
+    name: Twister unit (${{ matrix.scope }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - scope: pr
+          - scope: push
+    if: >-
+      (matrix.scope == 'pr' && (github.event_name == 'pull_request')) ||
+      (matrix.scope == 'push' && (github.event_name == 'push'))
+    timeout-minutes: 60
+    env:
+      BASE_REF: ${{ github.base_ref }}
+      UNIT_TEST_DIR: modules/nfc_pn7160/tests/unit/pn7160_tml
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Rebase onto target branch
+        if: github.event_name == 'pull_request'
+        run: |
+          git config --global user.email "actions@zephyrproject.org"
+          git config --global user.name "Github Actions"
+          rm -fr ".git/rebase-apply" ".git/rebase-merge"
+          git rebase "origin/${BASE_REF}"
+          git clean -f -d
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.12'
+
+      - name: Setup Zephyr project
+        uses: zephyrproject-rtos/action-zephyr-setup@5ec39f5cba83346d83a836dfed1524270c660e28 # v1.0.14
+        with:
+          app-path: ${{ env.APP_PATH }}
+          toolchains: arm-zephyr-eabi
+
+      - name: Run Twister (ci_unit on qemu_cortex_m33)
+        run: |
+          export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr"
+          export ZEPHYR_TOOLCHAIN_VARIANT=zephyr
+          west twister -T "${UNIT_TEST_DIR}" -t ci_unit -p qemu_cortex_m33 \
+            --no-sysbuild --force-color --inline-logs -v --clobber-output \
+            -j $(nproc)
+          # native_sim / native_sim/native: Linux or Multipass only — not run in CI.
+          # west twister -T "${UNIT_TEST_DIR}" -t ci_unit -p native_sim \
+          #   --no-sysbuild --force-color --inline-logs -v
+
+      - name: Upload Twister results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: twister-unit (${{ matrix.scope }})
+          if-no-files-found: ignore
+          path: |
+            twister-out/twister.xml
+            twister-out/twister.json
+
+  twister-test-results:
+    name: Publish Unit Test Results
+    needs:
+      - twister-build
+      - twister-unit
+    runs-on: ubuntu-24.04
+    if: always() && (needs.twister-build.result != 'skipped' || needs.twister-unit.result != 'skipped')
+    permissions:
+      checks: write
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5461e7c # v8.0.1
+        with:
+          path: artifacts
+
+      - name: Publish Unit Test Results
+        uses: EnricoMi/publish-unit-test-result-action@c950f6fb443cb5af20a377fd0dfaa78838901040 # v2.23.0
+        if: always()
+        with:
+          check_name: Unit Test Results
+          files: "**/twister.xml"
+          comment_mode: off
+
+  twister-status-check:
+    name: Check Twister Status
+    if: always()
+    needs:
+      - twister-build
+      - twister-unit
+      - twister-test-results
+    uses: ./.github/workflows/ready-to-merge.yml
+    with:
+      needs_context: ${{ toJson(needs) }}

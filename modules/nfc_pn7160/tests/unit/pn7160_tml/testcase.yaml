@@ -1,0 +1,11 @@
+tests:
+  modules.nfc_pn7160.unit.pn7160_tml:
+    tags:
+      - ci_unit
+      - pn7160
+    platform_allow:
+      - qemu_cortex_m33
+      - native_sim
+      - native_sim/native
+    integration_platforms:
+      - qemu_cortex_m33

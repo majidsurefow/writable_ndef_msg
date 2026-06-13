@@ -1,0 +1,43 @@
+# NXP PN7160 NFC controller — out-of-tree Zephyr module
+
+DT_COMPAT_NXP_PN7160 := nxp,pn7160
+
+menuconfig PN7160
+	bool "NXP PN7160 NFC controller"
+	default y
+	depends on DT_HAS_NXP_PN7160_ENABLED
+	select I2C if $(dt_compat_on_bus,$(DT_COMPAT_NXP_PN7160),i2c)
+	select SPI if $(dt_compat_on_bus,$(DT_COMPAT_NXP_PN7160),spi)
+	help
+	  Enable the PN7160 NFC controller driver, TML framing, and NCI stack.
+	  Transport (I2C or SPI) is selected by devicetree — one bus per instance.
+
+if PN7160
+
+config PN7160_TML_I2C
+	def_bool $(dt_compat_on_bus,$(DT_COMPAT_NXP_PN7160),i2c)
+	help
+	  Compile I2C TML backend when any enabled PN7160 instance is on I2C.
+
+config PN7160_TML_SPI
+	def_bool $(dt_compat_on_bus,$(DT_COMPAT_NXP_PN7160),spi)
+	help
+	  Compile SPI TML backend when any enabled PN7160 instance is on SPI.
+
+config PN7160_INIT_PRIORITY
+	int "PN7160 driver init priority"
+	default 80
+	help
+	  Device driver initialization priority. Must run after I2C/SPI controller init.
+
+config PN7160_RX_BUF_SIZE
+	int "PN7160 RX buffer size"
+	default 258
+	help
+	  Static RX buffer for NCI responses.
+
+module = PN7160
+module-str = pn7160
+source "subsys/logging/Kconfig.template.log_config"
+
+endif # PN7160

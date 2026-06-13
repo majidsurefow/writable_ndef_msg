@@ -9,88 +9,75 @@
  * @defgroup nfc_writable_ndef_msg_example_main main.c
  * @{
  * @ingroup nfc_writable_ndef_msg_example
- * @brief The application main file of NFC writable NDEF message example.
+ * @brief NFC Type 4 tag emulation (custom UID, minimal in-RAM NDEF file).
  *
  */
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/reboot.h>
 #include <stdbool.h>
-#include <nfc_t4t_lib.h>
-
-#include <nfc/ndef/msg.h>
-#include <nfc/t4t/ndef_file.h>
 
 #include <dk_buttons_and_leds.h>
 
-#include "ndef_file_m.h"
+#include "nfc_emulation.h"
 
-
-#define NFC_FIELD_LED		DK_LED1
-#define NFC_WRITE_LED		DK_LED2
-#define NFC_READ_LED		DK_LED4
-
-#define NDEF_RESTORE_BTN_MSK	DK_BTN1_MSK
-
-static uint8_t ndef_msg_buf[CONFIG_NDEF_FILE_SIZE]; /**< Buffer for NDEF file. */
-
-enum {
-	FLASH_WRITE_FINISHED,
-	FLASH_BUF_PREP_STARTED,
-	FLASH_BUF_PREP_FINISHED,
-	FLASH_WRITE_STARTED,
+#define NFC_FIELD_LED	DK_LED1
+#define NFC_READ_LED	DK_LED4
+#define NFC_UID_COUNT 3
+static const uint8_t nfc_uids[NFC_UID_COUNT][7] = {
+	{ 0x04, 0x1F, 0xF5, 0x5C, 0xBD, 0x2A, 0x81 },   // UID 0
+	{ 0x04, 0x91, 0xF7, 0x01, 0x8A, 0x04, 0x03 },   // UID 1
+	{ 0x04, 0x2D, 0x6F, 0xFA, 0x11, 0x6F, 0x80 }    // UID 2 (added as last)
 };
-static atomic_t op_flags;
-static uint8_t flash_buf[CONFIG_NDEF_FILE_SIZE]; /**< Buffer for flash update. */
-static uint8_t flash_buf_len; /**< Length of the flash buffer. */
 
-static void flash_buffer_prepare(size_t data_length)
+static size_t nfc_uid_slot;
+static struct k_work nfc_field_off_work;
+
+static void nfc_field_off_work_handler(struct k_work *work)
 {
-	if (atomic_cas(&op_flags, FLASH_WRITE_FINISHED,
-			FLASH_BUF_PREP_STARTED)) {
-		flash_buf_len = data_length + NFC_NDEF_FILE_NLEN_FIELD_SIZE;
-		memcpy(flash_buf, ndef_msg_buf, sizeof(flash_buf));
+	int err;
 
-		atomic_set(&op_flags, FLASH_BUF_PREP_FINISHED);
-	} else {
-		printk("Flash update pending. Discarding new data...\n");
+	ARG_UNUSED(work);
+
+	nfc_uid_slot = (nfc_uid_slot + 1U) % NFC_UID_COUNT;
+
+	nfc_uid_t uid = {
+		.bytes = nfc_uids[nfc_uid_slot],
+		.len = sizeof(nfc_uids[nfc_uid_slot]),
+	};
+
+	err = nfc_apply_uid_and_restart(&uid);
+	if (err < 0) {
+		printk("nfc_apply_uid_and_restart failed: %d\n", err);
 	}
-
 }
 
-/**
- * @brief Callback function for handling NFC events.
- */
-static void nfc_callback(void *context,
-			 nfc_t4t_event_t event,
-			 const uint8_t *data,
-			 size_t data_length,
-			 uint32_t flags)
+/** Type 4 NDEF file: NLEN (BE) + single empty NDEF record (volatile; not persisted). */
+#define NDEF_BUF_SIZE 64
+static uint8_t ndef_msg_buf[NDEF_BUF_SIZE] = {
+	0x00, 0x03,
+	0xD0, 0x00, 0x00,
+};
+
+static void nfc_callback(void *context, nfc_t4t_event_t event, const uint8_t *data,
+			 size_t data_length, uint32_t flags)
 {
 	ARG_UNUSED(context);
 	ARG_UNUSED(data);
+	ARG_UNUSED(data_length);
 	ARG_UNUSED(flags);
 
 	switch (event) {
 	case NFC_T4T_EVENT_FIELD_ON:
 		dk_set_led_on(NFC_FIELD_LED);
 		break;
-
 	case NFC_T4T_EVENT_FIELD_OFF:
 		dk_set_leds(DK_NO_LEDS_MSK);
+		k_work_submit(&nfc_field_off_work);
 		break;
-
 	case NFC_T4T_EVENT_NDEF_READ:
 		dk_set_led_on(NFC_READ_LED);
 		break;
-
-	case NFC_T4T_EVENT_NDEF_UPDATED:
-		if (data_length > 0) {
-			dk_set_led_on(NFC_WRITE_LED);
-			flash_buffer_prepare(data_length);
-		}
-		break;
-
 	default:
 		break;
 	}
@@ -98,96 +85,44 @@ static void nfc_callback(void *context,
 
 static int board_init(void)
 {
-	int err;
-
-	err = dk_buttons_init(NULL);
-	if (err) {
-		printk("Cannot init buttons (err: %d)\n", err);
-		return err;
-	}
-
-	err = dk_leds_init();
-	if (err) {
-		printk("Cannot init LEDs (err: %d)\n", err);
-	}
-
-	return err;
+	return dk_leds_init();
 }
 
-/**
- * @brief   Function for application main entry.
- */
 int main(void)
 {
-	printk("Starting Nordic NFC Writable NDEF Message sample\n");
+	printk("NFC Type 4 emulation sample\n");
 
-	/* Configure LED-pins as outputs. */
 	if (board_init() < 0) {
-		printk("Cannot initialize board!\n");
-		goto fail;
-	}
-	/* Initialize storage. */
-	if (ndef_file_setup() < 0) {
-		printk("Cannot setup NDEF file!\n");
-		goto fail;
-	}
-	/* Load NDEF message from the flash file. */
-	if (ndef_file_load(ndef_msg_buf, sizeof(ndef_msg_buf)) < 0) {
-		printk("Cannot load NDEF file!\n");
 		goto fail;
 	}
 
-	/* Restore default NDEF message if button is pressed. */
-	uint32_t button_state;
+	k_work_init(&nfc_field_off_work, nfc_field_off_work_handler);
+	nfc_uid_slot = 0;
 
-	dk_read_buttons(&button_state, NULL);
-	if (button_state & NDEF_RESTORE_BTN_MSK) {
-		if (ndef_restore_default(ndef_msg_buf,
-					 sizeof(ndef_msg_buf)) < 0) {
-			printk("Cannot flash NDEF message!\n");
-			goto fail;
-		}
-		printk("Default NDEF message restored!\n");
-	}
-	/* Set up NFC */
-	int err = nfc_t4t_setup(nfc_callback, NULL);
+	nfc_uid_t uid = {
+		.bytes = nfc_uids[nfc_uid_slot],
+		.len = sizeof(nfc_uids[nfc_uid_slot]),
+	};
+	nfc_t4_start_args_t t4 = {
+		.callback = nfc_callback,
+		.callback_context = NULL,
+		.ndef_file_buf = ndef_msg_buf,
+		.ndef_file_buf_size = sizeof(ndef_msg_buf),
+	};
 
-	if (err < 0) {
-		printk("Cannot setup t4t library!\n");
+	if (nfc_on(&uid, NFC_TAG_TYPE_4, &t4) < 0) {
+		printk("Cannot turn NFC on\n");
 		goto fail;
 	}
-	/* Run Read-Write mode for Type 4 Tag platform */
-	if (nfc_t4t_ndef_rwpayload_set(ndef_msg_buf,
-				       sizeof(ndef_msg_buf)) < 0) {
-		printk("Cannot set payload!\n");
-		goto fail;
-	}
-	/* Start sensing NFC field */
-	if (nfc_t4t_emulation_start() < 0) {
-		printk("Cannot start emulation!\n");
-		goto fail;
-	}
-	printk("Starting NFC Writable NDEF Message sample\n");
 
 	while (true) {
-		if (atomic_cas(&op_flags, FLASH_BUF_PREP_FINISHED,
-				FLASH_WRITE_STARTED)) {
-			if (ndef_file_update(flash_buf, flash_buf_len) < 0) {
-				printk("Cannot flash NDEF message!\n");
-			} else {
-				printk("NDEF message successfully flashed.\n");
-			}
-
-			atomic_set(&op_flags, FLASH_WRITE_FINISHED);
-		}
-
 		k_cpu_atomic_idle(irq_lock());
 	}
 
 fail:
-	#if CONFIG_REBOOT
-		sys_reboot(SYS_REBOOT_COLD);
-	#endif /* CONFIG_REBOOT */
-		return -EIO;
+#if CONFIG_REBOOT
+	sys_reboot(SYS_REBOOT_COLD);
+#endif
+	return -EIO;
 }
 /** @} */

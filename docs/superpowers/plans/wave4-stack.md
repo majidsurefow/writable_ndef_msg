@@ -1628,9 +1628,9 @@ err_svc_init:
 
 ---
 
-### Integration Note — BLE+NFC Coexistence (sigmation_experimental)
+### Integration Note — BLE+NFC Coexistence (writable_ndef_msg)
 
-> **Open item (decide at integration time):** The `sigmation_experimental` product runs continuous BLE extended advertising and scan. NFC `nfc_transport_start()` / `nfc_transport_stop()` coordination with the BLE-driven product lifecycle is **not defined in this plan** — it is resolved at integration time. The analog orchestrator in the integration repo is `system_lifecycle.c`:
+> **Open item (decide at integration time):** The product firmware may run continuous BLE extended advertising and scan. NFC `nfc_transport_start()` / `nfc_transport_stop()` coordination with the BLE-driven product lifecycle is **not defined in this plan** — it is resolved at integration time. The analog orchestrator is `system_lifecycle.c` when that module exists in this repo:
 > - **Option A (app-driven):** the application calls `nfc_stack_start()` / `nfc_stack_stop()` independently from `system_lifecycle.c` based on product state machine.
 > - **Option B (lifecycle-driven):** `system_lifecycle.c` wires NFC start/stop alongside BLE transitions, potentially pausing NFC when BLE requires exclusive RF time (if coexistence is needed on nRF54L15).
 > Decision deferred to integration. No stack API change is required by either option — the existing `nfc_stack_start/stop` surface is sufficient.

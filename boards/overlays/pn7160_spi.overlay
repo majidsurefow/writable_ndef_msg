@@ -1,0 +1,17 @@
+/*
+ * PN7160 on SPI — adjust bus, CS, and GPIO pins for your wiring.
+ *
+ * Default: SPI on spi21 @ CS0, IRQ P1.10, VEN P1.11 (same GPIOs as I2C overlay).
+ * NXP reference SPI clock: 500 kHz (set via spi-max-frequency).
+ */
+
+&spi21 {
+	status = "okay";
+	pn7160: pn7160@0 {
+		compatible = "nxp,pn7160";
+		reg = <0>;
+		spi-max-frequency = <500000>;
+		irq-gpios = <&gpio1 10 GPIO_ACTIVE_HIGH>;
+		ven-gpios = <&gpio1 11 GPIO_ACTIVE_HIGH>;
+	};
+};

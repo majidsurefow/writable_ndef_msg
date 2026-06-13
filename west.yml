@@ -1,0 +1,20 @@
+# West manifest for writable_ndef_msg (NCS workspace root, T2 topology).
+# CI and local Multipass use the same pin as zephyr_CICD/workflows/twister.yaml.
+# Out-of-tree modules (e.g. modules/nfc_pn7160) are discovered via ZEPHYR_EXTRA_MODULES
+# in CMakeLists.txt; unit tests add the same path locally. See docs/CI_TESTING.md.
+
+manifest:
+  version: "0.13"
+
+  self:
+    path: .
+
+  remotes:
+    - name: ncs
+      url-base: https://github.com/nrfconnect
+
+  projects:
+    - name: nrf
+      repo-path: sdk-nrf
+      revision: v3.2.4
+      import: true

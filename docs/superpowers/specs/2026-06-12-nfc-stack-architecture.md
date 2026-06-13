@@ -23,6 +23,11 @@ This document is the **single architecture-of-record** for the NFC stack.
 | `wave4-stack.md` | Implementation slice — stack orchestrator (card role) |
 | `wave5-{ndef,ultralight,desfire,emv,aliro}.md` | Implementation slices — protocol modules |
 | `wave6-store.md` | Implementation slice — card file format + store |
+| `wave7-pn7160-reader.md` | Implementation slice — PN7160 reader backend + capture engine |
+| `2026-06-13-implementation-phases.md` | **Locked build order — PN7160 first, then NFCT** |
+| `2026-06-13-nfc-final-design.md` | **Master design — final reconciled topology, API stack, waves** |
+| `2026-06-13-locked-architecture-summary.md` | Short summary; role detail superseded by final design |
+| `2026-06-13-nfct-pn7160-capability-matrix.md` | Per-protocol support matrix + NFCT T2/T4 limits |
 | `docs/NFC_STACK_CONVENTIONS.md` | Coding conventions (binding for all waves) |
 | `docs/NFC_HAL_AUTHORING_GUIDE.md` | How to write a HAL backend (capability, event bridging, Kconfig/DT, porting checklist) |
 | `docs/NFC_WAVE_PLANNING_GUIDE.md` | Wave planning process and template |
@@ -48,6 +53,52 @@ The design is a **clean-room re-expression** of the architecture proven by the
 Flipper Zero NFC stack (`lib/nfc`): same layering (per-protocol data model +
 poller + listener, registry tables, base/child technology lanes), our own code.
 See §10 for the sourcing discipline.
+
+### 1.1 Clone → Emulate → Persist (FINAL — 2026-06-13)
+
+> **Implementation order (LOCKED):** PN7160 first (Phases 0–2), NFCT port second (Phase 3).
+> See [`2026-06-13-implementation-phases.md`](2026-06-13-implementation-phases.md).
+>
+> **Final design (2026-06-13):** The reconciled hardware topology, API layer stack,
+> and PN7160 card-emulation evidence live in
+> [`2026-06-13-nfc-final-design.md`](2026-06-13-nfc-final-design.md).
+> Summary: PN7160 = reader primary + prove emulate on same chip · NFCT = default product
+> emulator (built in Phase 3) · ST25R3916 demoted. Per-protocol matrix:
+> [`2026-06-13-nfct-pn7160-capability-matrix.md`](2026-06-13-nfct-pn7160-capability-matrix.md).
+> PN7160 reader plan: [`../plans/wave7-pn7160-reader.md`](../plans/wave7-pn7160-reader.md) (Phase 0/1).
+
+When a card is **cloned**, the card role **emulates it fully** — not a partial or
+read-only stub unless the source card or capture metadata says otherwise.
+
+**NDEF profile (`NFC_PROFILE_NDEF`):**
+- Reader-captured NDEF clones replay as a complete Type-4 NDEF tag
+  (`EMULATION_COMPLETE`; not `READ_ONLY_PARTIAL`).
+- Reader writes (`UPDATE BINARY` on file `E104`) update the live NDEF data model
+  and are **persisted** via `nfc_store_on_dirty()` under the active load tag —
+  same behaviour as a normal writable NDEF-capable tag (survives field-off,
+  reload, and re-emulation with updated content).
+- `nfc_stack` tracks the tag from the last successful `nfc_stack_load(tag)` and
+  wires the live-commit call from `nfc_stack.c` (no service→store upward include).
+
+**Other profiles (unchanged by this decision):**
+- **Ultralight** (`NFC_PROFILE_ULTRALIGHT`): T4T-via-NDEF adapter only;
+  `DECISION-UL-3` / `DECISION-UL-9` stand — reader-written NDEF is not
+  back-propagated into the page model; live NDEF persist applies only under
+  `NFC_PROFILE_NDEF`.
+- **DeSFire / EMV / Aliro:** reader capture remains **partial** when auth
+  secrets are unavailable (`READER_CAPTURED | READ_ONLY_PARTIAL`).
+
+```mermaid
+flowchart LR
+  A[Reader clones NDEF] --> B[Serialize .card blob]
+  B --> C[nfc_stack_load tag]
+  C --> D[Emulate NFC_PROFILE_NDEF]
+  D --> E[Reader UPDATE BINARY]
+  E --> F[nfc_store_on_dirty]
+  F --> G[Persist under tag]
+  G --> H[Reload / re-emulate]
+  H --> D
+```
 
 ---
 
@@ -284,7 +335,7 @@ non-Type-4 protocol modules (MIFARE Classic, ISO15693, …) · real storage back
 **Explicitly deferred:** planning non-Type-4 protocols in detail against NFCT
 hardware that cannot run them (avoids designing blind against missing silicon).
 
-**Integration open items (nRF54L15 / sigmation_experimental):**
+**Integration open items (nRF54L15 / writable_ndef_msg):**
 
 - **BLE+NFC coexistence policy (open item — Wave 4 integration):** the product runs continuous BLE extended advertising and scan on `nrf54l15dk`. NFC listen `start`/`stop` coordination with the BLE-driven product lifecycle is a **Wave-4-integration-time decision**. Options include NFC always-on (if coexistence is benign on nRF54L15 NFCT + SoftDevice/host), or orchestrated start/stop from `system_lifecycle.c`. Decision deferred; no stack API is locked by this open item.
 - **RAM/flash budget constraint:** `nfc_work_q` stack + APDU `net_buf` pool + all service `.bss` must be budgeted against the ~188 KiB SRAM on nRF54L15 already carrying BLE host stacks and TX/RX work queues. Measure Thread Analyzer peak for `nfc_work_q` (Wave 1 task 16) and ensure combined NFC allocation ≤ 20 KiB to leave headroom.
@@ -306,7 +357,7 @@ wave is planned, not before.
 
 **Emulate (card role, today):**
 field-on → HAL listen event → (APDU lane: framing → router) → protocol listener →
-response. Writable mutation → dirty → store write-through.
+response. Writable NDEF mutation → `nfc_store_on_dirty` under active tag (§1.1).
 
 **Save / replay (today, NFCT):**
 provision/hand-author or load card file → deserialize into protocol data models →
@@ -398,12 +449,18 @@ No custom DT binding YAML is needed for NFCT — it is a fixed on-die peripheral
 
 ### 11.3 Integration home
 
-The stack is implemented as `src/nfc/` inside the `sigmation_experimental` repo on a feature branch. Integration points:
+The stack is implemented in **writable_ndef_msg** (`/Users/majidfaroud/writable_ndef_msg`):
 
-- **Kconfig gate:** one top-level `CONFIG_NFC_STACK=y` symbol in the root `Kconfig` (via `rsource "src/nfc/Kconfig"`). Until set, the product build is **completely unchanged**.
-- **CMake gate:** root `CMakeLists.txt` has `add_subdirectory(src/nfc)` (already present from Wave 1 bootstrap).
-- **DK bring-up:** `west build -b nrf54l15dk/nrf54l15/cpuapp -- -DCONFIG_NFC_STACK=y`
-- **Product board:** `west build -b sigmationbaord/nrf54l15/cpuapp --board-root <BOARD_ROOT> -- -DCONFIG_NFC_STACK=y` (see that repo's `BUILD.md` for the `--board-root` invocation). Blocked until the antenna DTS prerequisite (§11.2) is resolved.
+- `src/nfc/` — NFC stack (HAL, reader, services, store)
+- `modules/nfc_pn7160/` — PN7160 out-of-tree Zephyr module
+
+Integration points:
+
+- **Kconfig gate:** one top-level `CONFIG_NFC_STACK=y` symbol in the root `Kconfig` (via `rsource "src/nfc/Kconfig"`). Until set, the existing NFCT sample build is **unchanged**.
+- **CMake gate:** root `CMakeLists.txt` registers `ZEPHYR_EXTRA_MODULES` for `modules/nfc_pn7160`; `add_subdirectory(src/nfc)` when the stack is enabled.
+- **NFCT sample (existing):** `west build -b nrf54l15dk/nrf54l15/cpuapp`
+- **PN7160 bring-up:** see [`2026-06-13-implementation-phases.md`](2026-06-13-implementation-phases.md) §Build from this repo.
+- **Product board:** `west build -b sigmationbaord/nrf54l15/cpuapp --board-root <BOARD_ROOT> -- -DCONFIG_NFC_STACK=y` (blocked until the antenna DTS prerequisite in §11.2 is resolved).
 
 ### 11.4 External controller backends (ST25R3916, PN7160) — DEFERRED
 
@@ -420,6 +477,10 @@ Each external controller gets a **custom DT binding** (compatible string, `reg` 
 
 ## 12. Changelog
 
+- **v3.5 (2026-06-14):** Retargeted implementation home to `writable_ndef_msg`; PN7160 module at `modules/nfc_pn7160/`.
+- **v3.4 (2026-06-13):** Final design doc added; §1.1 points to `2026-06-13-nfc-final-design.md`; PN7160 CE capability acknowledged (optional Wave 7b).
+- **v3.3 (2026-06-13):** Locked PN7160-only reader backend; ST25R3916 demoted; added capability matrix + Wave 7 plan pointers in §1.1.
+- **v3.2 (2026-06-13):** Locked §1.1 clone→emulate→persist: NDEF profile = full writable emulation with mandatory `nfc_store_on_dirty` on reader UPDATE BINARY; Ultralight adapter and DeSFire/EMV/Aliro partial-capture boundaries unchanged.
 - **v3.1 (2026-06-12, amended):** Retargeted primary platform to nRF54L15 (`sigmationbaord/nrf54l15/cpuapp` product; `nrf54l15dk/nrf54l15/cpuapp` DK bring-up); noted nRF52840 as valid secondary target; generalized antenna pin handling (§11.2) with sigmationbaord DTS prerequisite flag; added §11.3 integration home; added BLE+NFC coexistence + RAM/flash budget open items (§7); CRACEN crypto noted in wave5-desfire/aliro amendments; sigmation test-path convention (`tests/unit/nfc_<module>/`) propagated to wave plans.
 - **v3 (2026-06-12):** Re-architected to capability-driven, dual-role
   (card/reader), multi-backend (NFCT → ST25R3916/RFAL → PN7160) with multi-lane

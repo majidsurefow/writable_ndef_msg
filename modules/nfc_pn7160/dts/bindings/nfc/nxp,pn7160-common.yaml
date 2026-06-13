@@ -1,0 +1,32 @@
+# Copyright (c) 2026
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  NXP PN7160 NFC controller (NCI 2.0 over TML).
+
+  The PN7160 connects to the host over I2C or SPI (mutually exclusive per
+  instance — place the node under exactly one bus controller). GPIO lines
+  HOST_IRQ, VEN, and optional DWL_REQ are identical for both transports.
+
+  Reference: NXP-NCI2.0 host examples (source/TML/tml.c).
+
+compatible: "nxp,pn7160"
+
+properties:
+  irq-gpios:
+    type: phandle-array
+    required: true
+    description: |
+      HOST_IRQ — input, active high while NCI payload is available on the bus.
+      Same semantics for I2C and SPI.
+
+  ven-gpios:
+    type: phandle-array
+    required: true
+    description: |
+      VEN (enable / hard reset) — output, active high powers the controller.
+
+  dwl-gpios:
+    type: phandle-array
+    description: |
+      DWL_REQ — output, active high selects firmware download mode (optional).

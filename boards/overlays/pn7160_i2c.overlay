@@ -1,0 +1,15 @@
+/*
+ * PN7160 eval shield on nRF54L15 DK — adjust bus/pins for your wiring.
+ *
+ * Default: I2C on i2c21 @ 0x28, IRQ P1.10, VEN P1.11.
+ */
+
+&i2c21 {
+	status = "okay";
+	pn7160: pn7160@28 {
+		compatible = "nxp,pn7160";
+		reg = <0x28>;
+		irq-gpios = <&gpio1 10 GPIO_ACTIVE_HIGH>;
+		ven-gpios = <&gpio1 11 GPIO_ACTIVE_HIGH>;
+	};
+};

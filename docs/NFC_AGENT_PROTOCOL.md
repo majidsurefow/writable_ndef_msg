@@ -1,7 +1,7 @@
 # NFC Implementation Agent Protocol
 
 **Status:** BINDING for every implementation agent dispatched against a wave plan.
-**Scope:** `src/nfc/` in `sigmation_experimental`, branch `nfc-stack` (waves merge to `dev`).
+**Scope:** `src/nfc/` and `modules/nfc_pn7160/` in **writable_ndef_msg** (main branch).
 
 Every dispatch prompt references this file. If anything here conflicts with your
 dispatch prompt, this file wins unless the prompt explicitly overrides a numbered
@@ -103,12 +103,13 @@ resolution. Then continue with the next independent task if one exists.
 
 | Item | Value |
 |---|---|
-| Repo / branch | `/Users/majidfaroud/sigmation_experimental`, branch `nfc-stack` |
+| Repo / branch | `/Users/majidfaroud/writable_ndef_msg`, main branch |
 | Board (bring-up) | `nrf54l15dk/nrf54l15/cpuapp` (PCA10156) |
 | Product board | `sigmationbaord/nrf54l15/cpuapp` via `-DBOARD_ROOT=$PWD` (no NFC antenna DTS yet — do not target) |
 | SDK | NCS v3.2.4 (`/opt/nordic/ncs/v3.2.4`), env per `tests/scripts/hil_dk.sh` |
-| Test layout | `tests/unit/<module>/` (own `CMakeLists.txt` + `prj.conf` + `testcase.yaml`), `--no-sysbuild`, Twister tag `sigmation.nfc.<module>` |
-| native_sim | Linux CI only (blocked on macOS) — use the HIL rig or `qemu_cortex_m33` |
+| Test layout | `modules/<module>/tests/unit/<suite>/` (`testcase.yaml`), `--no-sysbuild`; see `docs/CI_TESTING.md` |
+| CI gate (no hardware) | `west twister -T . -t ci_build --integration --build-only` and unit tests under `modules/nfc_pn7160/tests/unit/pn7160_tml` on `qemu_cortex_m33` |
+| native_sim | Linux CI / Multipass only (blocked on macOS) — use `qemu_cortex_m33` or HIL |
 | Kconfig gate | Everything dark unless `CONFIG_NFC_STACK=y` (only the `nfc_demo` lab sets it) |
 
 ---

@@ -79,7 +79,8 @@
 | **DECISION-ST-10** | `nfc_store_register_save_cb(NULL, …)` / `nfc_store_register_load_cb(NULL, …)` restores the default stub (save → shell, load → compiled-in header). CONVENTIONS §4: NULL accepted to clear. | §2, §3 |
 | **DECISION-ST-11** | Blob format v0x02 adds a `flags:u8` byte between `persist_id` and `entry_len` in each TLV entry, making `NFC_STORE_ENTRY_OVERHEAD` = 4. Decoder is version-aware: v0x01 blobs use 3-byte entry overhead (flags = 0); v0x02+ blobs use 4-byte overhead. Encoder always writes v0x02. Flag bits: `NFC_STORE_ENTRY_FLAG_READER_CAPTURED` (bit 0), `_HAND_AUTHORED` (bit 1), `_EMULATION_COMPLETE` (bit 2), `_READ_ONLY_PARTIAL` (bit 3); bits 4–7 reserved = 0. Size impact: +5 bytes worst-case (11380 vs 11375). | §1.4, §1.7 |
 | **DECISION-ST-12** | **[DECISION — flag for cross-review]** Live-commit concurrency: `nfc_store_on_dirty()` runs `@caller_wq` (from `nfc_work_q`). `s_staging_buf` is shared with `nfc_store_save/load()`, but those require NOT STARTED (enforced by `nfc_stack` `-EBUSY`), making the two paths mutually exclusive via the existing stack state machine. Rapid back-to-back mutations serialise naturally on the single WQ thread. Flag for cross-review if any future path calls `nfc_store_on_dirty` from ISR or a second thread. | §2.6, §5.2 |
-| **DECISION-ST-13** | Flags producer = static per-persist_id table `k_persist_flags[]` in `nfc_store.c`; services do not report flags; vtable unchanged. Hand-provisioned services (NDEF/Ultralight/EMV/DeSFire data) carry `NFC_STORE_ENTRY_FLAG_HAND_AUTHORED \| NFC_STORE_ENTRY_FLAG_EMULATION_COMPLETE`. Reader-captured flags arrive only when the reader role lands (post-Wave-5 amendment). | §3, §2.4, Task 16 |
+| **DECISION-ST-13** | Flags producer = static per-persist_id table `k_persist_flags[]` in `nfc_store.c`; services do not report flags; vtable unchanged. Hand-provisioned services (NDEF/Ultralight/EMV/DeSFire data) carry `HAND_AUTHORED \| EMULATION_COMPLETE`. Reader-captured NDEF carries `READER_CAPTURED \| EMULATION_COMPLETE` (full clone — spec §1.1). DeSFire/Aliro reader captures carry `READER_CAPTURED \| READ_ONLY_PARTIAL`. | §3, §2.4, Task 16 |
+| **DECISION-ST-14** | **[LOCKED 2026-06-13]** NDEF live persist is **required** for `NFC_PROFILE_NDEF`: `nfc_stack.c` calls `nfc_store_on_dirty(ndef_service_get(), active_tag)` after each successful NDEF-file UPDATE BINARY (stack tracks `active_tag` from last `nfc_stack_load()`). Replaces the prior "post-Wave-5 amendment / app-discretionary" wording. Ultralight profile is out of scope (`DECISION-UL-3`). | §2.6, §5.2 |
 
 ---
 
@@ -245,10 +246,11 @@ all loaded entries have `flags = 0x00`. If `version == NFC_STORE_BLOB_VERSION`, 
 header is 4 bytes. Version bytes other than 0x01 and 0x02 → `-EBADMSG` + `corrupt_blob_count++`.
 
 **Usage guidance:** Protocol listeners that support writable emulation should set
-`NFC_STORE_ENTRY_FLAG_EMULATION_COMPLETE` when serializing. Authenticated cards
-(DeSFire, Aliro) captured via the reader role will carry
-`READER_CAPTURED | READ_ONLY_PARTIAL` — the player knows it can respond to reads but
-cannot replicate the auth secrets.
+`NFC_STORE_ENTRY_FLAG_EMULATION_COMPLETE` when serializing. **NDEF clones** (reader
+role capture) carry `READER_CAPTURED | EMULATION_COMPLETE` — full writable replay
+(spec §1.1). Authenticated cards (DeSFire, Aliro) captured via the reader role
+carry `READER_CAPTURED | READ_ONLY_PARTIAL` — the player knows it can respond to
+reads but cannot replicate the auth secrets.
 ---
 
 ## 2. Public API
@@ -446,14 +448,15 @@ nfc_store_state_t nfc_store_get_state(void);
 
 ### 2.6 Live-Persist Hook
 
-> **Designed seam — caller wired in a post-Wave-5 amendment.** The hook API
-> (`nfc_store_on_dirty` / `nfc_store_register_commit_cb`) is **implemented** in
-> Wave 6, but **no Wave 1–6 code calls `nfc_store_on_dirty` yet**. The intended
-> wiring is app-level: the application receives a content-changed event (e.g.
-> after NDEF UPDATE_BINARY) and calls `nfc_store_on_dirty`, avoiding any
-> service→store upward coupling. A post-Wave-5 amendment will add the event
-> emission point and the call site. Until then the hook API exists as a seam
-> with a no-op default stub (DECISION-ST-1).
+> **LOCKED — 2026-06-13 (DECISION-ST-14).** The hook API
+> (`nfc_store_on_dirty` / `nfc_store_register_commit_cb`) is implemented in Wave 6.
+> For **`NFC_PROFILE_NDEF`**, `nfc_stack.c` **must** call `nfc_store_on_dirty()`
+> after each successful NDEF-file `UPDATE BINARY` while emulating under an active
+> load tag (`active_tag` set by last successful `nfc_stack_load(tag)`). The ndef
+> service signals the stack via a callback registered in `nfc_stack.c` — no
+> service→store upward include (CONVENTIONS §3). Ultralight profile is unchanged
+> (`DECISION-UL-3` / spec §1.1). Default commit stub remains no-op until a real
+> backend is registered (DECISION-ST-1).
 
 A fine-grained, per-mutation commit path distinct from the full save/load.
 Called by the card role after any writable-card mutation (e.g. NDEF UPDATE_BINARY).
@@ -908,7 +911,7 @@ static inline int nfc_store_default_cards_lookup(const char *tag,
 | `nfc_stack.c` → `nfc_stack_load(tag)` | `nfc_store_load(tag, svcs, n)` | After STARTED guard |
 | `nfc_store_shell_cmds.c` | `nfc_store_get_config/stats/state()` | Shell `config/stats/state` |
 | `nfc_store_shell_cmds.c` | `nfc_stack_save/load(tag)` | Shell `store save/load <tag>` |
-| Card role service (e.g. NDEF listener) | `nfc_store_on_dirty(svc, tag)` | **Designed seam — no Wave 1–6 caller yet** (post-Wave-5 amendment wires this app-level; see §2.6) |
+| Card role — `nfc_stack.c` (NDEF profile) | `nfc_store_on_dirty(ndef_service_get(), active_tag)` | After successful NDEF-file UPDATE BINARY while STARTED (DECISION-ST-14) |
 | `nfc_store_shell_cmds.c` | `nfc_stack_save/load(tag)` (via export/import path) | Shell `store export/import <tag>` |
 
 **Quiescence contract (inherited from nfc_stack):** `nfc_store_save()` and `nfc_store_load()` are only ever called from `nfc_stack_save/load()`, which enforces `s_state == STARTED → return -EBUSY`. The store may therefore assume that when `nfc_store_save/load()` execute, `nfc_work_q` is not concurrently dispatching APDUs to services — no locking between `s_staging_buf` and service data models is required.
@@ -1598,4 +1601,5 @@ Key implementation notes:
 | **DECISION-ST-10** | `nfc_store_register_*_cb(NULL, …)` restores default stub (save → shell, load → compiled-in header). | §2.3, §3 |
 | **DECISION-ST-11** | Blob v0x02 extends TLV entry header with `flags:u8` (bit 0=READER_CAPTURED, 1=HAND_AUTHORED, 2=EMULATION_COMPLETE, 3=READ_ONLY_PARTIAL). Encoder writes v0x02; decoder is version-aware (v0x01 → flags=0). +5 bytes worst-case. | §1.4, §1.7, Task 16 |
 | **DECISION-ST-12** | **[DECISION — cross-review flag]** `nfc_store_on_dirty()` is `@caller_wq`. `s_staging_buf` shared with save/load but mutually exclusive via NOT STARTED guard. Single WQ thread serialises rapid mutations. Flag for cross-review if ISR or second-thread path added. | §2.6, §5.2, Task 17 |
-| **DECISION-ST-13** | Flags producer = static per-persist_id table `k_persist_flags[]` in `nfc_store.c`; services don't report flags; vtable unchanged. Hand-provisioned services (NDEF/Ultralight/EMV/DeSFire) carry `HAND_AUTHORED \| EMULATION_COMPLETE`. Reader-captured flags arrive only when the reader role lands; revisit then. | §3, §2.4, Task 16 |
+| **DECISION-ST-13** | Flags producer = static per-persist_id table `k_persist_flags[]` in `nfc_store.c`; services don't report flags; vtable unchanged. Hand-provisioned services (NDEF/Ultralight/EMV/DeSFire) carry `HAND_AUTHORED \| EMULATION_COMPLETE`. Reader-captured NDEF carries `READER_CAPTURED \| EMULATION_COMPLETE` (full clone — spec §1.1). DeSFire/Aliro reader captures carry `READER_CAPTURED \| READ_ONLY_PARTIAL`. | §3, §2.4, Task 16 |
+| **DECISION-ST-14** | **[LOCKED 2026-06-13]** NDEF live persist is **required** for `NFC_PROFILE_NDEF`: `nfc_stack.c` calls `nfc_store_on_dirty(ndef_service_get(), active_tag)` after each successful NDEF-file UPDATE BINARY (stack tracks `active_tag` from last `nfc_stack_load()`). Replaces the prior "post-Wave-5 amendment / app-discretionary" wording. Ultralight profile is out of scope (`DECISION-UL-3`). | §2.6, §5.2 |

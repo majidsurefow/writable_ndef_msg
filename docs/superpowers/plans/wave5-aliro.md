@@ -749,13 +749,13 @@ The `serialize()` output contains:
 
 The credential **private** key is NEVER in the serialize blob. It lives exclusively in a PSA persistent slot (`NFC_ALIRO_PSA_KEY_CREDENTIAL_PRIVATE`). The `deserialize()` function restores public key / config data only. The private key must be re-provisioned after a factory reset via `aliro_service_provision_credential()` or the shell command.
 
-> **Integration prerequisite (sigmation_experimental repo — nRF54L15):**
-> The integration repo has `CONFIG_PSA_CRYPTO_DRIVER_CRACEN=y` (CRACEN engine) and KMU. However, **`CONFIG_MBEDTLS_PSA_CRYPTO_STORAGE_C` is currently OFF** in that repo, which means PSA persistent key storage is disabled. Before Aliro can store the credential private key persistently across resets, either:
-> (a) `CONFIG_MBEDTLS_PSA_CRYPTO_STORAGE_C=y` must be enabled in the integration repo's `prj.conf` (plus any required `CONFIG_SETTINGS=y`/`CONFIG_NVS=y` backend), or
+> **Integration prerequisite (writable_ndef_msg — nRF54L15):**
+> This repo has `CONFIG_PSA_CRYPTO_DRIVER_CRACEN=y` (CRACEN engine) and KMU when built for nRF54L15. Before Aliro can store the credential private key persistently across resets, either:
+> (a) `CONFIG_MBEDTLS_PSA_CRYPTO_STORAGE_C=y` must be enabled in this repo's `prj.conf` (plus any required `CONFIG_SETTINGS=y`/`CONFIG_NVS=y` backend), or
 > (b) keys must be imported volatile (non-persistent) and re-provisioned on every boot.
 > **Flag as an integration prerequisite before Aliro wave implementation.**
 >
-> **PSA key-ID range registration:** No collision exists today (the integration repo allocates no application PSA keys). When Aliro lands, the reserved range (`NFC_ALIRO_CREDENTIAL_PSA_KEY_BASE` default `0x2000`) **must be registered** in the integration repo's Kconfig / key-allocation comment to prevent future collisions with other modules.
+> **PSA key-ID range registration:** No collision exists today (this repo allocates no application PSA keys). When Aliro lands, the reserved range (`NFC_ALIRO_CREDENTIAL_PSA_KEY_BASE` default `0x2000`) **must be registered** in this repo's Kconfig / key-allocation comment to prevent future collisions with other modules.
 
 **PSA key attributes for the credential private key:**
 ```c

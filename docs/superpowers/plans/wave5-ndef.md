@@ -460,6 +460,15 @@ nfc_transport_send_response(s_response_buf, actual_bytes + 2U)
 
 > **DECISION-2:** CC write-access field in the CC file is set at init time from `s_config.writable` (0x00 = open, 0xFF = no write). The CC file itself is unconditionally read-only regardless of this field: on_apdu always returns 6985 for UPDATE BINARY targeting the CC. The CC write-access field is informational for the reader only.
 
+> **DECISION-10 (live persist — LOCKED 2026-06-13):** After a successful NDEF-file
+> `UPDATE BINARY` (`update_ok_count++`), the ndef service notifies the stack
+> (callback registered in `nfc_stack.c`) so `nfc_stack` can call
+> `nfc_store_on_dirty(ndef_service_get(), active_tag)` on `nfc_work_q`.
+> Cloned/emulated NDEF cards therefore persist reader-written content like a normal
+> writable tag. The ndef service does **not** `#include` the store layer — wiring
+> stays in `nfc_stack.c` per CONVENTIONS §3. Applies to `NFC_PROFILE_NDEF` only;
+> Ultralight adapter behaviour is unchanged (`DECISION-UL-3`).
+
 #### 3.6.3 `on_deselect(user_ctx)`
 
 Resets `s_file_sel = NDEF_FILE_NONE`. Increments `deselect_count`. No response sent (router already dispatched the new SELECT).
@@ -757,7 +766,7 @@ LOG_MODULE_REGISTER(ndef_service, CONFIG_NFC_LOG_LEVEL);
 
 ## 8. Tasks
 
-All tasks target `qemu_cortex_m33` (or DK hardware) for pure-logic ztest. `native_sim` is Linux-CI-only in this repo (macOS blocked for arch/posix in the integration repo's tooling). Test path: `tests/unit/nfc_ndef/` (standalone `CMakeLists.txt` + `prj.conf` + `testcase.yaml`, built `--no-sysbuild`; Twister tag `sigmation.nfc.ndef`). Integration tests require HAL and nrfxlib; excluded from this wave's test scope.
+All tasks target `qemu_cortex_m33` (or DK hardware) for pure-logic ztest. `native_sim` is Linux-CI-only in this repo (macOS blocked for arch/posix in this repo's tooling). Test path: `tests/unit/nfc_ndef/` (standalone `CMakeLists.txt` + `prj.conf` + `testcase.yaml`, built `--no-sysbuild`; Twister tag `writable_ndef.nfc.ndef`). Integration tests require HAL and nrfxlib; excluded from this wave's test scope.
 
 - [ ] **Task 1 — Scaffolding** (`CMakeLists.txt`, `Kconfig`, empty `ndef_service.h`/`ndef_service.c`)
   - `CMakeLists.txt`:
@@ -911,3 +920,4 @@ All tasks target `qemu_cortex_m33` (or DK hardware) for pure-logic ztest. `nativ
 | **DECISION-7** | Ultralight integration binding | Wave 4 DECISION-6 confirmed: `NFC_PROFILE_ULTRALIGHT` registers NDEF AID via `ndef_service_get()`; Ultralight injects content via `ndef_service_set_content()` |
 | **DECISION-8** | Response buffer size | `NDEF_RESP_BUF_SIZE = CONFIG_NFC_NDEF_MAX_SIZE + 4` bytes; covers CC (17 B) and NDEF file + SW |
 | **DECISION-9** | `ndef_service_init` signature vs Wave 4 expected | Wave 4 §5.2 already specifies `init(const ndef_service_config_t *cfg)`; `nfc_stack.c` passes NULL → defaults; no compatibility issue |
+| **DECISION-10** | Live persist after reader UPDATE BINARY | Stack-wired `nfc_store_on_dirty()` on successful NDEF-file write; cloned NDEF = full writable emulation with persist (spec §1.1; wave6 DECISION-ST-14) |

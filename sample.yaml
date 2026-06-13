@@ -1,6 +1,6 @@
 sample:
-  description: NFC Writable NDEF Message sample
-  name: NFC Writable NDEF Message
+  description: NFC Type 4 tag emulation with custom UID
+  name: NFC Type 4 tag emulation
 tests:
   sample.nfc.writable_ndef_msg:
     sysbuild: true
@@ -43,3 +43,33 @@ tests:
       - ci_build
       - sysbuild
       - ci_samples_nfc
+  sample.nfc.writable_ndef_msg.pn7160.i2c:
+    sysbuild: true
+    build_only: true
+    extra_args: OVERLAY_FILE=boards/overlays/pn7160_i2c.overlay
+    extra_configs:
+      - overlay-pn7160.conf
+    integration_platforms:
+      - nrf54l15dk/nrf54l15/cpuapp
+    platform_allow:
+      - nrf54l15dk/nrf54l15/cpuapp
+    tags:
+      - ci_build
+      - ci_samples_nfc
+      - pn7160
+      - sysbuild
+  sample.nfc.writable_ndef_msg.pn7160.spi:
+    sysbuild: true
+    build_only: true
+    extra_args: OVERLAY_FILE=boards/overlays/pn7160_spi.overlay
+    extra_configs:
+      - overlay-pn7160-spi.conf
+    integration_platforms:
+      - nrf54l15dk/nrf54l15/cpuapp
+    platform_allow:
+      - nrf54l15dk/nrf54l15/cpuapp
+    tags:
+      - ci_build
+      - ci_samples_nfc
+      - pn7160
+      - sysbuild

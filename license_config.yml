@@ -1,0 +1,18 @@
+license:
+  main: apache-2.0
+  report_missing: true
+  category: Permissive
+  supplemental:
+    - LicenseRef-Nordic-5-Clause
+copyright:
+  check: true
+exclude:
+  extensions:
+    - yml
+    - yaml
+    - html
+    - rst
+    - conf
+    - cfg
+  langs:
+    - HTML
