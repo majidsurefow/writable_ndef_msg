@@ -8,6 +8,7 @@
 #include "applets/nfc_applet.h"
 #include "protocols/ndef/ndef.h"
 #include "store/nfc_store.h"
+#include "store_fixture.h"
 
 #include <errno.h>
 #include <string.h>
@@ -69,6 +70,22 @@ static int mock_load_cb(const char *tag, uint8_t *out, size_t max, size_t *out_l
 	(void)memcpy(out, s_saved_blob, s_saved_len);
 	*out_len = s_saved_len;
 	return 0;
+}
+
+static void load_golden_blob(const uint8_t *blob, size_t len)
+{
+	zassert_true(len <= sizeof(s_saved_blob));
+	(void)memcpy(s_saved_blob, blob, len);
+	s_saved_len = len;
+}
+
+static void set_empty_ndef_model(ndef_data_t *data)
+{
+	ndef_data_reset(data);
+	data->cc_len = NFC_NDEF_CC_LEN;
+	data->ndef_file[0] = 0U;
+	data->ndef_file[1] = 0U;
+	data->ndef_file_len = NFC_NDEF_NLEN_FIELD_LEN;
 }
 
 static void fill_fixture_model(ndef_data_t *data)
@@ -137,4 +154,38 @@ ZTEST(nfc_reader_store, test_store_load_roundtrip)
 	zassert_mem_equal(&loaded.cc, &s_model.cc, NFC_NDEF_CC_LEN);
 	zassert_equal(loaded.ndef_file_len, s_model.ndef_file_len);
 	zassert_mem_equal(loaded.ndef_file, s_model.ndef_file, loaded.ndef_file_len);
+}
+
+ZTEST(nfc_reader_store, test_store_load_golden_empty_card)
+{
+	const nfc_service_t *svcs[] = { &s_svc };
+	ndef_data_t expected;
+	ndef_data_t loaded;
+	int ret;
+
+	set_empty_ndef_model(&expected);
+	load_golden_blob(store_fixture_ndef_empty_card, STORE_FIXTURE_NDEF_EMPTY_CARD_LEN);
+
+	ndef_data_reset(&s_model);
+	ret = nfc_store_load("golden", svcs, ARRAY_SIZE(svcs));
+	zassert_ok(ret);
+
+	loaded = s_model;
+	zassert_mem_equal(&loaded.cc, &expected.cc, NFC_NDEF_CC_LEN);
+	zassert_equal(loaded.cc_len, expected.cc_len);
+	zassert_equal(loaded.ndef_file_len, expected.ndef_file_len);
+	zassert_mem_equal(loaded.ndef_file, expected.ndef_file, loaded.ndef_file_len);
+}
+
+ZTEST(nfc_reader_store, test_store_save_matches_golden_empty_card)
+{
+	const nfc_service_t *svcs[] = { &s_svc };
+	int ret;
+
+	set_empty_ndef_model(&s_model);
+	ret = nfc_store_save("empty", svcs, ARRAY_SIZE(svcs));
+	zassert_ok(ret);
+	zassert_equal(s_saved_len, STORE_FIXTURE_NDEF_EMPTY_CARD_LEN);
+	zassert_mem_equal(s_saved_blob, store_fixture_ndef_empty_card,
+			  STORE_FIXTURE_NDEF_EMPTY_CARD_LEN);
 }

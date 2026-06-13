@@ -25,5 +25,6 @@ target_include_directories(app PRIVATE
   ${REPO_NFC}/protocols/ndef
   ${REPO_NFC}/applets
   ${REPO_SRC}
+  ${CMAKE_CURRENT_SOURCE_DIR}/../../fixtures/store
   ${NFC_TEST_COMMON_INCLUDES}
 )
