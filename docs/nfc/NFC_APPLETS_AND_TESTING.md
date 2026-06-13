@@ -62,6 +62,7 @@ tests/
   fixtures/
     nfc/flipper/     # 12 GPL .nfc reference files (not linked by CI)
     ndef/            # NDEF *.inc, *.bin
+    store/           # Tier E *.card.bin envelopes (e.g. ndef_empty.card.bin)
     ultralight/      # (post–F1) derived from flipper/
     classic/         # (post–F2)
     …
@@ -73,7 +74,7 @@ tests/
 
 Flipper provenance and 12-file manifest: [tests/fixtures/nfc/flipper/README.md](../../tests/fixtures/nfc/flipper/README.md).
 
-**Offline converter:** `scripts/nfc/flipper_nfc_to_fixture.py` — `.nfc` → `.inc`/`.bin` (stub OK; full parser not required for CI).
+**Offline converter:** `scripts/nfc/flipper_nfc_to_fixture.py` — `.nfc` → `.inc`/`.bin` (stub OK; full parser not required for CI). NDEF (no Flipper protocol folder): `scripts/nfc/ndef_to_fixture.py` → Tier A `.bin` + Tier E `.card.bin` — see cookbook [§14.12](NFC_PROTOCOLS_COOKBOOK.md#1412-protocol-golden-chain-workflow-locked).
 
 ---
 
@@ -140,9 +141,11 @@ Twister and ztest never parse FlipperFormat. Host-only validation may parse `.nf
 ### Implementation order (locked)
 
 1. Gate 4 applets on `.card` from live read (HIL)
-2. Hand-build or script one NDEF `.card.bin` golden for Tier E emulate-without-RF
-3. Extend `flipper_nfc_to_fixture.py`: `.nfc` → `.card.bin` + `.inc` + `.bin`
+2. NDEF `.card.bin` golden for Tier E emulate-without-RF — **`tests/fixtures/store/ndef_empty.card.bin`** (regen: `scripts/nfc/ndef_to_fixture.py`)
+3. Extend `flipper_nfc_to_fixture.py`: `.nfc` → `.card.bin` + `.inc` + `.bin` per protocol (checklist: cookbook §14.12)
 4. FF store v2: disk `.nfc`, load same as step 3 host path
+
+**NDEF is the reference walkthrough.** It has no Flipper `protocols/ndef/` upstream; goldens come from cookbook §5.1 and `tests/fixtures/ndef/`, with store envelope in `tests/fixtures/store/`. Copy the three-pillar chain (model `.bin` + poller `.inc` + `.card.bin`) and test layout in `tests/unit/nfc_ndef/` + `tests/unit/nfc_reader/` before landing F1+ protocols. Full step-by-step: cookbook [§14.12](NFC_PROTOCOLS_COOKBOOK.md#1412-protocol-golden-chain-workflow-locked).
 
 ### NOT allowed
 
@@ -178,7 +181,7 @@ Twister and ztest never parse FlipperFormat. Host-only validation may parse `.nf
 
 ## Per-protocol registration
 
-Before landing a new `protocols/<name>/` module, complete the checklist in cookbook [§14.11](NFC_PROTOCOLS_COOKBOOK.md#1411-per-protocol-registration-checklist-locked): scaffold, Tier A/B/C fixtures, Twister tags, §5.x matrix row, HIL row.
+Before landing a new `protocols/<name>/` module, complete the checklist in cookbook [§14.11](NFC_PROTOCOLS_COOKBOOK.md#1411-per-protocol-registration-checklist-locked) and the golden-chain workflow in [§14.12](NFC_PROTOCOLS_COOKBOOK.md#1412-protocol-golden-chain-workflow-locked): scaffold, Tier A/B/C fixtures, Twister tags, §5.x matrix row, HIL row.
 
 ---
 
@@ -198,6 +201,6 @@ Before landing a new `protocols/<name>/` module, complete the checklist in cookb
 
 ## Related docs
 
-- [NFC_PROTOCOLS_COOKBOOK.md](NFC_PROTOCOLS_COOKBOOK.md) — protocol recipes, §14 tiers, §14.11 checklist (golden policy cross-ref)
+- [NFC_PROTOCOLS_COOKBOOK.md](NFC_PROTOCOLS_COOKBOOK.md) — protocol recipes, §14 tiers, §14.11 checklist, **§14.12 golden chain workflow**
 - [CI_TESTING.md](CI_TESTING.md) — Twister jobs and local commands
 - [NFC_STACK_PLAN.md](NFC_STACK_PLAN.md) — gate sequencing

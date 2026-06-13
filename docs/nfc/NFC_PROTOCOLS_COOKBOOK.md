@@ -1678,3 +1678,68 @@ west twister -T "$REPO/tests/unit/nfc_reader" -p qemu_cortex_m3 --no-sysbuild \
 ```
 
 Split `prj_model.conf` / `prj_poller.conf` / `prj_listener.conf` per role (§14.5). Tier E uses a single `prj.conf` until applet tiers split.
+
+### 14.12 Protocol golden chain workflow (LOCKED)
+
+Repeatable checklist for **every** new protocol. NDEF is the reference walkthrough (no Flipper `protocols/ndef/` — see worked example below). Flipper-ported protocols use the same phases with `.nfc` as Phase 0 input.
+
+#### Phase 0 — Discover goldens
+
+- [ ] Find Flipper test in `nfc_test.c` + matching `.nfc` in `flipperzero/applications/debug/unit_tests/resources/unit_tests/nfc/`, **or** a generator type, **or** NXP / vendor doc (NDEF case).
+- [ ] Copy `.nfc` to `tests/fixtures/nfc/flipper/` when Flipper-ported (GPL reference only).
+- [ ] Record Flipper test function name + asserted fields in the §5.x unit-test matrix row.
+
+#### Phase 1 — Offline compile
+
+- [ ] Run converter: `.nfc` → `tests/fixtures/<proto>/<variant>_model.bin` + `<variant>_read.inc`  
+  (NDEF: `python3 scripts/nfc/ndef_to_fixture.py` — no `.nfc` input.)
+- [ ] Run store golden: model → `tests/fixtures/store/<variant>.card.bin`  
+  (`python3 scripts/nfc/ndef_to_card_bin.py --model … --output …`)
+- [ ] Commit all three artifact types (`.bin`, `.inc`, `.card.bin`); CI never parses `.nfc`.
+
+#### Phase 2 — Implement
+
+- [ ] Scaffold `tests/unit/nfc_<proto>/` from `tests/unit/nfc_ndef/` (Tier A/B/C split).
+- [ ] Implement `protocols/<proto>/` citing `flipperzero/lib/nfc/protocols/<proto>/` in file headers.
+- [ ] Tier A/B/C minimum counts per §14.2–§14.4 and §5.x matrix.
+
+#### Phase 3 — Applet eligibility
+
+- [ ] Add row to §14.11 applet matrix: read / emulate / verify / loop per capability matrix.
+- [ ] Register poller in reader engine walk; listener in `nfc_stack` if emulatable.
+
+#### Phase 4 — Sign-off
+
+- [ ] QEMU: `west twister` green for `tests/unit/nfc_<proto>/` and Tier E if applicable.
+- [ ] HIL: `nfc read` → `nfc emulate` → `nfc verify` when full round-trip applies; otherwise **clone-only** note in §5.x.
+- [ ] Mark protocol done in [sequential execution plan](plans/2026-06-14-nfc-sequential-execution.md).
+
+#### NDEF worked example (reference chain)
+
+| Pillar | Path | Role |
+|--------|------|------|
+| Goldens (Tier A/B) | `tests/fixtures/ndef/` (`empty.inc`, `empty.bin`, `ndef_fixture.h`) | Poller scripts + model serialize golden |
+| Store golden (Tier E) | `tests/fixtures/store/ndef_empty.card.bin` | `nfc_store_load` roundtrip without RF |
+| Tier A/B/C tests | `tests/unit/nfc_ndef/` | Template for all protocols |
+| Tier E tests | `tests/unit/nfc_reader/` | Store envelope + verify diff |
+
+**Regen:**
+
+```bash
+python3 scripts/nfc/ndef_to_fixture.py
+# or: ndef_to_card_bin.py --model tests/fixtures/ndef/empty.bin \
+#       --output tests/fixtures/store/ndef_empty.card.bin
+```
+
+**Provenance:** cookbook §5.1 + NXP `RW_NDEF_T4T` + existing `tests/fixtures/ndef/` — not Flipper unit_tests `.nfc` set.
+
+**Twister:**
+
+```bash
+west twister -T "$REPO/tests/unit/nfc_ndef" -p qemu_cortex_m3 --no-sysbuild \
+  -t ci_unit -t writable_ndef.nfc.ndef -v
+west twister -T "$REPO/tests/unit/nfc_reader" -p qemu_cortex_m3 --no-sysbuild \
+  -t ci_unit -t writable_ndef.nfc.reader -v
+```
+
+Cross-ref: [NFC_APPLETS_AND_TESTING.md](NFC_APPLETS_AND_TESTING.md) (three representations, Tier E inputs).
