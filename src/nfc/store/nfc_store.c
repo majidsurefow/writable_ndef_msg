@@ -28,6 +28,7 @@ static struct k_spinlock s_stats_lock;
 static nfc_store_state_t s_state = NFC_STORE_STATE_UNINITIALIZED;
 
 static uint8_t s_staging_buf[CONFIG_NFC_STORE_BLOB_SIZE];
+static uint8_t s_serialize_buf[CONFIG_NFC_STORE_BLOB_SIZE];
 
 static nfc_store_save_fn s_save_cb;
 static void *s_save_user_ctx;
@@ -369,7 +370,6 @@ int nfc_store_save(const char *tag, const nfc_service_t *const *svcs, size_t n)
 
 	for (size_t i = 0U; i < n; i++) {
 		const nfc_service_t *svc = svcs[i];
-		uint8_t body[CONFIG_NFC_STORE_BLOB_SIZE];
 		size_t body_len = 0U;
 		uint8_t flags;
 		size_t entry_len;
@@ -379,7 +379,8 @@ int nfc_store_save(const char *tag, const nfc_service_t *const *svcs, size_t n)
 			continue;
 		}
 
-		ret = svc->serialize(body, sizeof(body), &body_len, svc->user_ctx);
+		ret = svc->serialize(s_serialize_buf, sizeof(s_serialize_buf), &body_len,
+				     svc->user_ctx);
 		if (ret == -ENOTSUP) {
 			STATS_INC(&s_stats_lock, s_stats, serialize_skip_count);
 			continue;
@@ -400,7 +401,7 @@ int nfc_store_save(const char *tag, const nfc_service_t *const *svcs, size_t n)
 		s_staging_buf[pos++] = flags;
 		s_staging_buf[pos++] = (uint8_t)(body_len & 0xFFU);
 		s_staging_buf[pos++] = (uint8_t)((body_len >> 8U) & 0xFFU);
-		(void)memcpy(&s_staging_buf[pos], body, body_len);
+		(void)memcpy(&s_staging_buf[pos], s_serialize_buf, body_len);
 		pos += body_len;
 		payload_len += entry_len;
 	}
