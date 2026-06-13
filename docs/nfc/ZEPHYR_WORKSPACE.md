@@ -99,5 +99,6 @@ PN7160 overlay variants are defined in root `sample.yaml` (`pn7160.i2c` / `pn716
 - **Sysbuild:** NCS enables sysbuild by default; integration tests in `sample.yaml` set `sysbuild: true`.
 - **Module env var:** Zephyr docs prefer `EXTRA_ZEPHYR_MODULES` (CMake or env); this repo sets `ZEPHYR_EXTRA_MODULES` in `CMakeLists.txt` — equivalent for out-of-tree modules.
 - **Preinstalled NCS tree:** If you already have `/opt/nordic/ncs/v3.2.4/`, you can still use this repo as the workspace root via `west init -l . && west update`; do not build from inside `nrf/samples/nfc/writable_ndef_msg` — that upstream path is the old in-tree sample location (`README.rst` sample path).
+- **macOS (Toolchain Manager):** Prefer building from the global NCS tree; put `west` on `PATH` from `/opt/nordic/ncs/toolchains/<bundle_id>/bin`. Step-by-step commands, QEMU, and failure fixes: [CI and local testing — Local development on macOS](CI_TESTING.md#local-development-on-macos).
 
 See also [CI and local testing](../CI_TESTING.md) for workflow matrix and tag taxonomy.

@@ -1,0 +1,24 @@
+/*
+ * Minimal PN7160 + I2C for unit tests on QEMU (no hardware I2C on qemu_cortex_m3).
+ */
+
+#include <zephyr/dt-bindings/i2c/i2c.h>
+#include <zephyr/dt-bindings/gpio/gpio.h>
+
+/ {
+	i2c_emul: i2c@400 {
+		compatible = "zephyr,i2c-emul-controller";
+		status = "okay";
+		clock-frequency = <I2C_BITRATE_STANDARD>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		reg = <0x400 0x4>;
+
+		pn7160: pn7160@28 {
+			compatible = "nxp,pn7160";
+			reg = <0x28>;
+			irq-gpios = <&gpio0 0 GPIO_ACTIVE_HIGH>;
+			ven-gpios = <&gpio0 1 GPIO_ACTIVE_HIGH>;
+		};
+	};
+};

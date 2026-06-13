@@ -206,7 +206,7 @@ west twister -T /path/to/writable_ndef_msg/modules/nfc_pn7160/tests/unit/pn7160_
 
 **Skipped (not used):** `errno.yml` (Zephyr kernel libc), `stats_merged_prs.yml`, stale/greet bots, AWS/Elasticsearch publish, upstream `devicetree_checks.yml`.
 
-**Errno convention:** public APIs return `0` or negative POSIX errno per `docs/nfc/NFC_STACK_CONVENTIONS.md` §9 — enforced by review and unit tests, not a separate CI workflow.
+**Errno convention:** public APIs return `0` or negative POSIX errno per `NFC_STACK_CONVENTIONS.md` §9 — enforced by review and unit tests, not a separate CI workflow.
 
 ### API documentation (local)
 
@@ -279,3 +279,5 @@ Unit test app sets `EXTRA_DTC_OVERLAY_FILE` in `modules/nfc_pn7160/tests/unit/pn
 1. **I2C TML framing ztests** — header encode/decode and length errors using the I2C emulator node in `pn7160_unit_test.overlay`.
 2. **SPI TML ztests** — separate overlay or dual-instance DT when SPI backend tests land.
 3. **Mock NCI** — exercise `pn7160_nci.c` without a real controller response.
+
+See also [Zephyr workspace](ZEPHYR_WORKSPACE.md) in this folder.

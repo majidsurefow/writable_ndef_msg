@@ -143,11 +143,11 @@ jobs:
           app-path: ${{ env.APP_PATH }}
           toolchains: arm-zephyr-eabi
 
-      - name: Run Twister (ci_unit on qemu_cortex_m33)
+      - name: Run Twister (ci_unit on qemu_cortex_m3)
         run: |
           export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr"
           export ZEPHYR_TOOLCHAIN_VARIANT=zephyr
-          west twister -T "${UNIT_TEST_DIR}" -t ci_unit -p qemu_cortex_m33 \
+          west twister -T "${UNIT_TEST_DIR}" -t ci_unit -p qemu_cortex_m3 \
             --no-sysbuild --force-color --inline-logs -v --clobber-output \
             -j $(nproc)
 

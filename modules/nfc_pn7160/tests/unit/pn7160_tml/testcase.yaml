@@ -4,8 +4,8 @@ tests:
       - ci_unit
       - pn7160
     platform_allow:
-      - qemu_cortex_m33
+      - qemu_cortex_m3
       - native_sim
       - native_sim/native
     integration_platforms:
-      - qemu_cortex_m33
+      - qemu_cortex_m3

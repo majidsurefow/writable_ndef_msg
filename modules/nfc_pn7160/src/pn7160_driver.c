@@ -144,12 +144,12 @@ static int pn7160_init(const struct device *dev)
 
 #define PN7160_CONFIG_I2C(inst)                                                                    \
 	{                                                                                          \
-		.i2c = I2C_DT_SPEC_INST(inst),                                                     \
+		.i2c = I2C_DT_SPEC_INST_GET(inst),                                                     \
 		.tml_send = pn7160_tml_i2c_send,                                                   \
 		.tml_recv = pn7160_tml_i2c_recv,                                                   \
-		.irq = GPIO_DT_SPEC_INST(inst, irq_gpios),                                         \
-		.ven = GPIO_DT_SPEC_INST(inst, ven_gpios),                                         \
-		.dwl = GPIO_DT_SPEC_INST(inst, dwl_gpios),                                         \
+		.irq = GPIO_DT_SPEC_INST_GET(inst, irq_gpios),                                         \
+		.ven = GPIO_DT_SPEC_INST_GET(inst, ven_gpios),                                         \
+		.dwl = GPIO_DT_SPEC_INST_GET_OR(inst, dwl_gpios, {0}),                                         \
 	}
 
 #define PN7160_CONFIG_SPI(inst)                                                                    \
@@ -157,9 +157,9 @@ static int pn7160_init(const struct device *dev)
 		.spi = SPI_DT_SPEC_INST_GET(inst, PN7160_SPI_OPERATION, 0),                        \
 		.tml_send = pn7160_tml_spi_send,                                                   \
 		.tml_recv = pn7160_tml_spi_recv,                                                   \
-		.irq = GPIO_DT_SPEC_INST(inst, irq_gpios),                                         \
-		.ven = GPIO_DT_SPEC_INST(inst, ven_gpios),                                         \
-		.dwl = GPIO_DT_SPEC_INST(inst, dwl_gpios),                                         \
+		.irq = GPIO_DT_SPEC_INST_GET(inst, irq_gpios),                                         \
+		.ven = GPIO_DT_SPEC_INST_GET(inst, ven_gpios),                                         \
+		.dwl = GPIO_DT_SPEC_INST_GET_OR(inst, dwl_gpios, {0}),                                         \
 	}
 
 #define PN7160_DEFINE(inst)                                                                        \
