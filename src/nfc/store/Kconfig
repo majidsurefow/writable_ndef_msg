@@ -1,0 +1,22 @@
+# NFC card store — Gate 2 minimal envelope.
+
+config NFC_STORE
+	bool "NFC card store (minimal envelope)"
+	default n
+	depends on NFC_STACK
+	help
+	  Versioned TLV + CRC .card blob save/load. Gate 2 subset without NVS.
+
+if NFC_STORE
+
+config NFC_STORE_BLOB_SIZE
+	int "Staging buffer size for serialized blobs (bytes)"
+	default 4096
+	range 512 16384
+
+config NFC_STORE_MAX_TAG_LEN
+	int "Maximum tag name length including NUL"
+	default 16
+	range 8 32
+
+endif
