@@ -21,16 +21,4 @@ config NFC_READER_SCAN_TIMEOUT_MS
 	help
 	  Maximum time to wait for a tag during nfc reader scan.
 
-config NFC_READER_WORKQ_STACK_SIZE
-	int "Reader scan work queue stack size"
-	default 2048
-	help
-	  Stack for the dedicated reader scan work queue thread.
-
-config NFC_READER_WORKQ_PRIORITY
-	int "Reader scan work queue priority"
-	default 5
-	help
-	  Priority of the reader scan work queue thread.
-
 endif

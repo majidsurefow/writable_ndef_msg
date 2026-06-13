@@ -2,40 +2,27 @@
  * Copyright (c) 2026
  * SPDX-License-Identifier: Apache-2.0
  *
- * NFC reader engine — async discovery scan (Gate 0).
+ * NFC reader engine — Gate 1 scan on nfc_stack_wq.
  */
 
 #include "reader/nfc_reader_engine.h"
 
 #include "hal/nfc_transport.h"
+#include "run/nfc_stack_workq.h"
 
 #include <errno.h>
+#include <string.h>
 
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
 LOG_MODULE_REGISTER(nfc_reader, CONFIG_LOG_DEFAULT_LEVEL);
 
-static K_THREAD_STACK_DEFINE(reader_wq_stack, CONFIG_NFC_READER_WORKQ_STACK_SIZE);
-static struct k_work_q reader_wq;
 static struct k_work scan_work;
 static k_timeout_t scan_timeout;
 static atomic_t scan_busy;
 
-static void reader_wq_init_once(void)
-{
-	static bool started;
-
-	if (started) {
-		return;
-	}
-
-	k_work_queue_init(&reader_wq);
-	k_work_queue_start(&reader_wq, reader_wq_stack,
-			   K_THREAD_STACK_SIZEOF(reader_wq_stack),
-			   CONFIG_NFC_READER_WORKQ_PRIORITY, NULL);
-	started = true;
-}
+static nfc_reader_session_t s_session;
 
 static void scan_work_handler(struct k_work *work)
 {
@@ -63,8 +50,12 @@ static void scan_work_handler(struct k_work *work)
 	if (ret != 0) {
 		LOG_WRN("Scan timeout or error: %d", ret);
 		(void)nfc_transport_discover_stop();
+		nfc_reader_session_clear(&s_session);
 		goto done;
 	}
+
+	s_session.active = true;
+	s_session.tag = info;
 
 	if (info.valid && info.uid.len > 0U) {
 		LOG_INF("Tag UID (%u):", info.uid.len);
@@ -78,8 +69,34 @@ static void scan_work_handler(struct k_work *work)
 	LOG_INF("Protocol: 0x%02x  Interface: 0x%02x  ModeTech: 0x%02x", info.protocol,
 		info.interface, info.mode_tech);
 
+	(void)nfc_transport_discover_stop();
+	nfc_reader_session_clear(&s_session);
+
 done:
 	atomic_clear(&scan_busy);
+}
+
+void nfc_reader_session_clear(nfc_reader_session_t *session)
+{
+	if (session == NULL) {
+		return;
+	}
+
+	memset(session, 0, sizeof(*session));
+}
+
+int nfc_reader_session_transceive(nfc_reader_session_t *session, const uint8_t *tx, size_t tx_len,
+				  uint8_t *rx, size_t rx_max, size_t *rx_len, k_timeout_t timeout)
+{
+	if (session == NULL || tx == NULL || rx == NULL || rx_len == NULL) {
+		return -EINVAL;
+	}
+
+	if (!session->active) {
+		return -ENODEV;
+	}
+
+	return nfc_transport_tag_transceive(tx, tx_len, rx, rx_max, rx_len, timeout);
 }
 
 bool nfc_reader_scan_busy(void)
@@ -95,12 +112,10 @@ int nfc_reader_scan_start(k_timeout_t timeout)
 		return -EBUSY;
 	}
 
-	reader_wq_init_once();
-
 	atomic_set(&scan_busy, 1);
 	scan_timeout = timeout;
 	k_work_init(&scan_work, scan_work_handler);
-	ret = k_work_submit_to_queue(&reader_wq, &scan_work);
+	ret = k_work_submit_to_queue(nfc_stack_wq_get(), &scan_work);
 	if (ret < 0) {
 		atomic_clear(&scan_busy);
 		return ret;

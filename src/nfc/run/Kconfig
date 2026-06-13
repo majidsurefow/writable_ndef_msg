@@ -1,0 +1,15 @@
+# NFC stack shared work queue.
+
+config NFC_STACK_WORKQ_STACK_SIZE
+	int "NFC stack work queue stack size"
+	default 2048
+	depends on NFC_STACK
+	help
+	  Stack for nfc_stack_wq — HAL poll blocking, listen recv loop, reader scan.
+
+config NFC_STACK_WORKQ_PRIORITY
+	int "NFC stack work queue priority"
+	default 5
+	depends on NFC_STACK
+	help
+	  Priority of the nfc_stack_wq thread.

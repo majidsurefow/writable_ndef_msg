@@ -9,6 +9,7 @@ config NFC_STACK
 
 if NFC_STACK
 
+rsource "run/Kconfig"
 rsource "hal/Kconfig"
 rsource "reader/Kconfig"
 

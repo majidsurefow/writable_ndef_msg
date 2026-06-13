@@ -1,6 +1,7 @@
 # NFC stack — gated by CONFIG_NFC_STACK.
 
 if(CONFIG_NFC_STACK)
+  add_subdirectory(run)
   add_subdirectory(hal)
 
   if(CONFIG_NFC_READER)

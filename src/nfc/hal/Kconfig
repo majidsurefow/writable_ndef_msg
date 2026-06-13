@@ -19,3 +19,17 @@ config NFC_ROLE_READER
 	depends on NFC_STACK
 	help
 	  Enable reader-mode discovery and tag transceive APIs.
+
+config NFC_ROLE_LISTEN
+	bool "Listen (card emulation) role"
+	default y
+	depends on NFC_STACK
+	help
+	  Enable listen sub-API (start/stop/send_response). Gate 1 skeleton on PN7160.
+
+config NFC_HAL_SHELL
+	bool "NFC transport HAL shell commands"
+	default y
+	depends on NFC_STACK && SHELL
+	help
+	  Register nfc_transport config|stats|state shell subcommands.
