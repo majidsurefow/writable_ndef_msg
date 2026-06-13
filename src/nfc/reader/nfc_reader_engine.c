@@ -69,9 +69,6 @@ static void scan_work_handler(struct k_work *work)
 	LOG_INF("Protocol: 0x%02x  Interface: 0x%02x  ModeTech: 0x%02x", info.protocol,
 		info.interface, info.mode_tech);
 
-	(void)nfc_transport_discover_stop();
-	nfc_reader_session_clear(&s_session);
-
 done:
 	atomic_clear(&scan_busy);
 }
@@ -83,6 +80,25 @@ void nfc_reader_session_clear(nfc_reader_session_t *session)
 	}
 
 	memset(session, 0, sizeof(*session));
+}
+
+const nfc_reader_session_t *nfc_reader_session_get(void)
+{
+	if (!s_session.active) {
+		return NULL;
+	}
+
+	return &s_session;
+}
+
+void nfc_reader_session_end(void)
+{
+	if (!s_session.active) {
+		return;
+	}
+
+	(void)nfc_transport_discover_stop();
+	nfc_reader_session_clear(&s_session);
 }
 
 int nfc_reader_session_transceive(nfc_reader_session_t *session, const uint8_t *tx, size_t tx_len,

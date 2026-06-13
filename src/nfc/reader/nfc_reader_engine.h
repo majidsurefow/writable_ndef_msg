@@ -31,8 +31,14 @@ typedef struct {
 	nfc_transport_tag_info_t tag;
 } nfc_reader_session_t;
 
-/** @brief Clear session (no active tag). */
+/** @brief Clear session (no active tag). Does not stop HAL discovery. */
 void nfc_reader_session_clear(nfc_reader_session_t *session);
+
+/** @brief Active session after successful scan/discover, or NULL. */
+const nfc_reader_session_t *nfc_reader_session_get(void);
+
+/** @brief Stop discovery and clear the active session (after poller work). */
+void nfc_reader_session_end(void);
 
 /**
  * @brief Exchange with the active tag via HAL delegate.
@@ -46,7 +52,8 @@ int nfc_reader_session_transceive(nfc_reader_session_t *session, const uint8_t *
  * @brief Start an asynchronous tag scan on nfc_stack_wq.
  *
  * Non-blocking. Initializes transport if needed, starts discovery, waits up
- * to @p timeout, logs UID/protocol, then stops discovery.
+ * to @p timeout, logs UID/protocol, then leaves the poll session active for
+ * nfc_reader_session_transceive() until nfc_reader_session_end().
  *
  * @param timeout Maximum wait for a tag notification.
  * @return 0 if work was queued, -EBUSY if a scan is already running,
