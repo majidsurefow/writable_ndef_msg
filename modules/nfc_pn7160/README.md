@@ -12,10 +12,11 @@ alongside the NFC stack (`src/nfc/`).
 | I2C TML (`pn7160_tml_i2c.c`) | NXP framing, mutex, retry |
 | SPI TML (`pn7160_tml_spi.c`) | `0x7F` write / `0xFF` read, 10 µs delay |
 | VEN reset | 10 ms / 10 ms NXP sequence |
+| DWL download mode | `pn7160_dwl_enter()` / `pn7160_dwl_leave()`, 1-byte TML header |
 | IRQ → work queue | GPIO ISR → `irq_rx_work` → TML recv + NCI process |
 | NCI probe | `pn7160_nci_check_dev_pres()` / CORE_RESET_NTF FW cache |
-| Shell | `pn7160 probe`, `pn7160 fwver` (`CONFIG_PN7160_SHELL`) |
-| Unit tests | TML framing, SPI xfer lengths, NCI FW parse (Twister `ci_unit`) |
+| Shell | `pn7160 probe`, `pn7160 fwver`, `pn7160 dwl *` (`CONFIG_PN7160_SHELL`) |
+| Unit tests | TML framing (NCI + DWL), SPI xfer lengths, NCI FW parse (Twister `ci_unit`) |
 
 Full spec: [`docs/nfc/specs/2026-06-14-pn7160-zephyr-driver.md`](../../docs/nfc/specs/2026-06-14-pn7160-zephyr-driver.md).
 
@@ -63,6 +64,18 @@ FW version: 01.02.03
 ```
 
 `fwver` runs CORE_RESET automatically if no cached NTF is available.
+
+**Download mode** (requires `dwl-gpios` in devicetree):
+
+```
+uart:~$ pn7160 dwl enter
+uart:~$ pn7160 dwl status
+DWL mode: active
+uart:~$ pn7160 dwl leave
+```
+
+Binary firmware transfer (`pn7160 fwupdate`) is not yet implemented; enter/leave
+switches TML framing for future FWupdate port.
 
 ## Public API
 

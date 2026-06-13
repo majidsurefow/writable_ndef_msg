@@ -74,4 +74,30 @@ ZTEST(pn7160_tml, test_core_reset_ntf_invalid_oid)
 	zassert_equal(pn7160_nci_core_reset_ntf_fw_version(ntf, sizeof(ntf), fw), -EINVAL);
 }
 
+ZTEST(pn7160_tml, test_dwl_framing_helpers)
+{
+	const uint8_t hdr[] = { 0xA5, 0x04 };
+	size_t frame_len;
+
+	zassert_equal(pn7160_tml_header_sz_get(true), PN7160_TML_DWL_HEADER_SZ);
+	zassert_equal(pn7160_tml_header_sz_get(false), PN7160_TML_HEADER_SZ);
+	zassert_equal(pn7160_tml_footer_sz_get(true), PN7160_TML_DWL_FOOTER_SZ);
+	zassert_equal(pn7160_tml_footer_sz_get(false), 0U);
+	zassert_equal(pn7160_tml_hdr_read_len_get(true), PN7160_TML_DWL_HDR_LEN);
+	zassert_equal(pn7160_tml_hdr_read_len_get(false), PN7160_TML_NCI_HDR_LEN);
+	zassert_equal(pn7160_tml_payload_len_get_mode(hdr, true), 0x04U);
+	frame_len = pn7160_tml_frame_len_get_mode(hdr, true);
+	zassert_equal(frame_len, 6U);
+	zassert_ok(pn7160_tml_frame_len_validate_mode(hdr, 6U, true));
+	zassert_equal(pn7160_tml_frame_len_validate_mode(hdr, 5U, true), -EINVAL);
+}
+
+ZTEST(pn7160_tml, test_dwl_zero_payload)
+{
+	const uint8_t hdr[] = { 0xA5, 0x00 };
+
+	zassert_equal(pn7160_tml_frame_len_get_mode(hdr, true), PN7160_TML_DWL_HDR_LEN);
+	zassert_ok(pn7160_tml_frame_len_validate_mode(hdr, PN7160_TML_DWL_HDR_LEN, true));
+}
+
 ZTEST_SUITE(pn7160_tml, NULL, NULL, NULL, NULL, NULL);
