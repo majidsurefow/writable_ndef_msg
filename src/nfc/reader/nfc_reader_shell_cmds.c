@@ -2,10 +2,14 @@
  * Copyright (c) 2026
  * SPDX-License-Identifier: Apache-2.0
  *
- * NFC reader shell commands — Gate 0 scan.
+ * NFC reader shell commands — Gate 0 scan + Gate 4 applet registration.
  */
 
 #include "reader/nfc_reader_engine.h"
+
+#if IS_ENABLED(CONFIG_NFC_APPLETS_SHELL)
+#include "applets/nfc_applet.h"
+#endif
 
 #if IS_ENABLED(CONFIG_NFC_STORE)
 #include "store/nfc_store.h"
@@ -17,6 +21,15 @@
 
 #if IS_ENABLED(CONFIG_NFC_LISTEN_STACK_SHELL)
 extern const union shell_cmd_entry nfc_stack_cmds;
+#endif
+
+#if IS_ENABLED(CONFIG_NFC_APPLETS_SHELL)
+int cmd_nfc_scan(const struct shell *sh, size_t argc, char **argv);
+int cmd_nfc_read(const struct shell *sh, size_t argc, char **argv);
+int cmd_nfc_emulate(const struct shell *sh, size_t argc, char **argv);
+int cmd_nfc_verify(const struct shell *sh, size_t argc, char **argv);
+int cmd_nfc_loop(const struct shell *sh, size_t argc, char **argv);
+int nfc_applet_shell_read_alias(const struct shell *sh, size_t argc, char **argv);
 #endif
 
 static int cmd_nfc_reader_scan(const struct shell *sh, size_t argc, char **argv)
@@ -75,6 +88,9 @@ static int nfc_reader_shell_save_cb(const char *tag, const uint8_t *blob, size_t
 
 static int cmd_nfc_reader_clone(const struct shell *sh, size_t argc, char **argv)
 {
+#if IS_ENABLED(CONFIG_NFC_APPLETS_SHELL)
+	return nfc_applet_shell_read_alias(sh, argc, argv);
+#else
 	int ret;
 
 	if (argc < 2) {
@@ -103,6 +119,7 @@ static int cmd_nfc_reader_clone(const struct shell *sh, size_t argc, char **argv
 
 	shell_print(sh, "Clone started for tag \"%s\"; watch logs for @@NFCDUMP@@", argv[1]);
 	return 0;
+#endif
 }
 
 SHELL_STATIC_SUBCMD_SET_CREATE(nfc_reader_cmds,
@@ -110,11 +127,20 @@ SHELL_STATIC_SUBCMD_SET_CREATE(nfc_reader_cmds,
 					 "Async tag scan (discovery start + wait; non-blocking)",
 					 cmd_nfc_reader_scan),
 			       SHELL_CMD(clone, NULL,
-					 "Clone active tag to .card blob (scan first)",
+					 "Clone active tag to .card blob (alias: nfc read)",
 					 cmd_nfc_reader_clone),
 			       SHELL_SUBCMD_SET_END);
 
 SHELL_STATIC_SUBCMD_SET_CREATE(nfc_cmds,
+#if IS_ENABLED(CONFIG_NFC_APPLETS_SHELL)
+			       SHELL_CMD(scan, NULL, "Discover tag (UID, protocol, tech)", cmd_nfc_scan),
+			       SHELL_CMD(read, NULL, "One-shot scan + save to slot", cmd_nfc_read),
+#if IS_ENABLED(CONFIG_NFC_LISTEN_STACK)
+			       SHELL_CMD(emulate, NULL, "Load slot + start listen", cmd_nfc_emulate),
+			       SHELL_CMD(loop, NULL, "read → emulate → verify", cmd_nfc_loop),
+#endif
+			       SHELL_CMD(verify, NULL, "Poll tag + diff vs stored slot", cmd_nfc_verify),
+#endif
 #if IS_ENABLED(CONFIG_NFC_LISTEN_STACK_SHELL)
 			       SHELL_CMD(stack, &nfc_stack_cmds, "NFC listen stack commands", NULL),
 #endif

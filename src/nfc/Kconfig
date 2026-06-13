@@ -30,5 +30,6 @@ rsource "framing/Kconfig"
 rsource "router/Kconfig"
 rsource "nfc_stack/Kconfig"
 rsource "reader/Kconfig"
+rsource "applets/Kconfig"
 
 endif

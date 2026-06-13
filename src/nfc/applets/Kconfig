@@ -1,0 +1,20 @@
+# NFC product applets — Gate 4 scan/read/emulate/verify/loop.
+
+config NFC_APPLETS
+	bool "NFC product applets"
+	default y
+	depends on NFC_READER && NFC_STORE
+	help
+	  End-user applets composing reader + store + listen stack.
+	  See docs/nfc/NFC_APPLETS_AND_TESTING.md.
+
+if NFC_APPLETS
+
+config NFC_APPLETS_SHELL
+	bool "NFC applet shell commands"
+	default y
+	depends on SHELL
+	help
+	  Register top-level nfc scan/read/emulate/verify/loop commands.
+
+endif

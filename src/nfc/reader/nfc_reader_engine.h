@@ -78,6 +78,28 @@ int nfc_reader_clone_start(const char *tag);
 /** @brief True while a clone work item is running or queued. */
 bool nfc_reader_clone_busy(void);
 
+/**
+ * @brief One-shot scan + poller walk + save (Flipper read-to-file).
+ *
+ * Does not require a prior scan. Existing scan-then-clone flow unchanged.
+ *
+ * @param tag Null-terminated slot name for the saved blob.
+ * @param timeout Maximum wait for tag discovery before poller walk.
+ * @return 0 if work was queued, -EBUSY if read/scan/clone in progress,
+ *         -EINVAL if tag invalid, or negative errno from store init.
+ */
+int nfc_reader_read_start(const char *tag, k_timeout_t timeout);
+
+/** @brief True while a combined read work item is running or queued. */
+bool nfc_reader_read_busy(void);
+
+/**
+ * @brief Blocking discover + active session (must run on nfc_stack_wq).
+ *
+ * Used by verify applet work item; scan/read use async wrappers.
+ */
+int nfc_reader_discover_once(k_timeout_t timeout, nfc_transport_tag_info_t *info);
+
 #ifdef __cplusplus
 }
 #endif

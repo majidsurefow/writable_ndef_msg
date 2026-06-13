@@ -28,5 +28,9 @@ if(CONFIG_NFC_STACK)
     add_subdirectory(reader)
   endif()
 
+  if(CONFIG_NFC_APPLETS)
+    add_subdirectory(applets)
+  endif()
+
   target_include_directories(app PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 endif()
