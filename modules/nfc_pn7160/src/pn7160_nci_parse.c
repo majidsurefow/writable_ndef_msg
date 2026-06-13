@@ -7,9 +7,30 @@
 
 #include <nfc/pn7160.h>
 
+#include <errno.h>
+
+#define PN7160_NCI_CORE_RESET_RSP_MT_OID 0x40U
 #define PN7160_NCI_CORE_RESET_NTF_MT_OID 0x60U
 #define PN7160_NCI_CORE_RESET_OID        0x00U
 #define PN7160_NCI_NTF_NCI_VERSION       0x20U
+#define PN7160_NCI_STATUS_OK             0x00U
+
+int pn7160_nci_core_reset_rsp_validate(const uint8_t *rx, size_t rx_len)
+{
+	if (rx_len < 4U) {
+		return -EINVAL;
+	}
+
+	if (rx[0] != PN7160_NCI_CORE_RESET_RSP_MT_OID || rx[1] != PN7160_NCI_CORE_RESET_OID) {
+		return -EINVAL;
+	}
+
+	if (rx[3] != PN7160_NCI_STATUS_OK) {
+		return -EIO;
+	}
+
+	return 0;
+}
 
 int pn7160_nci_core_reset_ntf_fw_version(const uint8_t *rx, size_t rx_len, uint8_t fw_ver[3])
 {

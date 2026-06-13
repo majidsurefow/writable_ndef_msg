@@ -1,8 +1,10 @@
 /*
+ * Copyright (c) 2026 NXP Semiconductors
  * Copyright (c) 2026
  * SPDX-License-Identifier: Apache-2.0
  *
  * PN7160 Zephyr device driver — bus, GPIO (VEN/IRQ/DWL), IRQ → work signal.
+ * DWL enter/leave logic derived from NXP tml_EnterDwlMode / tml_LeaveDwlMode.
  */
 
 #define DT_DRV_COMPAT nxp_pn7160

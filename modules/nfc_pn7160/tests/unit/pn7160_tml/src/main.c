@@ -100,4 +100,18 @@ ZTEST(pn7160_tml, test_dwl_zero_payload)
 	zassert_ok(pn7160_tml_frame_len_validate_mode(hdr, PN7160_TML_DWL_HDR_LEN, true));
 }
 
+ZTEST(pn7160_tml, test_core_reset_rsp_validate)
+{
+	const uint8_t rsp_ok[] = { 0x40, 0x00, 0x03, 0x00 };
+	const uint8_t rsp_bad_status[] = { 0x40, 0x00, 0x03, 0x01 };
+	const uint8_t rsp_wrong_oid[] = { 0x40, 0x01, 0x03, 0x00 };
+
+	zassert_ok(pn7160_nci_core_reset_rsp_validate(rsp_ok, sizeof(rsp_ok)));
+	zassert_equal(pn7160_nci_core_reset_rsp_validate(rsp_ok, 3U), -EINVAL);
+	zassert_equal(pn7160_nci_core_reset_rsp_validate(rsp_bad_status, sizeof(rsp_bad_status)),
+		      -EIO);
+	zassert_equal(pn7160_nci_core_reset_rsp_validate(rsp_wrong_oid, sizeof(rsp_wrong_oid)),
+		      -EINVAL);
+}
+
 ZTEST_SUITE(pn7160_tml, NULL, NULL, NULL, NULL, NULL);

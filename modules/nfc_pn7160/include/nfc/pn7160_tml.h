@@ -1,8 +1,10 @@
 /*
+ * Copyright (c) 2026 NXP Semiconductors
  * Copyright (c) 2026
  * SPDX-License-Identifier: Apache-2.0
  *
  * PN7160 TML framing helpers — testable pure functions (NXP tml_Rx logic).
+ * HEADER_SZ / FOOTER_SZ macros derived from NXP source/TML/tml.c.
  */
 
 #ifndef NFC_PN7160_TML_H_

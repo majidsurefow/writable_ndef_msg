@@ -17,21 +17,20 @@
 
 LOG_MODULE_DECLARE(pn7160);
 
-#define PN7160_NCI_CORE_RESET_RSP_MT_OID 0x40U
 #define PN7160_NCI_CORE_RESET_NTF_MT_OID 0x60U
 #define PN7160_NCI_CORE_RESET_OID        0x00U
 #define PN7160_NCI_CORE_GENERIC_ERROR_OID 0x07U
 #define PN7160_NCI_ANTI_TEARING_STATUS   0xE6U
 #define PN7160_NCI_STATUS_OK             0x00U
 
+#define PN7160_NCI_CORE_INIT_RSP_MT_OID 0x40U
+#define PN7160_NCI_CORE_INIT_OID        0x01U
+
 /* NCI CORE_RESET_CMD — NXP NCICoreReset[] */
 static const uint8_t core_reset_cmd[] = { 0x20, 0x00, 0x01, 0x01 };
 
 /* NCI CORE_INIT_CMD — NXP NCICoreInit_2_0[] */
 static const uint8_t core_init_cmd[] = { 0x20, 0x01, 0x02, 0x00, 0x00 };
-
-#define PN7160_NCI_CORE_INIT_RSP_MT_OID 0x40U
-#define PN7160_NCI_CORE_INIT_OID        0x01U
 
 static int pn7160_nci_parse_core_reset_ntf(const struct device *dev, const uint8_t *rx,
 					   size_t rx_len)
@@ -48,23 +47,6 @@ static int pn7160_nci_parse_core_reset_ntf(const struct device *dev, const uint8
 	data->fw_version[0] = fw_ver[0];
 	data->fw_version[1] = fw_ver[1];
 	data->fw_version[2] = fw_ver[2];
-
-	return 0;
-}
-
-static int pn7160_nci_parse_core_reset_rsp(const uint8_t *rx, size_t rx_len)
-{
-	if (rx_len < 4U) {
-		return -EINVAL;
-	}
-
-	if (rx[0] != PN7160_NCI_CORE_RESET_RSP_MT_OID || rx[1] != PN7160_NCI_CORE_RESET_OID) {
-		return -EINVAL;
-	}
-
-	if (rx[3] != PN7160_NCI_STATUS_OK) {
-		return -EIO;
-	}
 
 	return 0;
 }
@@ -196,7 +178,7 @@ static int pn7160_nci_check_dev_pres_unlocked(const struct device *dev)
 		return ret;
 	}
 
-	ret = pn7160_nci_parse_core_reset_rsp(rx, rx_len);
+	ret = pn7160_nci_core_reset_rsp_validate(rx, rx_len);
 	if (ret != 0) {
 		return ret;
 	}

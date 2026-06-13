@@ -120,6 +120,15 @@ int pn7160_nci_connect(const struct device *dev);
 const uint8_t *pn7160_fw_version_get(const struct device *dev);
 
 /**
+ * @brief Validate an NCI CORE_RESET_RSP frame.
+ *
+ * @param rx Received NCI frame.
+ * @param rx_len Frame length in bytes.
+ * @return 0 on success, `-EINVAL` on parse failure, `-EIO` on NCI error status.
+ */
+int pn7160_nci_core_reset_rsp_validate(const uint8_t *rx, size_t rx_len);
+
+/**
  * @brief Parse 3-byte firmware version from a CORE_RESET_NTF frame.
  *
  * Pure helper for unit tests and HAL use.
