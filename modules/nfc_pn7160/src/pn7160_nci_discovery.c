@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * PN7160 NCI discovery — port of NXP NxpNci_ConfigureMode / StartDiscovery /
- * StopDiscovery / WaitForDiscoveryNotification (reader mode, RW-only).
+ * StopDiscovery / WaitForDiscoveryNotification (reader + card emulation).
  * Derived from NXP-NCI2.0_LPC55S6x_examples/NfcLibrary/NxpNci20/src/NxpNci20.c
  */
 
@@ -21,7 +21,10 @@ LOG_MODULE_DECLARE(pn7160);
 #define PN7160_NCI_RF_NTF_MT_OID           0x61U
 #define PN7160_NCI_PROP_RSP_MT_OID         0x4FU
 #define PN7160_NCI_RF_DISCOVER_MAP_OID     0x00U
+#define PN7160_NCI_RF_SET_ROUTING_OID      0x01U
 #define PN7160_NCI_RF_DISCOVER_OID         0x03U
+#define PN7160_NCI_CORE_SET_CONFIG_RSP_MT_OID 0x40U
+#define PN7160_NCI_CORE_SET_CONFIG_OID     0x02U
 #define PN7160_NCI_RF_DISCOVER_SELECT_OID  0x04U
 #define PN7160_NCI_RF_INTF_ACTIVATED_OID   0x05U
 #define PN7160_NCI_PROP_ACTIVATE_OID       0x02U
@@ -31,12 +34,30 @@ LOG_MODULE_DECLARE(pn7160);
 static const uint8_t nci_prop_act[] = { 0x2F, 0x02, 0x00 };
 static const uint8_t dm_rw[] = { 0x01, 0x01, 0x01, 0x02, 0x01, 0x01, 0x03, 0x01, 0x01,
 				 0x04, 0x01, 0x02, 0x80, 0x01, 0x80 };
+static const uint8_t dm_cardemu[] = { 0x04, 0x02, 0x02 };
+static const uint8_t r_cardemu[] = { 0x01, 0x03, 0x00, 0x01, 0x04 };
+static const uint8_t nci_routing_hdr[] = { 0x21, 0x01 };
+static const uint8_t nci_set_config_nfca_selrsp[] = { 0x20, 0x02, 0x04, 0x01, 0x32, 0x01, 0x00 };
 static const uint8_t nci_stop_discovery[] = { 0x21, 0x06, 0x01, 0x00 };
 
 static const uint8_t default_discovery_tech[] = {
 	PN7160_NCI_MODE_POLL | PN7160_NCI_TECH_PASSIVE_NFCA,
 	PN7160_NCI_MODE_POLL | PN7160_NCI_TECH_PASSIVE_NFCB,
 	PN7160_NCI_MODE_POLL | PN7160_NCI_TECH_PASSIVE_15693,
+};
+
+static const uint8_t default_listen_discovery_tech[] = {
+	PN7160_NCI_MODE_LISTEN | PN7160_NCI_TECH_PASSIVE_NFCA,
+	PN7160_NCI_MODE_LISTEN | PN7160_NCI_TECH_PASSIVE_NFCB,
+};
+
+static const uint8_t default_rw_ce_discovery_tech[] = {
+	PN7160_NCI_MODE_POLL | PN7160_NCI_TECH_PASSIVE_NFCA,
+	PN7160_NCI_MODE_POLL | PN7160_NCI_TECH_PASSIVE_NFCF,
+	PN7160_NCI_MODE_POLL | PN7160_NCI_TECH_PASSIVE_NFCB,
+	PN7160_NCI_MODE_POLL | PN7160_NCI_TECH_PASSIVE_15693,
+	PN7160_NCI_MODE_LISTEN | PN7160_NCI_TECH_PASSIVE_NFCA,
+	PN7160_NCI_MODE_LISTEN | PN7160_NCI_TECH_PASSIVE_NFCB,
 };
 
 static uint8_t nci_start_discovery[PN7160_NCI_DISC_START_MAX];
@@ -88,20 +109,37 @@ static void pn7160_nci_rf_intf_clear(struct pn7160_nci_rf_intf *rf_intf)
 	memset(rf_intf, 0, sizeof(*rf_intf));
 }
 
+static int pn7160_nci_core_set_config_rsp_ok(const uint8_t *rx, size_t rx_len)
+{
+	if (rx_len < 4U) {
+		return -EINVAL;
+	}
+
+	if (rx[0] != PN7160_NCI_CORE_SET_CONFIG_RSP_MT_OID ||
+	    rx[1] != PN7160_NCI_CORE_SET_CONFIG_OID || rx[3] != PN7160_NCI_STATUS_OK) {
+		return -EIO;
+	}
+
+	return 0;
+}
+
 static int pn7160_nci_configure_mode_unlocked(const struct device *dev, uint8_t mode)
 {
 	struct pn7160_data *data = dev->data;
-	uint8_t cmd[4U + sizeof(dm_rw)];
+	uint8_t cmd[4U + sizeof(dm_rw) + sizeof(dm_cardemu)];
+	uint8_t selrsp[sizeof(nci_set_config_nfca_selrsp)];
 	uint8_t *rx = data->rx_buf;
 	size_t rx_len;
-	size_t item_count;
+	size_t map_item_count;
+	size_t routing_item_count;
+	uint8_t selrsp_val;
 	int ret;
 
 	if (mode == 0U) {
 		return 0;
 	}
 
-	if ((mode & PN7160_NCI_MODE_RW) != 0U) {
+	if (mode == PN7160_NCI_MODE_RW) {
 		ret = pn7160_nci_transceive_unlocked(dev, nci_prop_act, sizeof(nci_prop_act), rx,
 						     sizeof(data->rx_buf), &rx_len, K_SECONDS(1));
 		if (ret != 0) {
@@ -114,29 +152,83 @@ static int pn7160_nci_configure_mode_unlocked(const struct device *dev, uint8_t 
 		}
 	}
 
-	item_count = 0U;
+	map_item_count = 0U;
+
+	if ((mode & PN7160_NCI_MODE_CARDEMU) != 0U) {
+		memcpy(&cmd[4U + (3U * map_item_count)], dm_cardemu, sizeof(dm_cardemu));
+		map_item_count++;
+	}
 
 	if ((mode & PN7160_NCI_MODE_RW) != 0U) {
-		memcpy(&cmd[4U + (3U * item_count)], dm_rw, sizeof(dm_rw));
-		item_count += sizeof(dm_rw) / 3U;
+		memcpy(&cmd[4U + (3U * map_item_count)], dm_rw, sizeof(dm_rw));
+		map_item_count += sizeof(dm_rw) / 3U;
 	}
 
-	if (item_count == 0U) {
-		return 0;
+	if (map_item_count != 0U) {
+		cmd[0] = 0x21;
+		cmd[1] = PN7160_NCI_RF_DISCOVER_MAP_OID;
+		cmd[2] = (uint8_t)(1U + (map_item_count * 3U));
+		cmd[3] = (uint8_t)map_item_count;
+
+		ret = pn7160_nci_transceive_unlocked(dev, cmd, 3U + cmd[2], rx,
+						     sizeof(data->rx_buf), &rx_len, K_SECONDS(1));
+		if (ret != 0) {
+			return ret;
+		}
+
+		ret = pn7160_nci_rf_rsp_ok(rx, rx_len, PN7160_NCI_RF_DISCOVER_MAP_OID);
+		if (ret != 0) {
+			return ret;
+		}
 	}
 
-	cmd[0] = 0x21;
-	cmd[1] = PN7160_NCI_RF_DISCOVER_MAP_OID;
-	cmd[2] = (uint8_t)(1U + (item_count * 3U));
-	cmd[3] = (uint8_t)item_count;
+	routing_item_count = 0U;
 
-	ret = pn7160_nci_transceive_unlocked(dev, cmd, 3U + cmd[2], rx, sizeof(data->rx_buf),
-					     &rx_len, K_SECONDS(1));
-	if (ret != 0) {
-		return ret;
+	if ((mode & PN7160_NCI_MODE_CARDEMU) != 0U) {
+		memcpy(&cmd[5U + (5U * routing_item_count)], r_cardemu, sizeof(r_cardemu));
+		routing_item_count++;
 	}
 
-	return pn7160_nci_rf_rsp_ok(rx, rx_len, PN7160_NCI_RF_DISCOVER_MAP_OID);
+	if (routing_item_count != 0U) {
+		memcpy(cmd, nci_routing_hdr, sizeof(nci_routing_hdr));
+		cmd[2] = (uint8_t)(2U + (routing_item_count * 5U));
+		cmd[3] = 0x00U;
+		cmd[4] = (uint8_t)routing_item_count;
+
+		ret = pn7160_nci_transceive_unlocked(dev, cmd, 3U + cmd[2], rx,
+						     sizeof(data->rx_buf), &rx_len, K_SECONDS(1));
+		if (ret != 0) {
+			return ret;
+		}
+
+		ret = pn7160_nci_rf_rsp_ok(rx, rx_len, PN7160_NCI_RF_SET_ROUTING_OID);
+		if (ret != 0) {
+			return ret;
+		}
+	}
+
+	selrsp_val = 0U;
+	if ((mode & PN7160_NCI_MODE_CARDEMU) != 0U) {
+		selrsp_val += 0x20U;
+	}
+
+	if (selrsp_val != 0U) {
+		memcpy(selrsp, nci_set_config_nfca_selrsp, sizeof(selrsp));
+		selrsp[6] = selrsp_val;
+
+		ret = pn7160_nci_transceive_unlocked(dev, selrsp, sizeof(selrsp), rx,
+						     sizeof(data->rx_buf), &rx_len, K_SECONDS(1));
+		if (ret != 0) {
+			return ret;
+		}
+
+		ret = pn7160_nci_core_set_config_rsp_ok(rx, rx_len);
+		if (ret != 0) {
+			return ret;
+		}
+	}
+
+	return 0;
 }
 
 static int pn7160_nci_build_start_discovery(const uint8_t *tech_tab, size_t tech_count,
@@ -400,4 +492,62 @@ const struct pn7160_nci_rf_intf *pn7160_nci_discovery_last(const struct device *
 	struct pn7160_data *data = dev->data;
 
 	return &data->last_rf_intf;
+}
+
+int pn7160_nci_listen_start(const struct device *dev, const uint8_t *tech_tab, size_t tech_count)
+{
+	struct pn7160_data *data = dev->data;
+	const uint8_t *tech = tech_tab;
+	size_t count = tech_count;
+	int ret;
+
+	if (tech == NULL || count == 0U) {
+		tech = default_listen_discovery_tech;
+		count = ARRAY_SIZE(default_listen_discovery_tech);
+	}
+
+	k_mutex_lock(&data->api_mutex, K_FOREVER);
+
+	ret = pn7160_nci_configure_mode_unlocked(dev, PN7160_NCI_MODE_CARDEMU);
+	if (ret != 0) {
+		goto out;
+	}
+
+	ret = pn7160_nci_start_discovery_unlocked(dev, tech, count);
+
+out:
+	k_mutex_unlock(&data->api_mutex);
+
+	return ret;
+}
+
+int pn7160_nci_listen_stop(const struct device *dev)
+{
+	return pn7160_nci_discovery_stop(dev);
+}
+
+bool pn7160_nci_listen_active(const struct device *dev)
+{
+	return pn7160_nci_discovery_active(dev);
+}
+
+int pn7160_nci_rw_ce_discovery_start(const struct device *dev)
+{
+	struct pn7160_data *data = dev->data;
+	int ret;
+
+	k_mutex_lock(&data->api_mutex, K_FOREVER);
+
+	ret = pn7160_nci_configure_mode_unlocked(dev, PN7160_NCI_MODE_RW | PN7160_NCI_MODE_CARDEMU);
+	if (ret != 0) {
+		goto out;
+	}
+
+	ret = pn7160_nci_start_discovery_unlocked(dev, default_rw_ce_discovery_tech,
+						ARRAY_SIZE(default_rw_ce_discovery_tech));
+
+out:
+	k_mutex_unlock(&data->api_mutex);
+
+	return ret;
 }

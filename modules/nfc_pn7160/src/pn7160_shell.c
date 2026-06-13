@@ -431,6 +431,155 @@ static int cmd_pn7160_discovery_status(const struct shell *sh, size_t argc, char
 	return 0;
 }
 
+static int cmd_pn7160_listen_start(const struct shell *sh, size_t argc, char **argv)
+{
+	const struct device *dev;
+	int ret;
+
+	ARG_UNUSED(argc);
+	ARG_UNUSED(argv);
+
+	ret = pn7160_shell_check_dev(sh, &dev);
+	if (ret != 0) {
+		return ret;
+	}
+
+	ret = pn7160_nci_listen_start(dev, NULL, 0U);
+	if (ret != 0) {
+		shell_error(sh, "Listen start failed: %d", ret);
+		return ret;
+	}
+
+	shell_print(sh, "Listen started (NFC-A/B card emulation)");
+	return 0;
+}
+
+static int cmd_pn7160_listen_stop(const struct shell *sh, size_t argc, char **argv)
+{
+	const struct device *dev;
+	int ret;
+
+	ARG_UNUSED(argc);
+	ARG_UNUSED(argv);
+
+	ret = pn7160_shell_check_dev(sh, &dev);
+	if (ret != 0) {
+		return ret;
+	}
+
+	ret = pn7160_nci_listen_stop(dev);
+	if (ret != 0) {
+		shell_error(sh, "Listen stop failed: %d", ret);
+		return ret;
+	}
+
+	shell_print(sh, "Listen stopped");
+	return 0;
+}
+
+static int cmd_pn7160_listen_status(const struct shell *sh, size_t argc, char **argv)
+{
+	const struct device *dev;
+	int ret;
+
+	ARG_UNUSED(argc);
+	ARG_UNUSED(argv);
+
+	ret = pn7160_shell_check_dev(sh, &dev);
+	if (ret != 0) {
+		return ret;
+	}
+
+	shell_print(sh, "Listen: %s", pn7160_nci_listen_active(dev) ? "active" : "inactive");
+	return 0;
+}
+
+static int cmd_pn7160_card_recv(const struct shell *sh, size_t argc, char **argv)
+{
+	const struct device *dev;
+	uint8_t data[PN7160_SHELL_XCV_MAX];
+	size_t data_len = 0U;
+	int ret;
+
+	ARG_UNUSED(argc);
+	ARG_UNUSED(argv);
+
+	ret = pn7160_shell_check_dev(sh, &dev);
+	if (ret != 0) {
+		return ret;
+	}
+
+	ret = pn7160_nci_card_mode_recv(dev, data, sizeof(data), &data_len, K_SECONDS(2));
+	if (ret != 0) {
+		shell_error(sh, "CardModeReceive failed: %d", ret);
+		return ret;
+	}
+
+	shell_fprintf(sh, SHELL_NORMAL, "Card RX (%u):", (unsigned int)data_len);
+	for (size_t i = 0; i < data_len; i++) {
+		shell_fprintf(sh, SHELL_NORMAL, " %02x", data[i]);
+	}
+	shell_print(sh, "");
+	return 0;
+}
+
+static int cmd_pn7160_card_send(const struct shell *sh, size_t argc, char **argv)
+{
+	const struct device *dev;
+	uint8_t data[PN7160_SHELL_XCV_MAX];
+	size_t data_len = 0U;
+	int ret;
+
+	if (argc < 2) {
+		shell_error(sh, "Usage: pn7160 card send <hex byte> [hex byte ...]");
+		shell_print(sh, "Card-mode DATA_PACKET (NxpNci_CardModeSend); use after listen start.");
+		return -EINVAL;
+	}
+
+	ret = pn7160_shell_check_dev(sh, &dev);
+	if (ret != 0) {
+		return ret;
+	}
+
+	for (size_t i = 1; i < argc; i++) {
+		if (data_len >= sizeof(data)) {
+			shell_error(sh, "Payload buffer full (max %u bytes)", PN7160_SHELL_XCV_MAX);
+			return -EINVAL;
+		}
+
+		ret = pn7160_shell_parse_hex_byte(argv[i], &data[data_len]);
+		if (ret != 0) {
+			shell_error(sh, "Invalid hex byte: %s", argv[i]);
+			return ret;
+		}
+		data_len++;
+	}
+
+	ret = pn7160_nci_card_mode_send(dev, data, data_len, K_SECONDS(2));
+	if (ret != 0) {
+		shell_error(sh, "CardModeSend failed: %d", ret);
+		return ret;
+	}
+
+	shell_print(sh, "Card TX sent (%u bytes)", (unsigned int)data_len);
+	return 0;
+}
+
+SHELL_STATIC_SUBCMD_SET_CREATE(pn7160_listen_cmds,
+			       SHELL_CMD(start, NULL, "ConfigureMode CARDEMU + listen discovery",
+					 cmd_pn7160_listen_start),
+			       SHELL_CMD(stop, NULL, "Stop listen discovery loop", cmd_pn7160_listen_stop),
+			       SHELL_CMD(status, NULL, "Show listen discovery state",
+					 cmd_pn7160_listen_status),
+			       SHELL_SUBCMD_SET_END);
+
+SHELL_STATIC_SUBCMD_SET_CREATE(pn7160_card_cmds,
+			       SHELL_CMD(recv, NULL, "Wait for card-mode DATA_PACKET from reader",
+					 cmd_pn7160_card_recv),
+			       SHELL_CMD(send, NULL, "Send card-mode DATA_PACKET to reader",
+					 cmd_pn7160_card_send),
+			       SHELL_SUBCMD_SET_END);
+
 SHELL_STATIC_SUBCMD_SET_CREATE(pn7160_discovery_cmds,
 			       SHELL_CMD(start, NULL, "ConfigureMode RW + start discovery poll",
 					 cmd_pn7160_discovery_start),
@@ -456,6 +605,10 @@ SHELL_STATIC_SUBCMD_SET_CREATE(pn7160_cmds,
 			       SHELL_CMD(settings, NULL, "Apply Nfc_settings.h RF/core blobs",
 					 cmd_pn7160_settings),
 			       SHELL_CMD(discovery, &pn7160_discovery_cmds, "RF discovery (reader mode)",
+					 NULL),
+			       SHELL_CMD(listen, &pn7160_listen_cmds, "Card emulation listen mode",
+					 NULL),
+			       SHELL_CMD(card, &pn7160_card_cmds, "Card-mode DATA_PACKET recv/send",
 					 NULL),
 			       SHELL_CMD(tagcmd, NULL, "Raw tag command (ReaderTagCmd DATA_PACKET)",
 					 cmd_pn7160_tagcmd),

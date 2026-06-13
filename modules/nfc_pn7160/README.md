@@ -3,9 +3,13 @@
 Out-of-tree Zephyr module for the NXP PN7160 NFC controller. Lives in **writable_ndef_msg**
 alongside the NFC stack (`src/nfc/`).
 
+**Driver status: frozen v1.0 — READER + CARD.** Reader poll/discovery and card-emulation
+listen + raw DATA_PACKET exchange are ported from NXP-NCI2.0; NDEF/T4T protocol handling
+stays in the application layer (not in this driver).
+
 **Quality bar:** Phase 0 meets [Zephyr main-tree PR standards](../../docs/nfc/specs/2026-06-14-pn7160-zephyr-driver.md#upstream-quality-bar).
 
-## Features (Phase 0)
+## Features (v1.0)
 
 | Component | Status |
 |---|---|
@@ -14,8 +18,10 @@ alongside the NFC stack (`src/nfc/`).
 | VEN reset | 10 ms / 10 ms NXP sequence |
 | DWL download mode | `pn7160_dwl_enter()` / `pn7160_dwl_leave()`, 1-byte TML header |
 | IRQ → work queue | GPIO ISR → `irq_rx_work` → TML recv + NCI process |
-| NCI probe | `pn7160_nci_check_dev_pres()` / CORE_RESET_NTF FW cache |
-| Shell | `pn7160 probe`, `pn7160 fwver`, `pn7160 dwl *` (`CONFIG_PN7160_SHELL`) |
+| NCI connect | CORE_RESET probe + CORE_INIT + ConfigureSettings |
+| Reader mode | Discovery poll (NFC-A/B/V), `pn7160_nci_reader_tag_cmd()` |
+| Card mode | Listen discovery (NFC-A/B), `pn7160_nci_card_mode_recv/send()` |
+| Shell | probe, init, settings, discovery, listen, card, tagcmd, xcv, dwl |
 | Unit tests | TML framing (NCI + DWL), SPI xfer lengths, NCI FW parse (Twister `ci_unit`) |
 
 Full spec: [`docs/nfc/specs/2026-06-14-pn7160-zephyr-driver.md`](../../docs/nfc/specs/2026-06-14-pn7160-zephyr-driver.md).
@@ -59,11 +65,27 @@ With `CONFIG_PN7160_SHELL=y` and UART shell enabled:
 uart:~$ pn7160 probe
 PN7160 present (CORE_RESET OK)
 
-uart:~$ pn7160 fwver
-FW version: 01.02.03
+uart:~$ pn7160 init
+PN7160 connected (CORE_INIT OK)
+
+uart:~$ pn7160 settings
+NCI settings applied (Nfc_settings.h blobs)
+
+uart:~$ pn7160 discovery start
+Discovery started (NFC-A/B/V poll)
+
+uart:~$ pn7160 listen start
+Listen started (NFC-A/B card emulation)
+
+uart:~$ pn7160 card recv
+Card RX (N): ...
+
+uart:~$ pn7160 card send 90 00
+Card TX sent (2 bytes)
 ```
 
-`fwver` runs CORE_RESET automatically if no cached NTF is available.
+Combined reader + card discovery (NXP RWandCE table) is available via
+`pn7160_nci_rw_ce_discovery_start()` in application code.
 
 **Download mode** (requires `dwl-gpios` in devicetree):
 
@@ -84,8 +106,10 @@ See `include/nfc/pn7160.h` (doxygen) and `include/nfc/pn7160_tml.h` for framing 
 Typical init flow:
 
 1. `device_is_ready(PN7160_DEVICE)`
-2. `pn7160_nci_check_dev_pres(PN7160_DEVICE)`
-3. `pn7160_fw_version_get(PN7160_DEVICE)` for 3-byte version
+2. `pn7160_nci_connect(PN7160_DEVICE)`
+3. `pn7160_nci_configure_settings(PN7160_DEVICE)`
+4. Reader: `pn7160_nci_discovery_start()` → `pn7160_nci_discovery_wait()` → `pn7160_nci_reader_tag_cmd()`
+5. Card: `pn7160_nci_listen_start()` → `pn7160_nci_card_mode_recv()` / `pn7160_nci_card_mode_send()`
 
 Runtime NCI exchange: `pn7160_nci_transceive()`.
 
@@ -101,9 +125,11 @@ west twister -T modules/nfc_pn7160/tests/unit/pn7160_tml \
 Ported sections from NXP-NCI2.0 retain NXP file-header copyright:
 
 - `source/TML/tml.c` → `pn7160_tml_i2c.c`, `pn7160_tml_spi.c`
-- `NfcLibrary/NxpNci20.c` → `pn7160_nci.c`, `pn7160_nci_parse.c`
+- `NfcLibrary/NxpNci20.c` → `pn7160_nci.c`, `pn7160_nci_parse.c`, `pn7160_nci_discovery.c`, `pn7160_nci_card_mode.c`
+- `source/nfc_example_RWandCE.c` → listen discovery table + `pn7160_nci_rw_ce_discovery_start()`
 
-Sources under `hals_temp/NXP-NCI2.0_LPC55S6x_examples/`.
+Sources under `hals_temp/NXP-NCI2.0_LPC55S6x_examples/`. T4T NDEF emulation (`T4T_NDEF_emu.c`)
+is reference-only — host must implement card protocol above `pn7160_nci_card_mode_*`.
 
 ## HAL integration (Phase 0.5+)
 

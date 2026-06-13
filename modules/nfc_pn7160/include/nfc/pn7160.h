@@ -182,11 +182,13 @@ int pn7160_nci_host_transceive(const struct device *dev, const uint8_t *tx, size
 
 #define PN7160_NCI_MODE_POLL         0x00U
 #define PN7160_NCI_MODE_LISTEN       0x80U
+#define PN7160_NCI_MODE_MASK         0x80U
 #define PN7160_NCI_TECH_PASSIVE_NFCA 0U
 #define PN7160_NCI_TECH_PASSIVE_NFCB 1U
 #define PN7160_NCI_TECH_PASSIVE_NFCF 2U
 #define PN7160_NCI_TECH_PASSIVE_15693 6U
 #define PN7160_NCI_MODE_RW           (1U << 2)
+#define PN7160_NCI_MODE_CARDEMU      (1U << 0)
 
 /** Discovered remote tag summary (UID + protocol). */
 struct pn7160_nci_rf_intf {
@@ -211,9 +213,10 @@ struct pn7160_nci_rf_intf {
 int pn7160_nci_configure_settings(const struct device *dev);
 
 /**
- * @brief Configure discovery map for the given mode bitmask.
+ * @brief Configure discovery map and routing for the given mode bitmask.
  *
- * Reader-only port supports @ref PN7160_NCI_MODE_RW.
+ * Supports @ref PN7160_NCI_MODE_RW and/or @ref PN7160_NCI_MODE_CARDEMU (NXP
+ * `NxpNci_ConfigureMode`).
  *
  * @param dev PN7160 device.
  * @param mode NXP NXPNCI_MODE_* flags.
@@ -282,6 +285,67 @@ const struct pn7160_nci_rf_intf *pn7160_nci_discovery_last(const struct device *
  */
 int pn7160_nci_reader_tag_cmd(const struct device *dev, const uint8_t *cmd, size_t cmd_len,
 			      uint8_t *answer, size_t answer_max, size_t *answer_len,
+			      k_timeout_t timeout);
+
+/**
+ * @brief Start card-emulation listen discovery (ConfigureMode CARDEMU + RF_DISCOVER).
+ *
+ * Uses @p tech_tab or the default NFC-A / NFC-B listen table from NXP RWandCE when NULL.
+ *
+ * @param dev PN7160 device.
+ * @param tech_tab Mode|tech entries (see PN7160_NCI_MODE_LISTEN | PN7160_NCI_TECH_*).
+ * @param tech_count Number of entries in @p tech_tab.
+ * @return 0 on success, negative errno otherwise.
+ */
+int pn7160_nci_listen_start(const struct device *dev, const uint8_t *tech_tab, size_t tech_count);
+
+/**
+ * @brief Stop card-emulation listen discovery loop.
+ *
+ * Alias of @ref pn7160_nci_discovery_stop.
+ */
+int pn7160_nci_listen_stop(const struct device *dev);
+
+/**
+ * @brief Return whether listen discovery is active after @ref pn7160_nci_listen_start.
+ */
+bool pn7160_nci_listen_active(const struct device *dev);
+
+/**
+ * @brief Start combined reader + card-emulation discovery (RWandCE table).
+ *
+ * Configures @ref PN7160_NCI_MODE_RW | @ref PN7160_NCI_MODE_CARDEMU and starts the
+ * six-entry poll + listen table from NXP `nfc_example_RWandCE.c`.
+ */
+int pn7160_nci_rw_ce_discovery_start(const struct device *dev);
+
+/**
+ * @brief Wait for a card-mode DATA_PACKET from a remote reader (NxpNci_CardModeReceive).
+ *
+ * Blocks until an NCI DATA_PACKET (`00 00 len payload`) arrives or @p timeout expires.
+ *
+ * @param dev PN7160 device.
+ * @param data Payload buffer.
+ * @param data_max Payload buffer capacity.
+ * @param data_len Actual payload length on success.
+ * @param timeout Maximum wait time.
+ * @return 0 on success, `-ETIMEDOUT`, `-EIO` if the frame is not a DATA_PACKET, or other errno.
+ */
+int pn7160_nci_card_mode_recv(const struct device *dev, uint8_t *data, size_t data_max,
+			      size_t *data_len, k_timeout_t timeout);
+
+/**
+ * @brief Send a card-mode DATA_PACKET response (NxpNci_CardModeSend).
+ *
+ * Wraps payload in NCI DATA_PACKET (`00 00 len + payload`) and transceives.
+ *
+ * @param dev PN7160 device.
+ * @param data Payload to send.
+ * @param data_len Payload length (max 255 bytes per NCI length byte).
+ * @param timeout Maximum wait per NCI exchange.
+ * @return 0 on success, negative errno otherwise.
+ */
+int pn7160_nci_card_mode_send(const struct device *dev, const uint8_t *data, size_t data_len,
 			      k_timeout_t timeout);
 
 /** @} */
