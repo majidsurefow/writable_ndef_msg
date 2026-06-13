@@ -2,9 +2,7 @@
  * Copyright (c) 2026
  * SPDX-License-Identifier: Apache-2.0
  *
- * Tier E+ — virtual RF loopback: load → emulate → poller read → save → compare.
- * Flipper analogue: mf_ultralight_reader_test — virtual RF on QEMU
- * (NDEF has no Flipper protocols/ndef/; provenance: cookbook §5.1 + NXP RW_NDEF_T4T)
+ * Tier E+ — virtual RF loopback via nfc_virtual_loopback harness.
  */
 
 #include "applets/nfc_applet.h"
@@ -14,21 +12,15 @@
 #include "store/nfc_store.h"
 #include "store_fixture.h"
 
-#include "nfc_session_mock.h"
-#include "nfc_virtual_rf.h"
+#include "nfc_virtual_loopback.h"
 
-#include <errno.h>
 #include <string.h>
 
-#include <zephyr/sys/crc.h>
 #include <zephyr/ztest.h>
 
 static ndef_data_t s_read;
 static ndef_data_t s_clone_model;
 static ndef_data_t s_expected;
-static uint8_t s_saved_blob[512];
-static size_t s_saved_len;
-static nfc_reader_session_t s_session;
 
 static int clone_serialize(uint8_t *out, size_t out_max, size_t *out_len, void *user_ctx)
 {
@@ -50,43 +42,43 @@ static nfc_service_t s_clone_svc = {
 	.persist_id = NFC_PERSIST_ID_NDEF,
 };
 
-static int mock_save_cb(const char *tag, const uint8_t *blob, size_t len, void *user_ctx)
+static int ndef_listener_setup(void *user_ctx)
 {
-	ARG_UNUSED(tag);
 	ARG_UNUSED(user_ctx);
 
-	if (len > sizeof(s_saved_blob)) {
-		return -ENOSPC;
-	}
+	return ndef_listener_init(NULL, &(ndef_listener_config_t){ .writable = false });
+}
 
-	(void)memcpy(s_saved_blob, blob, len);
-	s_saved_len = len;
+static void ndef_listener_teardown(void *user_ctx)
+{
+	ARG_UNUSED(user_ctx);
+
+	(void)ndef_listener_shutdown();
+}
+
+static int ndef_copy_read(void *save_model, const void *read_out, void *user_ctx)
+{
+	ARG_UNUSED(user_ctx);
+
+	*(ndef_data_t *)save_model = *(const ndef_data_t *)read_out;
 	return 0;
 }
 
-static int mock_load_cb(const char *tag, uint8_t *out, size_t max, size_t *out_len,
-			void *user_ctx)
+static int ndef_compare(const void *expected, const void *actual, void *user_ctx)
 {
-	ARG_UNUSED(tag);
 	ARG_UNUSED(user_ctx);
 
-	if (s_saved_len == 0U) {
-		return -ENOENT;
-	}
-	if (s_saved_len > max) {
-		return -ENOSPC;
-	}
-
-	(void)memcpy(out, s_saved_blob, s_saved_len);
-	*out_len = s_saved_len;
-	return 0;
+	return nfc_applet_verify_compare(expected, actual, NULL, NULL);
 }
 
-static void load_golden_blob(const uint8_t *blob, size_t len)
+static int ndef_poller_detect_wrap(nfc_reader_session_t *session)
 {
-	zassert_true(len <= sizeof(s_saved_blob));
-	(void)memcpy(s_saved_blob, blob, len);
-	s_saved_len = len;
+	return ndef_poller_detect(session);
+}
+
+static int ndef_poller_read_wrap(nfc_reader_session_t *session, void *read_out)
+{
+	return ndef_poller_read(session, read_out);
 }
 
 static void set_empty_ndef_model(ndef_data_t *data)
@@ -119,12 +111,7 @@ static void set_empty_ndef_model(ndef_data_t *data)
 
 static void *suite_setup(void)
 {
-	s_saved_len = 0U;
-	nfc_session_mock_reset();
-	nfc_virtual_rf_disable();
-	(void)nfc_store_init(NULL);
-	(void)nfc_store_register_save_cb(mock_save_cb, NULL);
-	(void)nfc_store_register_load_cb(mock_load_cb, NULL);
+	zassert_ok(nfc_virtual_loopback_init());
 	return NULL;
 }
 
@@ -132,59 +119,44 @@ static void loopback_before(void *fixture)
 {
 	ARG_UNUSED(fixture);
 
-	nfc_session_mock_reset();
-	nfc_virtual_rf_disable();
-	ndef_listener_shutdown();
+	nfc_virtual_loopback_reset();
 	ndef_data_reset(&s_read);
 	ndef_data_reset(&s_clone_model);
-	s_saved_len = 0U;
-	s_session.active = false;
 }
 
 ZTEST_SUITE(nfc_reader_loopback, NULL, suite_setup, loopback_before, NULL, NULL);
 
 ZTEST(nfc_reader_loopback, test_virtual_loopback_empty_card)
 {
-	const nfc_service_t *listener = ndef_listener_get();
-	const nfc_service_t *load_svcs[] = { listener };
-	const nfc_service_t *save_svcs[] = { &s_clone_svc };
-	uint16_t crc_stored;
-	uint16_t crc_calc;
+	const uint8_t *saved_blob;
+	size_t saved_len;
 	int ret;
 
-	/* 1. Load golden envelope → listener model (emulate path). */
-	zassert_ok(ndef_listener_init(NULL, &(ndef_listener_config_t){ .writable = false }));
-	load_golden_blob(store_fixture_ndef_empty_card, STORE_FIXTURE_NDEF_EMPTY_CARD_LEN);
-	ret = nfc_store_load("golden", load_svcs, ARRAY_SIZE(load_svcs));
-	zassert_ok(ret);
-
-	/* 2. Virtual RF: poller TX routed to listener on_apdu / on_select. */
-	zassert_ok(nfc_virtual_rf_enable(listener));
-
-	/* 3. Active reader session (discover OK — no HAL on QEMU). */
-	s_session.active = true;
-
-	/* 4. Poller detect + read → ndef_data_t. */
-	zassert_ok(ndef_poller_detect(&s_session));
-	ret = ndef_poller_read(&s_session, &s_read);
-	zassert_ok(ret);
-
-	/* 5. Save cloned read via store envelope. */
 	set_empty_ndef_model(&s_expected);
-	s_clone_model = s_read;
-	ret = nfc_store_save("cloned", save_svcs, ARRAY_SIZE(save_svcs));
+
+	ret = nfc_virtual_loopback_run(&(nfc_virtual_loopback_params_t){
+		.listener_svc = ndef_listener_get(),
+		.save_svc = &s_clone_svc,
+		.golden_blob = store_fixture_ndef_empty_card,
+		.golden_blob_len = STORE_FIXTURE_NDEF_EMPTY_CARD_LEN,
+		.golden_slot = "golden",
+		.output_slot = "cloned",
+		.poller_detect = ndef_poller_detect_wrap,
+		.poller_read = ndef_poller_read_wrap,
+		.read_out = &s_read,
+		.listener_setup = ndef_listener_setup,
+		.listener_teardown = ndef_listener_teardown,
+		.save_model = &s_clone_model,
+		.copy_read_to_save = ndef_copy_read,
+		.expected = &s_expected,
+		.compare = ndef_compare,
+		.verify_envelope = true,
+	});
 	zassert_ok(ret);
 
-	/* 6. Model fields match poller read + envelope valid (golden uses zero CC placeholder). */
-	zassert_ok(nfc_applet_verify_compare(&s_expected, &s_read, NULL, NULL));
-	zassert_true(s_saved_len >= NFC_STORE_ENVELOPE_OVERHEAD);
-	zassert_equal(s_saved_blob[0], NFC_STORE_BLOB_MAGIC_0);
-	zassert_equal(s_saved_blob[1], NFC_STORE_BLOB_MAGIC_1);
-	zassert_equal(s_saved_blob[2], NFC_STORE_BLOB_VERSION);
-	crc_stored = (uint16_t)s_saved_blob[s_saved_len - 2U] |
-		     ((uint16_t)s_saved_blob[s_saved_len - 1U] << 8U);
-	crc_calc = crc16_ccitt(0xFFFFU, s_saved_blob, s_saved_len - NFC_STORE_BLOB_CRC_SIZE);
-	zassert_equal(crc_calc, crc_stored);
-
-	nfc_virtual_rf_disable();
+	zassert_ok(nfc_virtual_loopback_last_saved(&saved_blob, &saved_len));
+	zassert_true(saved_len >= NFC_STORE_ENVELOPE_OVERHEAD);
+	zassert_equal(saved_blob[0], NFC_STORE_BLOB_MAGIC_0);
+	zassert_equal(saved_blob[1], NFC_STORE_BLOB_MAGIC_1);
+	zassert_equal(saved_blob[2], NFC_STORE_BLOB_VERSION);
 }

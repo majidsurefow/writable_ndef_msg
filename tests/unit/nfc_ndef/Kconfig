@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: Apache-2.0
+
+mainmenu "NDEF protocol unit tests"
+
+source "Kconfig.zephyr"
+
+config NFC_NDEF_MAX_SIZE
+	int "Maximum NDEF message payload (bytes)"
+	default 500
+	range 1 4096
+
+config NFC_NDEF_TEST_TIER_POLLER
+	bool "Build NDEF poller tier tests"
+	default n
+
+config NFC_NDEF_TEST_TIER_LISTENER
+	bool "Build NDEF listener tier tests"
+	default n

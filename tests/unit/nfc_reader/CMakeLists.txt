@@ -19,8 +19,10 @@ target_sources(app PRIVATE
   ${REPO_NFC}/protocols/ndef/ndef_listener.c
   ${REPO_NFC}/protocols/ndef/ndef_poller.c
   ${REPO_NFC}/store/nfc_store.c
+  ${REPO_NFC}/applets/nfc_applet_policy.c
   ${REPO_NFC}/applets/nfc_applet_verify_compare.c
   ${NFC_TEST_COMMON_SOURCES}
+  ${NFC_TEST_LOOPBACK_SOURCES}
 )
 
 target_include_directories(app PRIVATE

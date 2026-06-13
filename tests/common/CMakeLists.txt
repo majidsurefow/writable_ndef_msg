@@ -13,6 +13,10 @@ set(NFC_TEST_COMMON_SOURCES
   ${NFC_TEST_COMMON_DIR}/src/nfc_virtual_rf.c
 )
 
+set(NFC_TEST_LOOPBACK_SOURCES
+  ${NFC_TEST_COMMON_DIR}/src/nfc_virtual_loopback.c
+)
+
 set(NFC_TEST_COMMON_INCLUDES
   ${NFC_TEST_COMMON_DIR}/include
 )
