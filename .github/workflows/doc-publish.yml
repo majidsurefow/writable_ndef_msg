@@ -1,0 +1,50 @@
+name: Documentation Publish
+
+on:
+  workflow_run:
+    workflows: ["Documentation Build"]
+    types:
+      - completed
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy API docs to GitHub Pages
+    runs-on: ubuntu-24.04
+    if: |
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.conclusion == 'success'
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Download HTML artifact
+        uses: dawidd6/action-download-artifact@b6e2e70617bc3265edd6dab6c906732b2f1ae151 # v21
+        with:
+          workflow: doc-build.yml
+          run_id: ${{ github.event.workflow_run.id }}
+          name: html-output
+          path: html-output
+
+      - name: Extract HTML
+        run: tar -xzf html-output/html-output.tar.gz -C html-output
+
+      - name: Setup Pages
+        uses: actions/configure-pages@1b6a4aa908542787314a249ab09c6a86b859dc23 # v5.0.0
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@56c4d715775a8600b09c5a2f0266d4b7782b9b88 # v4.0.0
+        with:
+          path: html-output/html
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@d6db9015126c3510d147546148b3ed5e015fed0e # v4.0.5

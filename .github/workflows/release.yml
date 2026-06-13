@@ -1,0 +1,56 @@
+name: Create a Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+      - '!v*rc*'
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Get the version
+        id: get_version
+        run: |
+          echo "VERSION=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          echo "TRIMMED_VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+
+      - name: REUSE compliance check
+        uses: fsfe/reuse-action@676e2d560c9a403aa252096d99fcab3e1132b0f5 # v6.0.0
+        with:
+          args: spdx -o writable_ndef_msg-${{ steps.get_version.outputs.VERSION }}.spdx
+
+      - name: Upload SPDX artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        continue-on-error: true
+        with:
+          name: writable_ndef_msg-${{ steps.get_version.outputs.VERSION }}.spdx
+          path: writable_ndef_msg-${{ steps.get_version.outputs.VERSION }}.spdx
+
+      - name: Create release notes body
+        run: |
+          cat > release-notes.txt <<EOF
+          Release ${GITHUB_REF#refs/tags/} of writable_ndef_msg.
+
+          See docs/CI_TESTING.md for build and test instructions.
+          EOF
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@a6da7724389623dadb361dcf9637e3c24a788ae3 # v2.2.2
+        with:
+          name: writable_ndef_msg ${{ steps.get_version.outputs.TRIMMED_VERSION }}
+          body_path: release-notes.txt
+          draft: true
+          prerelease: false
+          files: writable_ndef_msg-${{ steps.get_version.outputs.VERSION }}.spdx

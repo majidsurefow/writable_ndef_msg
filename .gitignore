@@ -5,11 +5,9 @@
 # build
 /build*/
 /scan/
+/doc/_build/
 
 # local reference trees (not part of the product repo; see docs/CI_TESTING.md)
 /hals_temp/
 /flipperzero/
 /aliro/
-
-# CI/CD workflows live in separate repo clone
-/zephyr_CICD/

@@ -1,0 +1,82 @@
+name: Coding Guidelines
+
+on:
+  pull_request:
+    types:
+      - edited
+      - opened
+      - reopened
+      - synchronize
+
+permissions:
+  contents: read
+
+env:
+  APP_PATH: .
+  COMPLIANCE_PATHS: >-
+    src modules boards docs sample.yaml west.yml CMakeLists.txt Kconfig prj.conf
+    overlay-pn7160.conf overlay-pn7160-spi.conf license_config.yml
+
+jobs:
+  coding_guidelines:
+    runs-on: ubuntu-24.04
+    name: Run coding guidelines checks on patch series (PR)
+    steps:
+      - name: Checkout the code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Rebase onto the target branch
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git config --global user.email "actions@zephyrproject.org"
+          git config --global user.name "Github Actions"
+          rm -fr ".git/rebase-apply" ".git/rebase-merge"
+          git rebase origin/${BASE_REF}
+          git clean -f -d
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.12'
+
+      - name: Setup Zephyr project
+        uses: zephyrproject-rtos/action-zephyr-setup@5ec39f5cba83346d83a836dfed1524270c660e28 # v1.0.14
+        with:
+          app-path: ${{ env.APP_PATH }}
+          toolchains: arm-zephyr-eabi
+
+      - name: Install coccinelle
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends coccinelle
+
+      - name: Run Coding Guidelines Checks
+        continue-on-error: true
+        id: coding_guidelines
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr"
+          changed=$(git diff --name-only origin/${BASE_REF}.. -- ${COMPLIANCE_PATHS} || true)
+          if [ -z "$changed" ]; then
+            echo "No product-path changes; skipping coding guidelines."
+            : > output.txt
+            exit 0
+          fi
+          "${ZEPHYR_BASE}/scripts/ci/guideline_check.py" --output output.txt \
+            -c origin/${BASE_REF}..
+
+      - name: check-warns
+        run: |
+          if [[ -s "output.txt" ]]; then
+            errors=$(cat output.txt)
+            errors="${errors//'%'/'%25'}"
+            errors="${errors//$'\n'/'%0A'}"
+            errors="${errors//$'\r'/'%0D'}"
+            echo "::error file=output.txt::$errors"
+            exit 1
+          fi

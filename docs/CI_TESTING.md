@@ -1,6 +1,9 @@
 # CI and local testing
 
-NCS workspace root (`west.yml` pins **v3.2.4**, same as `zephyr_CICD/workflows/twister.yaml`).
+NCS workspace root (`west.yml` pins **v3.2.4**, same as `.github/workflows/twister.yaml`).
+
+For west workspace layout, official doc links, and bootstrap commands, see
+[ZEPHYR_WORKSPACE.md](ZEPHYR_WORKSPACE.md).
 
 ## Reference directories (local only)
 
@@ -30,11 +33,55 @@ Driver specs may cite these paths; clone or unpack them locally as needed.
 
 ## CI workflows (`.github/workflows/`)
 
-| Workflow | Scope |
-|----------|-------|
-| `twister.yaml` | `ci_build` (integration, build-only) + `ci_unit` (qemu) |
-| `compliance.yml` | Checkpatch / compliance on product paths only |
-| `license_check.yml` | Scancode on staged `scan/` tree (`src/`, `modules/`, `boards/`) |
+### v1 — build and code quality
+
+| Workflow | Scope | Merge gate |
+|----------|-------|------------|
+| `twister.yaml` | `ci_build` (integration, build-only) + `ci_unit` (qemu) | **Yes** (`ready-to-merge`) |
+| `compliance.yml` | Checkpatch / compliance on product paths only | Recommended |
+| `coding_guidelines.yml` | Coccinelle / guideline_check on product paths | Recommended |
+| `license_check.yml` | Scancode on staged `scan/` tree (`src/`, `modules/`, `boards/`) | Recommended |
+| `clang.yaml` | LLVM `--toolchain llvm` build via Twister | Informational |
+| `codeql.yml` | CodeQL on Python + GitHub Actions | Informational |
+| `pinned-gh-actions.yml` | Enforce SHA-pinned actions (workflow edits only) | On workflow edits |
+| `ready-to-merge.yml` | Reusable gate (called by gated workflows) | — |
+
+### v2 — DT, docs, manifest, metrics
+
+| Workflow | Scope | Merge gate |
+|----------|-------|------------|
+| `devicetree.yml` | `dtschema` on module bindings + Twister `pn7160` overlay builds | **Yes** |
+| `doc-build.yml` | Doxygen HTML + coverxygen JSON for module headers | **Yes** |
+| `doxygen-coverage-delta.yml` | Fail PR if new public API lacks Doxygen docs | Recommended |
+| `doc-publish-pr.yml` | PR comment with link to doc-build artifact | — |
+| `doc-publish.yml` | Deploy API docs to GitHub Pages (push only) | — |
+| `manifest.yml` | Validate `west.yml` on PRs (`pull_request_target`) | Recommended |
+| `footprint-tracking.yml` | Flash/RAM from `ci_build` → artifact JSON | Informational |
+| `codecov.yaml` | Gcov on `ci_unit` / `qemu_cortex_m33` | Informational (`CODECOV_TOKEN`) |
+| `release.yml` | Draft GitHub release + SPDX on `v*` tags | — |
+| `scorecards.yml` | OpenSSF supply-chain score | Informational |
+
+**Skipped (not used):** `errno.yml` (Zephyr kernel libc), `stats_merged_prs.yml`, stale/greet bots, AWS/Elasticsearch publish, upstream `devicetree_checks.yml`.
+
+**Errno convention:** public APIs return `0` or negative POSIX errno per `docs/nfc/NFC_STACK_CONVENTIONS.md` §9 — enforced by review and unit tests, not a separate CI workflow.
+
+### API documentation (local)
+
+Requires Doxygen and `pip install -r doc/requirements.txt`.
+
+```bash
+make -C doc html
+make -C doc doxygen-coverage-json
+open doc/_build/doxygen/html/index.html
+```
+
+Coverage delta (matches CI):
+
+```bash
+make -C doc doxygen-coverage-json
+cp doc/_build/doc-coverage.json /tmp/pr-coverage.json
+# ... compare against base branch with scripts/ci/doxygen_coverage_diff.py
+```
 
 ## Local commands (Linux / Multipass)
 

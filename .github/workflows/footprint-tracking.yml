@@ -1,0 +1,74 @@
+name: Footprint Tracking
+
+on:
+  schedule:
+    - cron: '50 0 * * 0'
+  push:
+    branches:
+      - main
+      - nfc-stack
+      - v*-branch
+    paths:
+      - 'sample.yaml'
+      - 'modules/**'
+      - 'src/**'
+      - 'boards/**'
+      - 'prj.conf'
+      - 'overlay*.conf'
+      - '.github/workflows/footprint-tracking.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+env:
+  APP_PATH: .
+
+jobs:
+  footprint-tracking:
+    name: Record footprint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.12'
+
+      - name: Setup Zephyr project
+        uses: zephyrproject-rtos/action-zephyr-setup@5ec39f5cba83346d83a836dfed1524270c660e28 # v1.0.14
+        with:
+          app-path: ${{ env.APP_PATH }}
+          toolchains: arm-zephyr-eabi
+
+      - name: Twister build (ci_build integration)
+        run: |
+          export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr"
+          export ZEPHYR_TOOLCHAIN_VARIANT=zephyr
+          west twister -T . -t ci_build --integration --build-only \
+            --force-color --inline-logs -v --clobber-output -j $(nproc)
+
+      - name: Collect footprint report
+        run: python3 scripts/ci/footprint_report.py twister-out -o footprint.json
+
+      - name: Upload footprint data
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: footprint-${{ github.ref_name }}-${{ github.run_id }}
+          path: footprint.json
+
+      - name: Summarize footprint
+        run: |
+          echo "## Footprint report" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          cat footprint.json >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

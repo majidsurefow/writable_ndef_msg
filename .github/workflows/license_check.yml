@@ -25,7 +25,6 @@ jobs:
               cp -a "$path" "scan/"
             fi
           done
-          # flipperzero/, hals_temp/, aliro/ are reference-only and not staged.
 
       - name: Scan the code
         id: scancode

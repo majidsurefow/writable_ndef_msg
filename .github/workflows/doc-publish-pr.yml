@@ -1,0 +1,60 @@
+name: Documentation Publish (Pull Request)
+
+on:
+  workflow_run:
+    workflows: ["Documentation Build"]
+    types:
+      - completed
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  doc-publish:
+    name: Publish PR documentation note
+    runs-on: ubuntu-24.04
+    if: |
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success'
+
+    steps:
+      - name: Download artifacts
+        id: download-artifacts
+        uses: dawidd6/action-download-artifact@b6e2e70617bc3265edd6dab6c906732b2f1ae151 # v21
+        with:
+          workflow: doc-build.yml
+          run_id: ${{ github.event.workflow_run.id }}
+          if_no_artifact_found: ignore
+
+      - name: Load PR number
+        if: steps.download-artifacts.outputs.found_artifact == 'true'
+        id: pr-num
+        run: |
+          if [ -f pr_num/pr_num ]; then
+            echo "number=$(cat pr_num/pr_num)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Comment on PR
+        if: steps.download-artifacts.outputs.found_artifact == 'true' && steps.pr-num.outputs.number != ''
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const pr = Number('${{ steps.pr-num.outputs.number }}');
+            const runUrl = '${{ github.event.workflow_run.html_url }}';
+            const body = [
+              'API documentation was built for this PR.',
+              '',
+              `Download the **html-output** artifact from the [Documentation Build run](${runUrl}).`,
+              '',
+              '```bash',
+              'tar -xzf html-output.tar.gz',
+              'open html/index.html',
+              '```',
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr,
+              body,
+            });

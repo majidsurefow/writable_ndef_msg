@@ -13,7 +13,6 @@ permissions:
 
 env:
   APP_PATH: .
-  # Product paths scanned by checkpatch/compliance (reference trees excluded)
   COMPLIANCE_PATHS: >-
     src modules boards docs sample.yaml west.yml CMakeLists.txt Kconfig prj.conf
     overlay-pn7160.conf overlay-pn7160-spi.conf license_config.yml
@@ -64,7 +63,6 @@ jobs:
           if [ "${{ github.actor }}" == "dependabot[bot]" ]; then
             excludes="$excludes -e Identity"
           fi
-          # Limit diff to product paths; flipperzero/, hals_temp/, aliro/ are gitignored.
           changed=$(git diff --name-only origin/${BASE_REF}.. -- ${COMPLIANCE_PATHS} || true)
           if [ -z "$changed" ]; then
             echo "No product-path changes; skipping compliance."

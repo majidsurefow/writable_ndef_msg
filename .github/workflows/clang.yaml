@@ -1,0 +1,80 @@
+name: Build with Clang/LLVM
+
+on:
+  push:
+    branches:
+      - main
+      - nfc-stack
+      - v*-branch
+      - collab-*
+  pull_request:
+    branches:
+      - main
+      - nfc-stack
+      - v*-branch
+      - collab-*
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+env:
+  APP_PATH: .
+
+jobs:
+  clang-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      BASE_REF: ${{ github.base_ref }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Rebase onto target branch
+        if: github.event_name == 'pull_request'
+        run: |
+          git config --global user.email "actions@zephyrproject.org"
+          git config --global user.name "Github Actions"
+          rm -fr ".git/rebase-apply" ".git/rebase-merge"
+          git rebase "origin/${BASE_REF}"
+          git clean -f -d
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.12'
+
+      - name: Setup Zephyr project
+        uses: zephyrproject-rtos/action-zephyr-setup@5ec39f5cba83346d83a836dfed1524270c660e28 # v1.0.14
+        with:
+          app-path: ${{ env.APP_PATH }}
+          toolchains: arm-zephyr-eabi
+
+      - name: Run Twister (LLVM ci_build)
+        run: |
+          export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr"
+          export ZEPHYR_TOOLCHAIN_VARIANT=llvm
+          extra=""
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            extra="--integration"
+          fi
+          west twister -T . -t ci_build --toolchain llvm --build-only \
+            --force-color --inline-logs -v --clobber-output \
+            ${extra} -j $(nproc)
+
+      - name: Upload Twister results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: twister-clang
+          if-no-files-found: ignore
+          path: |
+            twister-out/twister.xml
+            twister-out/twister.json

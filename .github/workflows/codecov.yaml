@@ -1,0 +1,107 @@
+name: Code Coverage with codecov
+
+on:
+  push:
+    branches:
+      - main
+      - nfc-stack
+      - v*-branch
+      - collab-*
+  pull_request:
+    branches:
+      - main
+      - nfc-stack
+      - v*-branch
+      - collab-*
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+env:
+  APP_PATH: .
+  UNIT_TEST_DIR: modules/nfc_pn7160/tests/unit/pn7160_tml
+
+jobs:
+  codecov:
+    name: Unit test coverage (ci_unit)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Rebase onto target branch
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git config --global user.email "actions@zephyrproject.org"
+          git config --global user.name "Github Actions"
+          rm -fr ".git/rebase-apply" ".git/rebase-merge"
+          git rebase "origin/${BASE_REF}"
+          git clean -f -d
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.12'
+
+      - name: Setup Zephyr project
+        uses: zephyrproject-rtos/action-zephyr-setup@5ec39f5cba83346d83a836dfed1524270c660e28 # v1.0.14
+        with:
+          app-path: ${{ env.APP_PATH }}
+          toolchains: arm-zephyr-eabi
+
+      - name: Install gcovr
+        run: pip install gcovr
+
+      - name: Run Twister with coverage
+        run: |
+          export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr"
+          export ZEPHYR_TOOLCHAIN_VARIANT=zephyr
+          west twister -T "${UNIT_TEST_DIR}" -t ci_unit -p qemu_cortex_m33 \
+            --no-sysbuild --coverage --coverage-tool gcovr \
+            -x CONFIG_COVERAGE=y \
+            --force-color --inline-logs -v --clobber-output -j $(nproc)
+
+      - name: Locate coverage reports
+        if: always()
+        id: coverage
+        run: |
+          mapfile -t files < <(find twister-out -name 'coverage.xml' -o -name 'coverage.json' | sort)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::No coverage.xml/json found under twister-out/"
+            exit 0
+          fi
+          echo "found=true" >> "$GITHUB_OUTPUT"
+          {
+            echo "files<<EOF"
+            printf '%s\n' "${files[@]}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload coverage to Codecov
+        if: always() && steps.coverage.outputs.found == 'true'
+        uses: codecov/codecov-action@e79a6962e0d4c0c17b229090214935d2e33f8354 # v6.0.1
+        with:
+          fail_ci_if_error: false
+          verbose: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ${{ steps.coverage.outputs.files }}
+          flags: ci_unit
+          name: ci_unit-qemu_cortex_m33
+
+      - name: Upload coverage artifact
+        if: always() && steps.coverage.outputs.found == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-report
+          path: twister-out/**/coverage.*

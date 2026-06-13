@@ -1,0 +1,41 @@
+# Doxygen configuration for product API documentation (PN7160 module headers).
+
+PROJECT_NAME           = "writable_ndef_msg API"
+PROJECT_BRIEF          = "NFC firmware module public headers"
+OUTPUT_DIRECTORY       = _build/doxygen
+CREATE_SUBDIRS         = NO
+
+INPUT                  = ../modules/nfc_pn7160/include
+RECURSIVE              = YES
+FILE_PATTERNS          = *.h
+EXCLUDE_PATTERNS       =
+
+GENERATE_HTML          = YES
+HTML_OUTPUT            = html
+GENERATE_XML           = YES
+XML_OUTPUT             = xml
+
+EXTRACT_ALL            = NO
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = NO
+HIDE_UNDOC_MEMBERS     = YES
+HIDE_UNDOC_CLASSES     = YES
+WARN_IF_UNDOCUMENTED   = NO
+QUIET                  = YES
+
+MACRO_EXPANSION        = YES
+EXPAND_ONLY_PREDEF     = YES
+PREDEFINED             = __attribute__(x)= \
+                         __deprecated= \
+                         __syscall= \
+                         __aligned(x)= \
+                         __packed= \
+                         __printf_like(x,y)= \
+                         __attribute_const__= \
+                         __attribute_pure__= \
+                         __attribute_warn_unused_result__= \
+                         __attribute_nonnull(x)= \
+                         __attribute_unused__= \
+                         DT_COMPAT_GET_ANY_STATUS_OKAY(x)=
+
+USE_MDFILE_AS_MAINPAGE = README.md

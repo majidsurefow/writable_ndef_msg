@@ -150,9 +150,6 @@ jobs:
           west twister -T "${UNIT_TEST_DIR}" -t ci_unit -p qemu_cortex_m33 \
             --no-sysbuild --force-color --inline-logs -v --clobber-output \
             -j $(nproc)
-          # native_sim / native_sim/native: Linux or Multipass only — not run in CI.
-          # west twister -T "${UNIT_TEST_DIR}" -t ci_unit -p native_sim \
-          #   --no-sysbuild --force-color --inline-logs -v
 
       - name: Upload Twister results
         if: always()
