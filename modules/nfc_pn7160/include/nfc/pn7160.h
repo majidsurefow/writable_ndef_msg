@@ -32,6 +32,9 @@ int pn7160_wait_irq(const struct device *dev, k_timeout_t timeout);
 /** NCI: probe controller with CORE_RESET (Phase 0.3). */
 int pn7160_nci_check_dev_pres(const struct device *dev);
 
+/** Return cached 3-byte FW version from last CORE_RESET_NTF (may be zero). */
+const uint8_t *pn7160_fw_version_get(const struct device *dev);
+
 /** NCI: send frame and await response (Phase 0.4). */
 int pn7160_nci_host_transceive(const struct device *dev, const uint8_t *tx, size_t tx_len,
 			       uint8_t *rx, size_t rx_max, size_t *rx_len, k_timeout_t timeout);

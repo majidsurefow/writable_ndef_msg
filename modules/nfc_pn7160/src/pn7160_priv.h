@@ -27,7 +27,10 @@ struct pn7160_config {
 struct pn7160_data {
 	struct gpio_callback irq_cb;
 	struct k_work irq_work;
+	struct k_work irq_rx_work;
+	struct k_mutex bus_mutex;
 	atomic_t irq_pending;
+	uint8_t fw_version[3];
 	uint8_t rx_buf[CONFIG_PN7160_RX_BUF_SIZE];
 };
 

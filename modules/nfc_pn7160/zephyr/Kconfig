@@ -36,6 +36,19 @@ config PN7160_RX_BUF_SIZE
 	help
 	  Static RX buffer for NCI responses.
 
+config PN7160_WORKQ_STACK_SIZE
+	int "PN7160 module work queue stack size"
+	default 1024
+	help
+	  Stack for the module-local work queue that drains HOST_IRQ events.
+	  Replaced by nfc_work_q when HAL integration lands (Phase 0.6).
+
+config PN7160_WORKQ_PRIORITY
+	int "PN7160 module work queue priority"
+	default 5
+	help
+	  Priority of the module-local PN7160 work queue thread.
+
 module = PN7160
 module-str = pn7160
 source "subsys/logging/Kconfig.template.log_config"

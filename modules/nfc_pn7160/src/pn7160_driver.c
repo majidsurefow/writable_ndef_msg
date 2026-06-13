@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * PN7160 Zephyr device driver — bus, GPIO (VEN/IRQ/DWL), IRQ → work signal.
- * Phase 0 scaffold; TML logic in pn7160_tml_i2c.c / pn7160_tml_spi.c.
  */
 
 #define DT_DRV_COMPAT nxp_pn7160
@@ -15,6 +14,36 @@
 #include <zephyr/logging/log.h>
 
 LOG_MODULE_REGISTER(pn7160, CONFIG_PN7160_LOG_LEVEL);
+
+static struct k_work_q pn7160_work_q;
+static K_KERNEL_STACK_DEFINE(pn7160_work_q_stack, CONFIG_PN7160_WORKQ_STACK_SIZE);
+static bool pn7160_work_q_started;
+
+static void pn7160_work_q_start(void)
+{
+	if (pn7160_work_q_started) {
+		return;
+	}
+
+	k_work_queue_init(&pn7160_work_q);
+	k_work_queue_start(&pn7160_work_q, pn7160_work_q_stack,
+			   K_KERNEL_STACK_SIZEOF(pn7160_work_q_stack),
+			   CONFIG_PN7160_WORKQ_PRIORITY, NULL);
+	pn7160_work_q_started = true;
+}
+
+static void pn7160_irq_rx_work_handler(struct k_work *work)
+{
+	ARG_UNUSED(work);
+	/* Phase 0.6: submit RX drain to nfc_work_q; IRQ flag already set by ISR. */
+}
+
+static void pn7160_irq_work_handler(struct k_work *work)
+{
+	struct pn7160_data *data = CONTAINER_OF(work, struct pn7160_data, irq_work);
+
+	k_work_submit_to_queue(&pn7160_work_q, &data->irq_rx_work);
+}
 
 int pn7160_tml_send(const struct device *dev, const uint8_t *data, size_t len)
 {
@@ -28,12 +57,6 @@ int pn7160_tml_recv(const struct device *dev, uint8_t *data, size_t max_len, siz
 	const struct pn7160_config *cfg = dev->config;
 
 	return cfg->tml_recv(dev, data, max_len, out_len);
-}
-
-static void pn7160_irq_work_handler(struct k_work *work)
-{
-	ARG_UNUSED(work);
-	/* Phase 0.6: drain RX on nfc_work_q; scaffold only sets flag. */
 }
 
 static void pn7160_gpio_isr(const struct device *port, struct gpio_callback *cb, uint32_t pins)
@@ -70,11 +93,11 @@ int pn7160_reset(const struct device *dev)
 		return -ENODEV;
 	}
 
-	/* VEN low → high power-on sequence (NXP tml_Connect). */
+	/* NXP tml_Reset: VEN low 10 ms, then high 10 ms. */
 	(void)gpio_pin_set_dt(&cfg->ven, 0);
-	k_msleep(1);
+	k_msleep(10);
 	(void)gpio_pin_set_dt(&cfg->ven, 1);
-	k_msleep(3);
+	k_msleep(10);
 
 	return 0;
 }
@@ -94,11 +117,20 @@ int pn7160_wait_irq(const struct device *dev, k_timeout_t timeout)
 	return 0;
 }
 
+const uint8_t *pn7160_fw_version_get(const struct device *dev)
+{
+	struct pn7160_data *data = dev->data;
+
+	return data->fw_version;
+}
+
 static int pn7160_init(const struct device *dev)
 {
 	const struct pn7160_config *cfg = dev->config;
 	struct pn7160_data *data = dev->data;
 	int ret;
+
+	pn7160_work_q_start();
 
 	if (!pn7160_bus_is_ready(cfg)) {
 		LOG_ERR("bus not ready");
@@ -122,8 +154,13 @@ static int pn7160_init(const struct device *dev)
 		(void)gpio_pin_configure_dt(&cfg->dwl, GPIO_OUTPUT_INACTIVE);
 	}
 
+	k_mutex_init(&data->bus_mutex);
 	k_work_init(&data->irq_work, pn7160_irq_work_handler);
+	k_work_init(&data->irq_rx_work, pn7160_irq_rx_work_handler);
 	atomic_clear(&data->irq_pending);
+	data->fw_version[0] = 0U;
+	data->fw_version[1] = 0U;
+	data->fw_version[2] = 0U;
 
 	gpio_init_callback(&data->irq_cb, pn7160_gpio_isr, BIT(cfg->irq.pin));
 	ret = gpio_add_callback(cfg->irq.port, &data->irq_cb);
