@@ -78,7 +78,18 @@ static int nfc_store_default_commit(const nfc_service_t *svc, const char *tag, v
 
 static uint8_t nfc_store_flags_for_persist_id(uint8_t persist_id, bool reader_capture)
 {
-	uint8_t flags = NFC_STORE_ENTRY_FLAG_EMULATION_COMPLETE;
+	static const uint8_t k_persist_hand_flags[NFC_PERSIST_ID_MAX + 1U] = {
+		[NFC_PERSIST_ID_NDEF] = NFC_STORE_ENTRY_FLAG_EMULATION_COMPLETE,
+		[NFC_PERSIST_ID_ULTRALIGHT] = NFC_STORE_ENTRY_FLAG_EMULATION_COMPLETE,
+		[NFC_PERSIST_ID_EMV] = NFC_STORE_ENTRY_FLAG_EMULATION_COMPLETE,
+		[NFC_PERSIST_ID_DESFIRE] = NFC_STORE_ENTRY_FLAG_EMULATION_COMPLETE,
+		[NFC_PERSIST_ID_ALIRO] = NFC_STORE_ENTRY_FLAG_EMULATION_COMPLETE,
+	};
+	uint8_t flags = 0U;
+
+	if (persist_id <= NFC_PERSIST_ID_MAX) {
+		flags = k_persist_hand_flags[persist_id];
+	}
 
 	if (reader_capture) {
 		flags |= NFC_STORE_ENTRY_FLAG_READER_CAPTURED;
@@ -86,7 +97,6 @@ static uint8_t nfc_store_flags_for_persist_id(uint8_t persist_id, bool reader_ca
 		flags |= NFC_STORE_ENTRY_FLAG_HAND_AUTHORED;
 	}
 
-	ARG_UNUSED(persist_id);
 	return flags;
 }
 

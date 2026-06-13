@@ -1,0 +1,150 @@
+/*
+ * Copyright (c) 2026
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#include "reader/nfc_reader_poller_registry.h"
+
+#include "hal/nfc_transport.h"
+
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_NDEF)
+#include "protocols/ndef/ndef_listener.h"
+#include "protocols/ndef/ndef_poller.h"
+#endif
+
+#if IS_ENABLED(CONFIG_NFC_STORE)
+#include "store/nfc_store.h"
+#endif
+
+#include <errno.h>
+
+#include <zephyr/logging/log.h>
+#include <zephyr/sys/util.h>
+
+LOG_MODULE_DECLARE(nfc_reader, CONFIG_LOG_DEFAULT_LEVEL);
+
+static int ultralight_poller_detect_stub(const nfc_reader_session_t *session)
+{
+	ARG_UNUSED(session);
+
+	return -ENOTSUP;
+}
+
+static int ultralight_poller_read_stub(const nfc_reader_session_t *session, void *out)
+{
+	ARG_UNUSED(session);
+	ARG_UNUSED(out);
+
+	return -ENOTSUP;
+}
+
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_NDEF)
+static int nfc_reader_poller_ndef_read(const nfc_reader_session_t *session, void *out)
+{
+	return ndef_poller_read(session, out);
+}
+#endif
+
+static const nfc_reader_poller_entry_t s_pollers[] = {
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_NDEF)
+	{
+		.name = "ndef",
+		.persist_id = NFC_PERSIST_ID_NDEF,
+		.tech_mask = NFC_TECH_ISO_DEP_A,
+		.detect = ndef_poller_detect,
+		.read = nfc_reader_poller_ndef_read,
+		.listener_get = ndef_listener_get,
+	},
+#endif
+	{
+		.name = "ultralight",
+		.persist_id = NFC_PERSIST_ID_ULTRALIGHT,
+		.tech_mask = NFC_TECH_TYPE2,
+		.detect = ultralight_poller_detect_stub,
+		.read = ultralight_poller_read_stub,
+		.listener_get = NULL,
+	},
+	{
+		.detect = NULL,
+	},
+};
+
+const nfc_reader_poller_entry_t *nfc_reader_pollers_get(void)
+{
+	return s_pollers;
+}
+
+int nfc_reader_pollers_run(const char *tag)
+{
+#if IS_ENABLED(CONFIG_NFC_STORE)
+	const nfc_reader_session_t *session = nfc_reader_session_get();
+	int ret;
+	bool matched = false;
+
+	if (session == NULL) {
+		LOG_WRN("Poller walk skipped: no active reader session (scan first)");
+		return -ENODEV;
+	}
+
+	for (const nfc_reader_poller_entry_t *e = s_pollers; e->detect != NULL; e++) {
+		ret = e->detect(session);
+		if (ret != 0) {
+			continue;
+		}
+
+		matched = true;
+
+		if (e->listener_get == NULL) {
+			LOG_WRN("Poller \"%s\" matched but has no listener (stub)", e->name);
+			ret = -ENOTSUP;
+			break;
+		}
+
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_NDEF)
+		if (e->persist_id == NFC_PERSIST_ID_NDEF) {
+			ndef_data_t data;
+			const nfc_service_t *svcs[] = { e->listener_get() };
+
+			ndef_data_reset(&data);
+			ret = e->read(session, &data);
+			if (ret != 0) {
+				LOG_WRN("NDEF poller read failed: %d", ret);
+				break;
+			}
+
+			ret = ndef_listener_init(&data, NULL);
+			if (ret != 0 && ret != -EALREADY) {
+				LOG_ERR("ndef_listener_init failed: %d", ret);
+				break;
+			}
+
+			ret = nfc_store_save(tag, svcs, ARRAY_SIZE(svcs));
+			if (ret != 0) {
+				LOG_ERR("nfc_store_save failed: %d", ret);
+			} else {
+				LOG_INF("Clone saved tag \"%s\" via %s poller", tag, e->name);
+			}
+			break;
+		}
+#endif
+		LOG_WRN("Poller \"%s\" matched but clone path not implemented", e->name);
+		ret = -ENOTSUP;
+		break;
+	}
+
+	if (!matched) {
+		LOG_WRN("No poller matched active tag");
+		ret = -ENOTSUP;
+	}
+
+	nfc_reader_session_end();
+	return ret;
+#else
+	ARG_UNUSED(tag);
+	LOG_WRN("Poller walk not built (enable CONFIG_NFC_STORE)");
+	if (nfc_reader_session_get() != NULL) {
+		nfc_reader_session_end();
+	}
+	return -ENOTSUP;
+#endif
+}

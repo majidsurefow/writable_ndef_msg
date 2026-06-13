@@ -28,6 +28,19 @@ typedef struct {
 	void *user_ctx;
 } nfc_service_t;
 
+/* Persist ID assignments — stable; do not renumber (wave3-router §1.1, cookbook). */
+#define NFC_PERSIST_ID_NDEF        0x01U
+#define NFC_PERSIST_ID_DESFIRE     0x02U
+#define NFC_PERSIST_ID_ULTRALIGHT  0x03U
+#define NFC_PERSIST_ID_EMV         0x04U
+#define NFC_PERSIST_ID_ALIRO       0x05U
+#define NFC_PERSIST_ID_CLASSIC     0x06U
+#define NFC_PERSIST_ID_FELICA      0x07U
+#define NFC_PERSIST_ID_ISO15693    0x08U
+#define NFC_PERSIST_ID_SLIX        0x09U
+#define NFC_PERSIST_ID_ST25TB      0x0AU
+#define NFC_PERSIST_ID_MAX         0x0AU
+
 #ifdef __cplusplus
 }
 #endif

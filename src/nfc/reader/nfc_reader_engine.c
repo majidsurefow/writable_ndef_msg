@@ -8,12 +8,8 @@
 #include "reader/nfc_reader_engine.h"
 
 #include "hal/nfc_transport.h"
+#include "reader/nfc_reader_poller_registry.h"
 #include "run/nfc_stack_workq.h"
-
-#if IS_ENABLED(CONFIG_NFC_PROTOCOL_NDEF)
-#include "protocols/ndef/ndef_listener.h"
-#include "protocols/ndef/ndef_poller.h"
-#endif
 
 #if IS_ENABLED(CONFIG_NFC_STORE)
 #include "store/nfc_store.h"
@@ -64,53 +60,9 @@ static int nfc_reader_store_ensure(void)
 }
 #endif
 
-static void nfc_reader_pollers_run(const char *tag)
+static void nfc_reader_pollers_run_clone(const char *tag)
 {
-#if IS_ENABLED(CONFIG_NFC_PROTOCOL_NDEF) && IS_ENABLED(CONFIG_NFC_STORE)
-	const nfc_service_t *svcs[] = { ndef_listener_get() };
-	ndef_data_t data;
-	int ret;
-
-	if (!s_session.active) {
-		LOG_WRN("Clone skipped: no active reader session (scan first)");
-		return;
-	}
-
-	ret = ndef_poller_detect(&s_session);
-	if (ret != 0) {
-		LOG_WRN("NDEF poller detect failed: %d", ret);
-		goto end_session;
-	}
-
-	ndef_data_reset(&data);
-	ret = ndef_poller_read(&s_session, &data);
-	if (ret != 0) {
-		LOG_WRN("NDEF poller read failed: %d", ret);
-		goto end_session;
-	}
-
-	ret = ndef_listener_init(&data, NULL);
-	if (ret != 0 && ret != -EALREADY) {
-		LOG_ERR("ndef_listener_init failed: %d", ret);
-		goto end_session;
-	}
-
-	ret = nfc_store_save(tag, svcs, ARRAY_SIZE(svcs));
-	if (ret != 0) {
-		LOG_ERR("nfc_store_save failed: %d", ret);
-	} else {
-		LOG_INF("Clone saved tag \"%s\"", tag);
-	}
-
-end_session:
-	nfc_reader_session_end();
-#else
-	ARG_UNUSED(tag);
-	LOG_WRN("Clone not built (enable CONFIG_NFC_PROTOCOL_NDEF + CONFIG_NFC_STORE)");
-	if (s_session.active) {
-		nfc_reader_session_end();
-	}
-#endif
+	(void)nfc_reader_pollers_run(tag);
 }
 
 #if IS_ENABLED(CONFIG_NFC_STORE)
@@ -118,7 +70,7 @@ static void clone_work_handler(struct k_work *work)
 {
 	ARG_UNUSED(work);
 
-	nfc_reader_pollers_run(s_clone_tag);
+	nfc_reader_pollers_run_clone(s_clone_tag);
 	atomic_clear(&clone_busy);
 }
 #endif
@@ -285,7 +237,7 @@ static void read_work_handler(struct k_work *work)
 	}
 
 	nfc_reader_log_tag_info(&info);
-	nfc_reader_pollers_run(s_read_tag);
+	nfc_reader_pollers_run_clone(s_read_tag);
 
 done:
 	atomic_clear(&read_busy);

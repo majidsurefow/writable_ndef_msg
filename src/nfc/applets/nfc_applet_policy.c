@@ -6,10 +6,24 @@
 #include "applets/nfc_applet_policy.h"
 
 #include "hal/nfc_transport.h"
-#include "protocols/ndef/ndef.h"
+#include "router/service.h"
 #include "store/nfc_store.h"
 
 #include <errno.h>
+
+static bool nfc_applet_persist_emulatable(uint8_t persist_id)
+{
+	switch (persist_id) {
+	case NFC_PERSIST_ID_NDEF:
+	case NFC_PERSIST_ID_ULTRALIGHT:
+	case NFC_PERSIST_ID_EMV:
+	case NFC_PERSIST_ID_DESFIRE:
+	case NFC_PERSIST_ID_ALIRO:
+		return true;
+	default:
+		return false;
+	}
+}
 
 int nfc_applet_caps_for_card(uint8_t persist_id, uint8_t store_flags, nfc_applet_caps_t *caps)
 {
@@ -26,7 +40,7 @@ int nfc_applet_caps_for_card(uint8_t persist_id, uint8_t store_flags, nfc_applet
 		return 0;
 	}
 
-	if ((persist_id == NFC_PERSIST_ID_NDEF) && (hal != NULL) &&
+	if (nfc_applet_persist_emulatable(persist_id) && (hal != NULL) &&
 	    ((hal->roles & NFC_ROLE_LISTEN) != 0U)) {
 		*caps |= NFC_APPLET_CAP_EMULATE;
 	}

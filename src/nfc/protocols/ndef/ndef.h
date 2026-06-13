@@ -11,6 +11,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "router/service.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -19,7 +21,6 @@ extern "C" {
 #define CONFIG_NFC_NDEF_MAX_SIZE 500
 #endif
 
-#define NFC_PERSIST_ID_NDEF           0x01U
 #define NFC_NDEF_FORMAT_VERSION       0x01U
 #define NFC_NDEF_CC_LEN               15U
 #define NFC_NDEF_NLEN_FIELD_LEN       2U

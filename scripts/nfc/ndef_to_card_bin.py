@@ -21,9 +21,12 @@ NFC_STORE_BLOB_MAGIC_1 = 0x46
 NFC_STORE_BLOB_VERSION = 0x02
 NFC_STORE_BLOB_HDR_SIZE = 6
 NFC_STORE_ENTRY_OVERHEAD = 4
-NFC_PERSIST_ID_NDEF = 0x01
-NFC_STORE_ENTRY_FLAG_READER_CAPTURED = 1 << 0
-NFC_STORE_ENTRY_FLAG_EMULATION_COMPLETE = 1 << 2
+from nfc_persist_ids import (
+    NFC_PERSIST_ID_NDEF,
+    NFC_STORE_ENTRY_FLAG_EMULATION_COMPLETE,
+    NFC_STORE_ENTRY_FLAG_HAND_AUTHORED,
+    NFC_STORE_ENTRY_FLAG_READER_CAPTURED,
+)
 
 
 def crc16_ccitt(data: bytes, init: int = 0xFFFF) -> int:
@@ -37,12 +40,17 @@ def crc16_ccitt(data: bytes, init: int = 0xFFFF) -> int:
 
 
 def build_card_envelope(model_body: bytes, persist_id: int = NFC_PERSIST_ID_NDEF,
-                        reader_capture: bool = True) -> bytes:
-    flags = NFC_STORE_ENTRY_FLAG_EMULATION_COMPLETE
+                        reader_capture: bool = True,
+                        emulation_complete: bool | None = None) -> bytes:
+    if emulation_complete is None:
+        emulation_complete = True
+    flags = 0
+    if emulation_complete:
+        flags |= NFC_STORE_ENTRY_FLAG_EMULATION_COMPLETE
     if reader_capture:
         flags |= NFC_STORE_ENTRY_FLAG_READER_CAPTURED
     else:
-        flags |= 1 << 1  # NFC_STORE_ENTRY_FLAG_HAND_AUTHORED
+        flags |= NFC_STORE_ENTRY_FLAG_HAND_AUTHORED
 
     entry_len = NFC_STORE_ENTRY_OVERHEAD + len(model_body)
     payload_len = entry_len
