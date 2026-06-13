@@ -3,60 +3,36 @@
 Out-of-tree Zephyr module for the NXP PN7160 NFC controller. Lives in **writable_ndef_msg**
 alongside the NFC stack (`src/nfc/`).
 
-**Quality bar:** Phase 0 is written to [Zephyr main-tree PR standards](../../docs/nfc/specs/2026-06-14-pn7160-zephyr-driver.md#upstream-quality-bar) — out-of-tree location only; not a lower code standard.
+**Quality bar:** Phase 0 meets [Zephyr main-tree PR standards](../../docs/nfc/specs/2026-06-14-pn7160-zephyr-driver.md#upstream-quality-bar).
 
-## Locked decisions
+## Features (Phase 0)
 
-| ID | Decision |
+| Component | Status |
 |---|---|
-| **DECISION-DRV-1** | Out-of-tree module at `modules/nfc_pn7160/` (this directory) |
-| **DECISION-DRV-2** | Dual transport — I2C (primary/default) **and** SPI (fully supported); one instance uses **either** bus via devicetree, not both |
+| I2C TML (`pn7160_tml_i2c.c`) | NXP framing, mutex, retry |
+| SPI TML (`pn7160_tml_spi.c`) | `0x7F` write / `0xFF` read, 10 µs delay |
+| VEN reset | 10 ms / 10 ms NXP sequence |
+| IRQ → work queue | GPIO ISR → `irq_rx_work` → TML recv + NCI process |
+| NCI probe | `pn7160_nci_check_dev_pres()` / CORE_RESET_NTF FW cache |
+| Shell | `pn7160 probe`, `pn7160 fwver` (`CONFIG_PN7160_SHELL`) |
+| Unit tests | TML framing, SPI xfer lengths, NCI FW parse (Twister `ci_unit`) |
+
+Full spec: [`docs/nfc/specs/2026-06-14-pn7160-zephyr-driver.md`](../../docs/nfc/specs/2026-06-14-pn7160-zephyr-driver.md).
+
+## Devicetree
 
 Reference overlays:
 
-- I2C (default): `boards/overlays/pn7160_i2c.overlay`
-- SPI: `boards/overlays/pn7160_spi.overlay`
+- I2C (default): `boards/overlays/pn7160_i2c.overlay` — `i2c21` @ `0x28`, 100 kHz
+- SPI: `boards/overlays/pn7160_spi.overlay` — `spi21` @ CS0, 500 kHz
 
-Full spec: `docs/nfc/specs/2026-06-14-pn7160-zephyr-driver.md`.
+Both use IRQ P1.10 and VEN P1.11 on nRF54L15 DK + PN7160 eval shield.
 
-> Implementation beyond the Phase 0 scaffold is paused until the user approves the full driver spec.
+Label **`pn7160`** is required for `DT_NODELABEL(pn7160)` / `PN7160_DEVICE`.
 
-## Layout
+## Build
 
-```
-modules/nfc_pn7160/
-├── zephyr/module.yml
-├── zephyr/Kconfig
-├── dts/bindings/nfc/
-│   ├── nxp,pn7160-common.yaml
-│   ├── nxp,pn7160-i2c.yaml
-│   └── nxp,pn7160-spi.yaml
-├── include/nfc/pn7160.h
-├── src/pn7160_driver.c
-├── src/pn7160_tml_i2c.c
-├── src/pn7160_tml_spi.c
-└── src/pn7160_nci.c
-```
-
-Transport is selected by devicetree (`DT_INST_ON_BUS`); Kconfig `CONFIG_PN7160_TML_I2C` /
-`CONFIG_PN7160_TML_SPI` are auto-derived from enabled instances.
-
-HAL integration: `src/nfc/hal/nfc_transport_pn7160.c` (Phase 0.5).
-
-## Wiring
-
-| Transport | Overlay | Notes |
-|---|---|---|
-| I2C (default) | `boards/overlays/pn7160_i2c.overlay` | `i2c21` @ `0x28`, 100 kHz |
-| SPI | `boards/overlays/pn7160_spi.overlay` | `spi21` @ CS0, 500 kHz |
-
-Both use IRQ P1.10 and VEN P1.11 on nRF54L15 DK + PN7160 eval shield (adjust for your board).
-
-The app root `CMakeLists.txt` registers this module via `ZEPHYR_EXTRA_MODULES`.
-
-## Build (Phase 0 scaffold)
-
-From the **writable_ndef_msg** repo root (NCS v3.2.4 environment):
+App root `CMakeLists.txt` registers this module via `ZEPHYR_EXTRA_MODULES`.
 
 **I2C (default):**
 
@@ -71,13 +47,52 @@ west build -b nrf54l15dk/nrf54l15/cpuapp \
 ```bash
 west build -b nrf54l15dk/nrf54l15/cpuapp \
   -- -DDTC_OVERLAY_FILE=boards/overlays/pn7160_spi.overlay \
-     -DEXTRA_CONF_FILE=overlay-pn7160.conf
+     -DEXTRA_CONF_FILE=overlay-pn7160-spi.conf
 ```
 
-With the full NFC stack enabled (Phase 0.5+), add `-DCONFIG_NFC_STACK=y`.
+## Shell
+
+With `CONFIG_PN7160_SHELL=y` and UART shell enabled:
+
+```
+uart:~$ pn7160 probe
+PN7160 present (CORE_RESET OK)
+
+uart:~$ pn7160 fwver
+FW version: 01.02.03
+```
+
+`fwver` runs CORE_RESET automatically if no cached NTF is available.
+
+## Public API
+
+See `include/nfc/pn7160.h` (doxygen) and `include/nfc/pn7160_tml.h` for framing helpers.
+
+Typical init flow:
+
+1. `device_is_ready(PN7160_DEVICE)`
+2. `pn7160_nci_check_dev_pres(PN7160_DEVICE)`
+3. `pn7160_fw_version_get(PN7160_DEVICE)` for 3-byte version
+
+Runtime NCI exchange: `pn7160_nci_transceive()`.
+
+## Unit tests
+
+```bash
+west twister -T modules/nfc_pn7160/tests/unit/pn7160_tml \
+  -p qemu_cortex_m3 --no-sysbuild -t ci_unit
+```
 
 ## NXP port
 
-Ported sections from NXP-NCI2.0 retain NXP file-header copyright. SPI TML follows
-`source/TML/tml.c` (`BOARD_NXPNCI_INTERFACE_SPI` path). See
-`docs/nfc/specs/2026-06-14-pn7160-zephyr-driver.md`.
+Ported sections from NXP-NCI2.0 retain NXP file-header copyright:
+
+- `source/TML/tml.c` → `pn7160_tml_i2c.c`, `pn7160_tml_spi.c`
+- `NfcLibrary/NxpNci20.c` → `pn7160_nci.c`, `pn7160_nci_parse.c`
+
+Sources under `hals_temp/NXP-NCI2.0_LPC55S6x_examples/`.
+
+## HAL integration (Phase 0.5+)
+
+Replace interim `nci_tml_zephyr.c` with `DEVICE_DT_GET(DT_NODELABEL(pn7160))` in
+`src/nfc/hal/nci/nfc_transport_nci.c`.

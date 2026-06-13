@@ -22,8 +22,6 @@ LOG_MODULE_DECLARE(pn7160);
 
 #if DT_ANY_INST_ON_BUS_STATUS_OKAY(spi)
 
-#define PN7160_SPI_WRITE_PREFIX 0x7F
-#define PN7160_SPI_READ_DUMMY   0xFF
 #define PN7160_SPI_FOOTER_SZ    0U
 
 #define PN7160_SPI_STACK_BUF_MAX (PN7160_TML_MAX_PAYLOAD_LEN + PN7160_TML_NCI_HDR_LEN + 1U)
@@ -73,7 +71,7 @@ static int pn7160_tml_spi_write(const struct spi_dt_spec *spi, const uint8_t *da
 		return -EINVAL;
 	}
 
-	buf[0] = PN7160_SPI_WRITE_PREFIX;
+	buf[0] = PN7160_TML_SPI_WRITE_PREFIX;
 	for (size_t i = 0U; i < len; i++) {
 		buf[i + 1U] = data[i];
 	}
@@ -97,7 +95,7 @@ static int pn7160_tml_spi_read(const struct spi_dt_spec *spi, uint8_t *data, siz
 	}
 
 	for (size_t i = 0U; i < len + 1U; i++) {
-		buf[i] = PN7160_SPI_READ_DUMMY;
+		buf[i] = PN7160_TML_SPI_READ_DUMMY;
 	}
 
 	ret = pn7160_tml_spi_transceive(spi, buf, buf, len + 1U);

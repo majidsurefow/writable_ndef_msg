@@ -2,11 +2,14 @@
  * Copyright (c) 2026
  * SPDX-License-Identifier: Apache-2.0
  *
- * NXP PN7160 NFC controller — public driver / TML / NCI API (Phase 0 scaffold).
+ * NXP PN7160 NFC controller — public driver / TML / NCI API (Phase 0).
  */
 
 #ifndef NFC_PN7160_H_
 #define NFC_PN7160_H_
+
+#include <stddef.h>
+#include <stdint.h>
 
 #include <zephyr/device.h>
 #include <zephyr/kernel.h>
@@ -15,48 +18,99 @@
 extern "C" {
 #endif
 
-/** @brief PN7160 device handle from devicetree. */
+/**
+ * @defgroup pn7160_api PN7160 driver API
+ * @{
+ */
+
+/**
+ * @brief PN7160 device handle from devicetree.
+ *
+ * Resolves the first status-okay `nxp,pn7160` instance. Callers must verify
+ * @ref device_is_ready() before any other API use.
+ */
 #define PN7160_DEVICE DT_COMPAT_GET_ANY_STATUS_OKAY(nxp_pn7160)
 
-struct pn7160_tml_ops {
-	int (*send)(const struct device *dev, const uint8_t *data, size_t len);
-	int (*recv)(const struct device *dev, uint8_t *data, size_t max_len, size_t *out_len);
-};
-
-/** Reset and power the controller via VEN. */
+/**
+ * @brief Reset and power the controller via VEN.
+ *
+ * Applies the NXP 10 ms / 10 ms VEN sequence (inactive, then active).
+ *
+ * @param dev PN7160 device.
+ * @return 0 on success, negative errno on GPIO failure.
+ */
 int pn7160_reset(const struct device *dev);
 
-/** Wait for HOST_IRQ with timeout (ms). */
+/**
+ * @brief Wait for HOST_IRQ assertion with timeout.
+ *
+ * Clears the driver IRQ-pending flag set by the GPIO ISR. Used internally by
+ * legacy paths; @ref pn7160_nci_transceive uses IRQ-driven work-queue drain.
+ *
+ * @param dev PN7160 device.
+ * @param timeout Maximum wait time.
+ * @return 0 when IRQ was pending, `-ETIMEDOUT` on timeout.
+ */
 int pn7160_wait_irq(const struct device *dev, k_timeout_t timeout);
 
-/** NCI: probe controller with CORE_RESET (Phase 0.3). */
+/**
+ * @brief Probe controller presence with NCI CORE_RESET.
+ *
+ * Sends CORE_RESET, receives CORE_RESET_RSP and optional CORE_RESET_NTF,
+ * and caches the 3-byte firmware version when present.
+ *
+ * @param dev PN7160 device (must be ready).
+ * @return 0 on successful probe, negative errno otherwise.
+ */
 int pn7160_nci_check_dev_pres(const struct device *dev);
 
-/** Return cached 3-byte FW version from last CORE_RESET_NTF (may be zero). */
+/**
+ * @brief Return cached 3-byte firmware version from last CORE_RESET_NTF.
+ *
+ * Bytes may be zero until @ref pn7160_nci_check_dev_pres succeeds.
+ *
+ * @param dev PN7160 device.
+ * @return Pointer to three version bytes (stable for device lifetime).
+ */
 const uint8_t *pn7160_fw_version_get(const struct device *dev);
 
 /**
- * @brief Parse 3-byte FW version from a CORE_RESET_NTF frame.
+ * @brief Parse 3-byte firmware version from a CORE_RESET_NTF frame.
+ *
+ * Pure helper for unit tests and HAL use.
  *
  * @param rx Received NCI frame.
- * @param rx_len Frame length.
+ * @param rx_len Frame length in bytes.
  * @param fw_ver Output buffer (3 bytes).
- * @return 0 on success, negative errno on parse failure.
+ * @return 0 on success, `-EINVAL` on parse failure.
  */
 int pn7160_nci_core_reset_ntf_fw_version(const uint8_t *rx, size_t rx_len, uint8_t fw_ver[3]);
 
 /**
- * @brief Send an NCI command and receive the response via IRQ-driven TML drain.
+ * @brief Send an NCI command and receive the response (IRQ-driven).
  *
- * Blocks the caller until the module work queue completes TML receive and
- * @ref pn7160_nci_process, or @p timeout expires.
+ * Transmits @p tx over TML, then blocks until the module work queue drains
+ * HOST_IRQ (TML receive + NCI process) or @p timeout expires.
+ *
+ * @param dev PN7160 device.
+ * @param tx NCI command buffer.
+ * @param tx_len Command length.
+ * @param rx Response buffer.
+ * @param rx_max Response buffer capacity.
+ * @param rx_len Actual response length on success.
+ * @param timeout Maximum wait for the response.
+ * @return 0 on success, negative errno on bus/timeout/parse failure.
  */
 int pn7160_nci_transceive(const struct device *dev, const uint8_t *tx, size_t tx_len,
 			  uint8_t *rx, size_t rx_max, size_t *rx_len, k_timeout_t timeout);
 
-/** NCI: send frame and await response (Phase 0.4). */
+/**
+ * @brief Alias for @ref pn7160_nci_transceive (NXP HostTransceive port name).
+ */
 int pn7160_nci_host_transceive(const struct device *dev, const uint8_t *tx, size_t tx_len,
 			       uint8_t *rx, size_t rx_max, size_t *rx_len, k_timeout_t timeout);
+
+/** @} */
 
 #ifdef __cplusplus
 }
