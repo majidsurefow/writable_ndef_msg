@@ -64,6 +64,20 @@ int nfc_reader_scan_start(k_timeout_t timeout);
 /** @brief True while a scan work item is running or queued. */
 bool nfc_reader_scan_busy(void);
 
+/**
+ * @brief Clone active tag to .card envelope via NDEF poller + nfc_store_save.
+ *
+ * Requires a prior successful scan (active session). Runs on nfc_stack_wq.
+ *
+ * @param tag Null-terminated slot name for the saved blob.
+ * @return 0 if work was queued, -EBUSY if clone in progress, -ENODEV if no session,
+ *         -EINVAL if tag invalid, or negative errno from store init.
+ */
+int nfc_reader_clone_start(const char *tag);
+
+/** @brief True while a clone work item is running or queued. */
+bool nfc_reader_clone_busy(void);
+
 #ifdef __cplusplus
 }
 #endif

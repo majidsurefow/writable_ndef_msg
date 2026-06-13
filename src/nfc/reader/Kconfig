@@ -2,8 +2,9 @@ config NFC_READER
 	bool "NFC reader engine"
 	default n
 	depends on NFC_STACK && NFC_ROLE_READER
+	select NFC_PROTOCOL_NDEF if NFC_STORE
 	help
-	  Reader discovery engine and shell commands (Gate 0: scan only).
+	  Reader discovery engine, NDEF clone, and shell commands.
 
 if NFC_READER
 
@@ -12,7 +13,7 @@ config NFC_READER_SHELL
 	default y
 	depends on SHELL
 	help
-	  Register nfc reader scan shell command.
+	  Register nfc reader scan and clone shell commands.
 
 config NFC_READER_SCAN_TIMEOUT_MS
 	int "Default reader scan timeout (milliseconds)"

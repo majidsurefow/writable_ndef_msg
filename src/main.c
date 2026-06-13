@@ -17,17 +17,48 @@
 #include <zephyr/sys/reboot.h>
 #include <stdbool.h>
 
+#if IS_ENABLED(CONFIG_DK_LIBRARY)
 #include <dk_buttons_and_leds.h>
+#endif
 
+#if IS_ENABLED(CONFIG_NFC_STACK)
+#else
 #include "nfc_emulation.h"
+#endif
+
+static int board_init(void)
+{
+#if IS_ENABLED(CONFIG_DK_LIBRARY)
+	return dk_leds_init();
+#else
+	return 0;
+#endif
+}
+
+#if IS_ENABLED(CONFIG_NFC_STACK)
+
+int main(void)
+{
+	printk("NFC stack (shell: nfc reader scan|clone)\n");
+
+	if (board_init() < 0) {
+		return -EIO;
+	}
+
+	while (true) {
+		k_sleep(K_FOREVER);
+	}
+}
+
+#else /* legacy NFCT sample */
 
 #define NFC_FIELD_LED	DK_LED1
 #define NFC_READ_LED	DK_LED4
 #define NFC_UID_COUNT 3
 static const uint8_t nfc_uids[NFC_UID_COUNT][7] = {
-	{ 0x04, 0x1F, 0xF5, 0x5C, 0xBD, 0x2A, 0x81 },   // UID 0
-	{ 0x04, 0x91, 0xF7, 0x01, 0x8A, 0x04, 0x03 },   // UID 1
-	{ 0x04, 0x2D, 0x6F, 0xFA, 0x11, 0x6F, 0x80 }    // UID 2 (added as last)
+	{ 0x04, 0x1F, 0xF5, 0x5C, 0xBD, 0x2A, 0x81 },
+	{ 0x04, 0x91, 0xF7, 0x01, 0x8A, 0x04, 0x03 },
+	{ 0x04, 0x2D, 0x6F, 0xFA, 0x11, 0x6F, 0x80 },
 };
 
 static size_t nfc_uid_slot;
@@ -52,7 +83,6 @@ static void nfc_field_off_work_handler(struct k_work *work)
 	}
 }
 
-/** Type 4 NDEF file: NLEN (BE) + single empty NDEF record (volatile; not persisted). */
 #define NDEF_BUF_SIZE 64
 static uint8_t ndef_msg_buf[NDEF_BUF_SIZE] = {
 	0x00, 0x03,
@@ -81,11 +111,6 @@ static void nfc_callback(void *context, nfc_t4t_event_t event, const uint8_t *da
 	default:
 		break;
 	}
-}
-
-static int board_init(void)
-{
-	return dk_leds_init();
 }
 
 int main(void)
@@ -125,4 +150,6 @@ fail:
 #endif
 	return -EIO;
 }
+
+#endif /* CONFIG_NFC_STACK */
 /** @} */

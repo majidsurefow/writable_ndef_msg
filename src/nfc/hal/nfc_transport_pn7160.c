@@ -6,7 +6,9 @@
  */
 
 #include "hal/nfc_apdu_asm.h"
+#ifdef CONFIG_NFC_ROLE_LISTEN
 #include "hal/nfc_apdu_pool.h"
+#endif
 #include "hal/nfc_transport.h"
 #include "run/nfc_stack_workq.h"
 
@@ -21,7 +23,9 @@
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/logging/log.h>
+#ifdef CONFIG_NFC_ROLE_LISTEN
 #include <zephyr/net_buf.h>
+#endif
 #include <zephyr/sys/util.h>
 
 LOG_MODULE_REGISTER(nfc_transport_pn7160, CONFIG_LOG_DEFAULT_LEVEL);
@@ -49,8 +53,10 @@ static bool s_ops_registered;
 static nfc_uid_t s_pending_uid;
 
 static struct k_work s_listen_recv_work;
+#if IS_ENABLED(CONFIG_NFC_ROLE_LISTEN)
 static struct k_work s_apdu_work;
 static struct k_fifo s_apdu_fifo;
+#endif
 static atomic_t s_listen_recv_stop;
 
 #if IS_ENABLED(CONFIG_NFC_ROLE_LISTEN)
@@ -58,7 +64,11 @@ static const uint8_t s_sw_wrong_length[] = { 0x67U, 0x00U };
 #endif
 
 static const nfc_transport_caps_t s_caps = {
+#if IS_ENABLED(CONFIG_NFC_ROLE_LISTEN)
 	.roles = NFC_ROLE_READER | NFC_ROLE_LISTEN,
+#else
+	.roles = NFC_ROLE_READER,
+#endif
 	.technologies = NFC_TECH_ALL_READER,
 	.tier = NFC_TIER_SMART,
 };
@@ -88,6 +98,7 @@ static bool uid_len_valid(uint8_t len)
 	return len == NFC_UID_LEN_SINGLE || len == NFC_UID_LEN_DOUBLE || len == NFC_UID_LEN_TRIPLE;
 }
 
+#if IS_ENABLED(CONFIG_NFC_ROLE_LISTEN)
 static void apdu_work_handler(struct k_work *work)
 {
 	struct net_buf *buf;
@@ -104,6 +115,7 @@ static void apdu_work_handler(struct k_work *work)
 		}
 	}
 }
+#endif /* CONFIG_NFC_ROLE_LISTEN */
 
 #if IS_ENABLED(CONFIG_NFC_ROLE_LISTEN)
 static void listen_on_apdu_fragment(const uint8_t *data, size_t data_len)
@@ -131,6 +143,7 @@ static void listen_on_apdu_fragment(const uint8_t *data, size_t data_len)
 }
 #endif /* CONFIG_NFC_ROLE_LISTEN */
 
+#if IS_ENABLED(CONFIG_NFC_ROLE_LISTEN)
 static void listen_drain_apdu_fifo(void)
 {
 	struct net_buf *buf;
@@ -139,6 +152,11 @@ static void listen_drain_apdu_fifo(void)
 		net_buf_unref(buf);
 	}
 }
+#else
+static void listen_drain_apdu_fifo(void)
+{
+}
+#endif
 
 static void listen_recv_work_handler(struct k_work *work)
 {
@@ -226,8 +244,10 @@ int nfc_transport_init(void)
 		return ret;
 	}
 
+#if IS_ENABLED(CONFIG_NFC_ROLE_LISTEN)
 	k_fifo_init(&s_apdu_fifo);
 	k_work_init(&s_apdu_work, apdu_work_handler);
+#endif
 
 	atomic_set(&s_session, NFC_SESSION_NONE);
 	atomic_set(&s_state, NFC_TRANSPORT_STATE_INITIALIZED);
@@ -245,7 +265,9 @@ int nfc_transport_shutdown(void)
 
 	atomic_clear(&s_listen_recv_stop);
 	(void)k_work_cancel_sync(&s_listen_recv_work, NULL);
+#if IS_ENABLED(CONFIG_NFC_ROLE_LISTEN)
 	(void)k_work_cancel_sync(&s_apdu_work, NULL);
+#endif
 	listen_drain_apdu_fifo();
 
 	atomic_set(&s_session, NFC_SESSION_NONE);
@@ -427,7 +449,9 @@ int nfc_transport_stop(void)
 
 	atomic_set(&s_listen_recv_stop, 1);
 	(void)k_work_cancel_sync(&s_listen_recv_work, NULL);
+#if IS_ENABLED(CONFIG_NFC_ROLE_LISTEN)
 	(void)k_work_cancel_sync(&s_apdu_work, NULL);
+#endif
 	listen_drain_apdu_fifo();
 
 	ret = pn7160_nci_listen_stop(s_dev);

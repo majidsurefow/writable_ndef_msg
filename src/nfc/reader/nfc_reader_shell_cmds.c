@@ -7,7 +7,12 @@
 
 #include "reader/nfc_reader_engine.h"
 
+#if IS_ENABLED(CONFIG_NFC_STORE)
+#include "store/nfc_store.h"
+#endif
+
 #include <stdlib.h>
+#include <string.h>
 #include <zephyr/shell/shell.h>
 
 static int cmd_nfc_reader_scan(const struct shell *sh, size_t argc, char **argv)
@@ -44,10 +49,65 @@ static int cmd_nfc_reader_scan(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
+#if IS_ENABLED(CONFIG_NFC_STORE)
+static int nfc_reader_shell_save_cb(const char *tag, const uint8_t *blob, size_t len,
+				    void *user_ctx)
+{
+	const struct shell *sh = user_ctx;
+	size_t i;
+
+	if (sh == NULL) {
+		return -ENODEV;
+	}
+
+	shell_print(sh, "@@NFCDUMP@@ %s", tag);
+	for (i = 0U; i < len; i++) {
+		shell_fprintf(sh, SHELL_NORMAL, "%02x", blob[i]);
+	}
+	shell_print(sh, "");
+	return 0;
+}
+#endif
+
+static int cmd_nfc_reader_clone(const struct shell *sh, size_t argc, char **argv)
+{
+	int ret;
+
+	if (argc < 2) {
+		shell_error(sh, "Usage: nfc reader clone <name>");
+		return -EINVAL;
+	}
+
+#if IS_ENABLED(CONFIG_NFC_STORE)
+	(void)nfc_store_init(NULL);
+	(void)nfc_store_register_save_cb(nfc_reader_shell_save_cb, (void *)sh);
+#endif
+
+	ret = nfc_reader_clone_start(argv[1]);
+	if (ret == -EBUSY) {
+		shell_warn(sh, "Clone already in progress");
+		return ret;
+	}
+	if (ret == -ENODEV) {
+		shell_error(sh, "No active session — run \"nfc reader scan\" first");
+		return ret;
+	}
+	if (ret != 0) {
+		shell_error(sh, "Clone start failed: %d", ret);
+		return ret;
+	}
+
+	shell_print(sh, "Clone started for tag \"%s\"; watch logs for @@NFCDUMP@@", argv[1]);
+	return 0;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(nfc_reader_cmds,
 			       SHELL_CMD(scan, NULL,
 					 "Async tag scan (discovery start + wait; non-blocking)",
 					 cmd_nfc_reader_scan),
+			       SHELL_CMD(clone, NULL,
+					 "Clone active tag to .card blob (scan first)",
+					 cmd_nfc_reader_clone),
 			       SHELL_SUBCMD_SET_END);
 
 SHELL_STATIC_SUBCMD_SET_CREATE(nfc_cmds,
