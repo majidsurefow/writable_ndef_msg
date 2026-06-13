@@ -52,6 +52,7 @@ typedef struct {
 	uint32_t deserialize_skip_count;
 	uint32_t corrupt_blob_count;
 	uint32_t partial_load_count;
+	uint32_t live_commit_count;
 } nfc_store_stats_t;
 
 typedef enum {
@@ -65,14 +66,18 @@ typedef int (*nfc_store_save_fn)(const char *tag, const uint8_t *blob, size_t le
 typedef int (*nfc_store_load_fn)(const char *tag, uint8_t *out, size_t max, size_t *out_len,
 				 void *user_ctx);
 
+typedef int (*nfc_store_commit_fn)(const nfc_service_t *svc, const char *tag, void *user_ctx);
+
 int nfc_store_init(const nfc_store_config_t *cfg);
 int nfc_store_shutdown(void);
 
 int nfc_store_register_save_cb(nfc_store_save_fn fn, void *user_ctx);
 int nfc_store_register_load_cb(nfc_store_load_fn fn, void *user_ctx);
+int nfc_store_register_commit_cb(nfc_store_commit_fn fn, void *user_ctx);
 
 int nfc_store_save(const char *tag, const nfc_service_t *const *svcs, size_t n);
 int nfc_store_load(const char *tag, const nfc_service_t *const *svcs, size_t n);
+int nfc_store_on_dirty(const nfc_service_t *svc, const char *tag);
 
 const nfc_store_config_t *nfc_store_get_config(void);
 int nfc_store_get_stats(nfc_store_stats_t *out);

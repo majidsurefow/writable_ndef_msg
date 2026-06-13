@@ -11,6 +11,7 @@
 #include <stdint.h>
 
 #include "hal/nfc_transport.h"
+#include "router/service.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -50,6 +51,8 @@ int nfc_stack_stop(void);
 int nfc_stack_shutdown(void);
 
 int nfc_stack_load(const char *tag);
+
+void nfc_stack_on_service_dirty(const nfc_service_t *svc);
 
 const nfc_stack_config_t *nfc_stack_get_config(void);
 int nfc_stack_get_stats(nfc_stack_stats_t *out);

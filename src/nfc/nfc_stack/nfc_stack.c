@@ -18,6 +18,7 @@
 #include "framing/apdu_assembler.h"
 #include "protocols/ndef/ndef_listener.h"
 #include "router/aid_router.h"
+#include "router/service.h"
 #include "store/nfc_store.h"
 
 LOG_MODULE_REGISTER(nfc_stack, CONFIG_LOG_DEFAULT_LEVEL);
@@ -256,6 +257,19 @@ int nfc_stack_load(const char *tag)
 	s_active_tag[sizeof(s_active_tag) - 1U] = '\0';
 	STATS_INC(&s_stats_lock, s_stats, load_count);
 	return 0;
+}
+
+void nfc_stack_on_service_dirty(const nfc_service_t *svc)
+{
+#if IS_ENABLED(CONFIG_NFC_STORE)
+	if ((svc == NULL) || (s_active_tag[0] == '\0')) {
+		return;
+	}
+
+	(void)nfc_store_on_dirty(svc, s_active_tag);
+#else
+	ARG_UNUSED(svc);
+#endif
 }
 
 const nfc_stack_config_t *nfc_stack_get_config(void)

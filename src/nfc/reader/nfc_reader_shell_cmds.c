@@ -15,6 +15,10 @@
 #include <string.h>
 #include <zephyr/shell/shell.h>
 
+#if IS_ENABLED(CONFIG_NFC_LISTEN_STACK_SHELL)
+extern const union shell_cmd_entry nfc_stack_cmds;
+#endif
+
 static int cmd_nfc_reader_scan(const struct shell *sh, size_t argc, char **argv)
 {
 	int ret;
@@ -111,6 +115,9 @@ SHELL_STATIC_SUBCMD_SET_CREATE(nfc_reader_cmds,
 			       SHELL_SUBCMD_SET_END);
 
 SHELL_STATIC_SUBCMD_SET_CREATE(nfc_cmds,
+#if IS_ENABLED(CONFIG_NFC_LISTEN_STACK_SHELL)
+			       SHELL_CMD(stack, &nfc_stack_cmds, "NFC listen stack commands", NULL),
+#endif
 			       SHELL_CMD(reader, &nfc_reader_cmds, "NFC reader commands", NULL),
 			       SHELL_SUBCMD_SET_END);
 

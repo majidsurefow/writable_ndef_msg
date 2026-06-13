@@ -13,6 +13,10 @@
 #include "framing/apdu_types.h"
 #include "hal/nfc_transport.h"
 
+#if IS_ENABLED(CONFIG_NFC_LISTEN_STACK)
+#include "nfc_stack/nfc_stack.h"
+#endif
+
 #define NDEF_FILE_ID_CC           0xE103U
 #define NDEF_FILE_ID_NDEF         0xE104U
 
@@ -239,6 +243,9 @@ static void ndef_listener_handle_update_binary(const nfc_apdu_t *apdu)
 	}
 
 	(void)memcpy(&s_model.ndef_file[offset], apdu->data, apdu->lc);
+#if IS_ENABLED(CONFIG_NFC_LISTEN_STACK)
+	nfc_stack_on_service_dirty(ndef_listener_get());
+#endif
 	ndef_listener_send_sw(NFC_SW_OK);
 }
 

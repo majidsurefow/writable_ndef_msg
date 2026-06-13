@@ -33,6 +33,8 @@ static nfc_store_save_fn s_save_cb;
 static void *s_save_user_ctx;
 static nfc_store_load_fn s_load_cb;
 static void *s_load_user_ctx;
+static nfc_store_commit_fn s_commit_cb;
+static void *s_commit_user_ctx;
 
 static uint8_t s_resolved_max_tag_len;
 
@@ -63,6 +65,15 @@ static int nfc_store_default_load(const char *tag, uint8_t *out, size_t max, siz
 	ARG_UNUSED(user_ctx);
 
 	return -ENOENT;
+}
+
+static int nfc_store_default_commit(const nfc_service_t *svc, const char *tag, void *user_ctx)
+{
+	ARG_UNUSED(svc);
+	ARG_UNUSED(tag);
+	ARG_UNUSED(user_ctx);
+
+	return 0;
 }
 
 static uint8_t nfc_store_flags_for_persist_id(uint8_t persist_id, bool reader_capture)
@@ -163,6 +174,8 @@ int nfc_store_init(const nfc_store_config_t *cfg)
 	s_save_user_ctx = NULL;
 	s_load_cb = nfc_store_default_load;
 	s_load_user_ctx = NULL;
+	s_commit_cb = nfc_store_default_commit;
+	s_commit_user_ctx = NULL;
 	s_state = NFC_STORE_STATE_INITIALIZED;
 	return 0;
 }
@@ -173,6 +186,8 @@ int nfc_store_shutdown(void)
 	s_save_user_ctx = NULL;
 	s_load_cb = nfc_store_default_load;
 	s_load_user_ctx = NULL;
+	s_commit_cb = nfc_store_default_commit;
+	s_commit_user_ctx = NULL;
 	s_state = NFC_STORE_STATE_UNINITIALIZED;
 	return 0;
 }
@@ -196,6 +211,61 @@ int nfc_store_register_load_cb(nfc_store_load_fn fn, void *user_ctx)
 
 	s_load_cb = (fn != NULL) ? fn : nfc_store_default_load;
 	s_load_user_ctx = user_ctx;
+	return 0;
+}
+
+int nfc_store_register_commit_cb(nfc_store_commit_fn fn, void *user_ctx)
+{
+	if (s_state != NFC_STORE_STATE_INITIALIZED) {
+		return -ENODEV;
+	}
+
+	s_commit_cb = (fn != NULL) ? fn : nfc_store_default_commit;
+	s_commit_user_ctx = user_ctx;
+	return 0;
+}
+
+int nfc_store_on_dirty(const nfc_service_t *svc, const char *tag)
+{
+	size_t body_len = 0U;
+	int ret;
+
+	if (s_state != NFC_STORE_STATE_INITIALIZED) {
+		return -ENODEV;
+	}
+
+	if ((svc == NULL) || (tag == NULL)) {
+		return -EINVAL;
+	}
+
+	if (svc->persist_id == 0U) {
+		return -EINVAL;
+	}
+
+	if (svc->serialize == NULL) {
+		return -EINVAL;
+	}
+
+	ret = svc->serialize(s_staging_buf, sizeof(s_staging_buf), &body_len, svc->user_ctx);
+	if (ret == -ENOTSUP) {
+		return 0;
+	}
+	if (ret != 0) {
+		STATS_ERROR(&s_stats_lock, s_stats, ret);
+		return -EIO;
+	}
+
+	if (s_commit_cb == NULL) {
+		return -ENODEV;
+	}
+
+	ret = s_commit_cb(svc, tag, s_commit_user_ctx);
+	if (ret != 0) {
+		STATS_ERROR(&s_stats_lock, s_stats, ret);
+		return ret;
+	}
+
+	STATS_INC(&s_stats_lock, s_stats, live_commit_count);
 	return 0;
 }
 

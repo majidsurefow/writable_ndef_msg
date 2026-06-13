@@ -18,4 +18,11 @@ config NFC_STACK_DEFAULT_PROFILE
 	help
 	  1 = NFC_PROFILE_NDEF.
 
+config NFC_LISTEN_STACK_SHELL
+	bool "NFC listen stack shell commands"
+	default y
+	depends on SHELL
+	help
+	  Register nfc stack init/start/stop/load shell commands.
+
 endif

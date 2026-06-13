@@ -37,13 +37,29 @@ static int board_init(void)
 
 #if IS_ENABLED(CONFIG_NFC_STACK)
 
+#include "nfc_stack/nfc_stack.h"
+
 int main(void)
 {
-	printk("NFC stack (shell: nfc reader scan|clone)\n");
+	int ret;
+
+	printk("NFC stack (shell: nfc stack init|start|stop|load");
+#if IS_ENABLED(CONFIG_NFC_READER_SHELL)
+	printk(" | nfc reader scan|clone");
+#endif
+	printk(")\n");
 
 	if (board_init() < 0) {
 		return -EIO;
 	}
+
+#if IS_ENABLED(CONFIG_NFC_LISTEN_STACK)
+	ret = nfc_stack_init(NULL);
+	if ((ret != 0) && (ret != -EALREADY)) {
+		printk("nfc_stack_init failed: %d\n", ret);
+		return -EIO;
+	}
+#endif
 
 	while (true) {
 		k_sleep(K_FOREVER);
