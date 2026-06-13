@@ -24,6 +24,34 @@ extern "C" {
 /** Maximum NCI payload length per PN7160 TML (255). */
 #define PN7160_TML_MAX_PAYLOAD_LEN 255U
 
+/** SPI TML write prefix byte (NXP INTF_WRITE). */
+#define PN7160_TML_SPI_WRITE_PREFIX 0x7FU
+
+/** SPI TML read dummy byte (NXP INTF_READ). */
+#define PN7160_TML_SPI_READ_DUMMY 0xFFU
+
+/**
+ * @brief Total SPI write transfer length for a TML payload.
+ *
+ * @param payload_len NCI frame length excluding the 0x7F prefix.
+ * @return Bytes on wire including prefix.
+ */
+static inline size_t pn7160_tml_spi_write_xfer_len(size_t payload_len)
+{
+	return payload_len + 1U;
+}
+
+/**
+ * @brief Total SPI read transfer length for @p data_len payload bytes.
+ *
+ * @param data_len Bytes to clock out after the leading 0xFF dummy.
+ * @return Bytes on wire including dummy.
+ */
+static inline size_t pn7160_tml_spi_read_xfer_len(size_t data_len)
+{
+	return data_len + 1U;
+}
+
 /**
  * @brief Extract NCI payload length from the first three header bytes.
  *
