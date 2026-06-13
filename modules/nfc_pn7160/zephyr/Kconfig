@@ -49,6 +49,13 @@ config PN7160_WORKQ_PRIORITY
 	help
 	  Priority of the module-local PN7160 work queue thread.
 
+config PN7160_SHELL
+	bool "PN7160 shell commands"
+	default y
+	depends on SHELL
+	help
+	  Register pn7160 probe and fwver shell commands.
+
 module = PN7160
 module-str = pn7160
 source "subsys/logging/Kconfig.template.log_config"
