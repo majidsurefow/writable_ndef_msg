@@ -10,7 +10,8 @@ For west workspace layout, official doc links, and bootstrap commands, see
 | Layer | Location | CI job | Status |
 |-------|----------|--------|--------|
 | Integration (app) | Root `sample.yaml` | `twister.yaml` → `twister-build` | **Active** — build-only on nRF DK matrix + `pn7160.i2c` / `pn7160.spi` overlays (`pn7160` tag; also in `devicetree.yml`) |
-| Unit (module) | `modules/nfc_pn7160/tests/unit/pn7160_tml/` | `twister.yaml` → `twister-unit` | **Scaffold** — one ztest (`test_scaffold_passes`); Twister tag `ci_unit` |
+| Unit (module) | `modules/nfc_pn7160/tests/unit/pn7160_tml/` | `twister.yaml` → `twister-unit` | **Active in CI** — one ztest (`test_scaffold_passes`); Twister tag `ci_unit` |
+| Unit (NFC stack) | `tests/unit/nfc_ndef/`, `tests/unit/nfc_reader/`, `tests/unit/nfc_apdu_asm/` | — | **Local only** — run via `west twister -T "$REPO/tests/unit/nfc_*"`; not in merge-gate CI yet |
 
 **Unit suite layout:** `CMakeLists.txt` (sets `ZEPHYR_EXTRA_MODULES` to the module), `prj.conf` (`CONFIG_ZTEST`, I2C/GPIO/EMUL, `CONFIG_PN7160`) + unit-test overlay, `testcase.yaml` (`modules.nfc_pn7160.unit.pn7160_tml`), `src/main.c`.
 
@@ -150,6 +151,7 @@ Run from **repo workspace root** unless using global NCS (then keep `-T` as abso
 | Integration (PR scope) | `west twister -T . -t ci_build --integration --build-only -v` |
 | Integration (all `ci_build`) | `west twister -T . -t ci_build --build-only -v` |
 | Unit (`ci_unit`, matches CI intent) | `west twister -T modules/nfc_pn7160/tests/unit/pn7160_tml -p qemu_cortex_m3 --no-sysbuild -t ci_unit -v` |
+| NFC stack unit suites (local) | `west twister -T "$REPO/tests/unit/nfc_ndef" -p qemu_cortex_m3 --no-sysbuild -t ci_unit -t writable_ndef.nfc.ndef -v` · same for `nfc_reader`, `nfc_apdu_asm` |
 | PN7160 overlay smoke (Twister) | `west twister -T . -t pn7160 --build-only -v` |
 | Single-board app build | `west build -b nrf54l15dk/nrf54l15/cpuapp . --sysbuild` |
 

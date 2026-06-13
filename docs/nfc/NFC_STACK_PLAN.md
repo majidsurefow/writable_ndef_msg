@@ -32,13 +32,13 @@ One application work queue: `nfc_stack_wq`. PN7160 driver owns `pn7160_wq`
 
 ## Gated commits (5)
 
-| # | Scope | Gate (must pass before next) |
-|---|-------|------------------------------|
-| 1 | `hal/` PN7160 poll + `reader/` scan | `nfc reader scan` detects tag; driver unit tests green |
-| 2 | `store/` minimal + `reader/` clone (NDEF) | `nfc reader clone` produces valid `.card` blob |
-| 3 | `protocols/ndef` + framing/router + `nfc_stack` on PN7160 listen | Type-4 CE responds to SELECT / READ BINARY |
-| 4 | `applets/` emulate + verify on PN7160 | clone → emulate → verify **PASS** on same chip |
-| 5 | NFCT backend + port proven `protocols/` listeners | same `.card` on NFCT emulate; PN7160 verify **PASS** |
+| # | Scope | Gate (must pass before next) | Code status |
+|---|-------|------------------------------|-------------|
+| 1 | `hal/` PN7160 poll + `reader/` scan | `nfc reader scan` detects tag; driver unit tests green | **done** |
+| 2 | `store/` minimal + `reader/` clone (NDEF) | `nfc reader clone` produces valid `.card` blob | **landed** — HIL sign-off open |
+| 3 | `protocols/ndef` + framing/router + `nfc_stack` on PN7160 listen | Type-4 CE responds to SELECT / READ BINARY | **landed** — HIL CE READ open |
+| 4 | `applets/` emulate + verify on PN7160 | clone → emulate → verify **PASS** on same chip | **landed** — HIL loop open; RW+CE deferred |
+| 5 | NFCT backend + port proven `protocols/` listeners | same `.card` on NFCT emulate; PN7160 verify **PASS** | **open** |
 
 ## Backlog (per protocol — surgical review locked 2026-06-14)
 
@@ -70,7 +70,7 @@ Add when the gated path above is green. Eleven per-protocol reviews complete. Se
 - **`NFC_TECH_TYPE3_FELICA` missing; NFC-F not in default discovery** — FeliCa poller needs custom discovery table.
 - **`NFC_TRANSPORT_MAX_RESPONSE_LEN` = 255 B** — chunk READ BINARY in protocol layer; T4T lib allows 0xFFF0.
 - ~~**NFCT `NFC_T4T_EMUMODE_PICC` not explicitly set in nrfx HAL**~~ — **closed Step A3** (`646c5ab`).
-- **No `protocols/` tree yet** — greenfield; Gate 2 lands `protocols/ndef/` first.
+- ~~**No `protocols/` tree yet**~~ — **`protocols/ndef/` landed** (Gate 2 poller + Gate 3 listener); backlog F1+ pending.
 
 ### NFCT vs PN7160 roles
 
@@ -107,4 +107,7 @@ before any `protocols/` work — lifecycle, coupling, file layout, Gate 2/3 reci
 4. ~~**NFCT HAL**~~ — **done** (`428fa52`).
 5. ~~**net_buf / `nfc_apdu_pool`**~~ — **done** (`266ef13`).
 6. ~~**Step A — HAL unblock**~~ — **done** (`688c370`, `cfd30b0`, `646c5ab`); plan: [`plans/2026-06-14-nfc-sequential-execution.md`](plans/2026-06-14-nfc-sequential-execution.md).
-7. **Gate 2** — `protocols/ndef` poller + `reader/` clone (+ save when poller works).
+7. ~~**Gate 2**~~ — **`protocols/ndef` poller + `store/` + Tier E unit tests** — code landed; HIL `nfc reader clone` sign-off open.
+8. ~~**Gate 3**~~ — **listen/router + `ndef_listener`** — code landed; HIL PN7160 CE READ open.
+9. ~~**Gate 4**~~ — **applets emulate/verify/loop** — code landed; HIL clone→emulate→verify open (RW+CE on same chip deferred).
+10. **Gate 5** — NFCT emulate + PN7160 cross-backend verify.

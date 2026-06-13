@@ -26,14 +26,44 @@ Golden tag dumps copied from Flipper Zero’s NFC unit-test resources. They are 
 
 ## Regenerating derived fixtures
 
-Convert a `.nfc` file to Tier A/B inputs (`.inc`, `.bin`, mock scripts) with:
+Convert all Flipper inputs (Tier A/B + store `.card.bin` where applicable):
+
+```bash
+python3 scripts/nfc/flipper_nfc_to_fixture.py --all --card-bin
+```
+
+Single file:
 
 ```bash
 python3 scripts/nfc/flipper_nfc_to_fixture.py \
   --input tests/fixtures/nfc/flipper/<name>.nfc \
-  --out-dir tests/fixtures/<protocol>/
+  --out-dir tests/fixtures/<protocol>/ \
+  --card-bin
 ```
 
-See `scripts/nfc/flipper_nfc_to_fixture.py` for options (`python3 … --help` exits 0). After upstream Flipper updates, re-copy the 12 basenames from the upstream directory above, then re-run the script for affected protocols.
+Outputs: `<stem>_model.bin`, `<stem>_read.inc`, and (except HAL signal files) `tests/fixtures/store/<stem>.card.bin`.
+
+NDEF store goldens (no Flipper `.nfc`): `python3 scripts/nfc/ndef_to_fixture.py --variant all`.
+
+See `scripts/nfc/flipper_nfc_to_fixture.py --help`. After upstream Flipper updates, re-copy the 12 basenames from the upstream directory above, then re-run `--all --card-bin`.
+
+## Per-card parity tracker
+
+| Flipper `.nfc` | Tier A/B fixtures | Tier A/B/C ztest | Tier E+ | `.card.bin` |
+|----------------|-------------------|------------------|---------|-------------|
+| `Ultralight_11.nfc` | `tests/fixtures/ultralight/` | pending F1 | pending F1 | yes |
+| `Ultralight_21.nfc` | yes | pending F1 | pending F1 | yes |
+| `Ultralight_C.nfc` | yes | pending F1 | pending F1 | yes |
+| `Ntag213_locked.nfc` | yes | pending F1 | pending F1 | yes |
+| `Ntag215.nfc` | yes | pending F1 | pending F1 | yes |
+| `Ntag216.nfc` | yes | pending F1 | pending F1 | yes |
+| `Felica.nfc` | `tests/fixtures/felica/` | pending F4 | **SKIP** | yes |
+| `Slix_cap_default.nfc` | `tests/fixtures/slix/` | pending F4 | **SKIP** | yes |
+| `Slix_cap_missed.nfc` | yes | pending F4 | **SKIP** | yes |
+| `Slix_cap_accept_all_pass.nfc` | yes | pending F4 | **SKIP** | yes |
+| `nfc_nfca_signal_short.nfc` | `tests/fixtures/hal/` | pending (HAL) | n/a | n/a |
+| `nfc_nfca_signal_long.nfc` | yes | pending (HAL) | n/a | n/a |
+
+Full policy: [NFC_APPLETS_AND_TESTING.md](../../../docs/nfc/NFC_APPLETS_AND_TESTING.md) — per-card Flipper parity.
 
 Full registration checklist: [NFC_PROTOCOLS_COOKBOOK.md](../../../docs/nfc/NFC_PROTOCOLS_COOKBOOK.md) §14.11 · [NFC_APPLETS_AND_TESTING.md](../../../docs/nfc/NFC_APPLETS_AND_TESTING.md).

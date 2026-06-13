@@ -116,14 +116,14 @@ Expected: NFCT listen overlay builds (hardware optional for runtime).
 
 ## Gate 2 (B) — `protocols/ndef` poller + clone
 
-**Scope:** First `protocols/` tree; minimal `store/`; reader clone shell; **ABC unit test template** per cookbook §14; **Tier E scaffold** (`tests/unit/nfc_reader/`).
+**Scope:** First `protocols/` tree; minimal `store/`; reader clone shell; **ABC unit test template** per cookbook §14; **Tier E + E+** (`tests/unit/nfc_reader/` — 13 ztests; `test_reader_clone_slot` TODO).
 
 **Prerequisite:** `tests/common/` mocks + `tests/unit/nfc_ndef` Tier A+B green on twister (§14.10). Tier C tests written now; listener code lands Gate 3.
 
 **Files (create):**
 - `tests/common/` — `nfc_session_mock`, `nfc_response_spy`, `nfc_test_apdu`
 - `tests/unit/nfc_ndef/` — Tier A/B/C suites (C builds Gate 3)
-- `tests/unit/nfc_reader/` — Tier E placeholder (README + testcase.yaml)
+- `tests/unit/nfc_reader/` — Tier E + E+ (13 ztests; store, verify, loopback)
 - `tests/fixtures/ndef/` — `*.inc` scripts, `*.bin` goldens
 - `src/nfc/protocols/ndef/ndef.h`, `ndef.c`, `ndef_poller.c`, `CMakeLists.txt`, `Kconfig`
 - `src/nfc/store/nfc_store.h`, `nfc_store.c` (minimal envelope)
