@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: Apache-2.0
+
+mainmenu "NFC reader applet unit tests"
+
+source "Kconfig.zephyr"
+
+config NFC_NDEF_MAX_SIZE
+	int "Maximum NDEF message payload (bytes)"
+	default 500
+	range 1 4096
+
+config NFC_STORE
+	bool "Enable store envelope tests"
+	default y
+
+config NFC_STORE_BLOB_SIZE
+	int "Staging buffer size for serialized blobs (bytes)"
+	default 4096
+	depends on NFC_STORE
+	range 512 16384
+
+config NFC_STORE_MAX_TAG_LEN
+	int "Maximum tag name length including NUL"
+	default 16
+	depends on NFC_STORE
+	range 8 32

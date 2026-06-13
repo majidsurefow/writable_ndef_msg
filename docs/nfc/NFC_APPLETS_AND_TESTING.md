@@ -10,13 +10,13 @@ This document is the standalone entry point for **what users run** (`nfc *` appl
 
 ## Product applets (LOCKED)
 
-| Applet | Behavior | Gate |
-|--------|----------|------|
-| `nfc scan` | Type-agnostic discover + print tag info | 1 |
-| `nfc read <slot>` | One-shot scan + poller walk + save to store | 2 |
-| `nfc emulate <slot> [profile]` | Load slot + stack start + listen | 3–4 (PN7160); 5 (NFCT) |
-| `nfc verify <slot>` | Poll emulated tag + diff vs stored `.card` | 4 |
-| `nfc loop <slot>` | `read` → `emulate` → `verify` HIL sign-off | 4 |
+| Applet | Shell | Notes |
+|--------|-------|-------|
+| `nfc scan` | `nfc scan [timeout_ms]` | Prints UID / protocol / tech to shell |
+| `nfc read <slot>` | `nfc read <slot> [timeout_ms]` | One-shot scan + save |
+| `nfc emulate <slot>` | `nfc emulate <slot> [ndef]` | Requires listen overlay |
+| `nfc verify <slot>` | `nfc verify <slot> [timeout_ms]` | Poll + diff vs `.card` |
+| `nfc loop <slot>` | `nfc loop <slot> [timeout_ms]` | read → emulate → verify (HIL) |
 
 **Shell aliases (LOCKED):** `nfc read <slot>` and **`nfc reader clone <slot>`** are the same applet — register both names.
 
@@ -77,6 +77,80 @@ Flipper provenance and 12-file manifest: [tests/fixtures/nfc/flipper/README.md](
 
 ---
 
+## Card format and Flipper golden chain
+
+**Status:** LOCKED — three representations, translation graph, test-tier inputs, implementation order
+
+A tag or saved slot is never one file format. It is the same **protocol model** expressed in three ways. Tests pick an input tier deliberately; confusing `.card` with Flipper `.nfc` bytes is a policy violation.
+
+### Three representations of the same card
+
+1. **Flipper `.nfc`** (text, FlipperFormat) — human-readable golden and provenance reference. Canonical copies live in `tests/fixtures/nfc/flipper/`. GPL upstream is reference-only in CI; firmware never loads these files.
+
+2. **Protocol model** (`ndef_data_t`, ultralight model, etc.) — in-RAM truth after a poller read **or** after our FlipperFormat parse on the host.
+
+3. **Product blob** — what the store persists on disk:
+   - **v1 (now):** `.card` binary TLV envelope (`nfc_store_save` / `nfc_store_load`)
+   - **v2 (planned):** `.nfc` on disk via our FF port (same protocol model inside)
+
+`.card` and `.nfc` are **not** byte-for-byte copies. They are different serializations of the same model.
+
+### Translation graph (authoritative)
+
+```
+                    ┌─────────────────┐
+  Physical tag ────►│ poller read     │───┐
+                    └─────────────────┘   │
+                                          ▼
+                    ┌─────────────────┐   ┌──────────────┐
+  Flipper .nfc ────►│ FF parse (ours) │──►│ protocol     │
+  (offline/host)    └─────────────────┘   │ model        │
+                                          └──────┬───────┘
+                                                 │
+                    ┌────────────────────────────┼────────────────────────────┐
+                    ▼                            ▼                            ▼
+              serialize                   Tier A .bin                  Tier B .inc
+              (store)                     (model golden)               (poller script)
+                    │
+                    ▼
+              .card blob (v1)  OR  .nfc file (v2 store)
+```
+
+**Today:** physical read → model → `.card`. Flipper `.nfc` → **NOT YET** → `.card` (converter stub).
+
+**Required bridge for applet mock tests:** offline toolchain on the host:
+
+`.nfc` → FF parse → model → `nfc_store` serialize → `tests/fixtures/store/<name>.card.bin`
+
+Tier E store tests load that golden via the store API — no RF, no runtime FF parser in ztest.
+
+### What each test tier uses (no ambiguity)
+
+| Tier | Input file | Parses `.nfc` at runtime? | Uses `.card`? |
+|------|------------|----------------------------|---------------|
+| **A** | `.bin` | No | No |
+| **B** | `.inc` | No | No |
+| **C** | `.inc` / helpers | No | No |
+| **E** (applet / store) | `.card.bin` golden | No | **Yes** — load via store API |
+| **E** (FF validation, host) | `.nfc` | **Yes** (our FF port) | Compare serialize output to `.card.bin` |
+| **D** / **HIL** | physical or emulated tag | No | Yes (from `nfc read`) |
+
+Twister and ztest never parse FlipperFormat. Host-only validation may parse `.nfc` and assert the serialized `.card.bin` matches.
+
+### Implementation order (locked)
+
+1. Gate 4 applets on `.card` from live read (HIL)
+2. Hand-build or script one NDEF `.card.bin` golden for Tier E emulate-without-RF
+3. Extend `flipper_nfc_to_fixture.py`: `.nfc` → `.card.bin` + `.inc` + `.bin`
+4. FF store v2: disk `.nfc`, load same as step 3 host path
+
+### NOT allowed
+
+- Flipper `nfc_device_load()` in firmware or CI
+- Assuming `.card` is a copy of `.nfc` bytes (different formats, same model)
+
+---
+
 ## Migration table (old → locked names)
 
 | Previous / draft | Locked applet or alias |
@@ -124,6 +198,6 @@ Before landing a new `protocols/<name>/` module, complete the checklist in cookb
 
 ## Related docs
 
-- [NFC_PROTOCOLS_COOKBOOK.md](NFC_PROTOCOLS_COOKBOOK.md) — protocol recipes, §14 tiers, §14.11 checklist
+- [NFC_PROTOCOLS_COOKBOOK.md](NFC_PROTOCOLS_COOKBOOK.md) — protocol recipes, §14 tiers, §14.11 checklist (golden policy cross-ref)
 - [CI_TESTING.md](CI_TESTING.md) — Twister jobs and local commands
 - [NFC_STACK_PLAN.md](NFC_STACK_PLAN.md) — gate sequencing
