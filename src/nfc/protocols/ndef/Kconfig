@@ -1,0 +1,20 @@
+# NDEF protocol — Gate 2 model (cookbook §5.1).
+
+config NFC_PROTOCOL_NDEF
+	bool "NDEF Type-4 protocol model"
+	default n
+	help
+	  NDEF data model and serialize/deserialize. Poller/listener are
+	  separate Kconfig roles (Gate 2/3).
+
+if NFC_PROTOCOL_NDEF
+
+config NFC_NDEF_MAX_SIZE
+	int "Maximum NDEF message payload (bytes)"
+	default 500
+	range 1 4096
+	help
+	  Max NLEN value accepted by ndef_deserialize. Matches NXP
+	  RW_MAX_NDEF_FILE_SIZE default; product may raise up to 4096.
+
+endif

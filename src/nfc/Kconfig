@@ -24,6 +24,11 @@ config NFC_APDU_POOL_COUNT
 
 rsource "run/Kconfig"
 rsource "hal/Kconfig"
+rsource "protocols/ndef/Kconfig"
+rsource "store/Kconfig"
+rsource "framing/Kconfig"
+rsource "router/Kconfig"
+rsource "nfc_stack/Kconfig"
 rsource "reader/Kconfig"
 
 endif
