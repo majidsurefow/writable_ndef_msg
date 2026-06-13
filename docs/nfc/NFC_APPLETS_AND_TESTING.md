@@ -50,6 +50,18 @@ Applets compose primitives. CI may call primitives directly for bring-up; produc
 | **E** | Applet — store envelope, clone slot, verify diff | `tests/unit/nfc_reader/` | QEMU (Gate 2+) |
 | **E+** | Virtual loopback — load → emulate → poller read → save → compare | `tests/unit/nfc_reader/` (`test_virtual_loopback.c`) | QEMU (emulatable protocols) |
 
+**Per-card Flipper parity for offline sim (LOCKED):** Every emulatable protocol/card variant must have Tier A/B/C coverage **and** a Tier E+ virtual loopback case that mirrors Flipper test **intent** — load golden → emulate (listener) → poller read → save → compare — without pasting GPL code. Use `nfc_virtual_loopback_run()` as the standard harness (`tests/common/include/nfc_virtual_loopback.h`).
+
+| Protocol / variant | Tier A/B/C fixtures | Tier E+ loopback golden | Flipper / provenance ref |
+|--------------------|---------------------|-------------------------|---------------------------|
+| NDEF empty | `empty.bin`, `empty.inc`, Tier B empty script | `ndef_empty.card.bin` | NXP `RW_NDEF_T4T` / cookbook §5.1 |
+| NDEF URI (5 B) | `uri_5byte.bin`, `uri_5byte_script.inc` | `ndef_uri_5byte.card.bin` | Same + `test_read_uri_5byte` poller matrix |
+| NDEF chunk (NLEN=300) | `chunk_255.bin`, `chunk_255_script.inc` | `ndef_chunk_255.card.bin` | Same + `test_read_chunk_transport_cap` |
+| Ultralight / NTAG (emulate via NDEF T4 adapter) | `tests/fixtures/ultralight/*` | per `.card.bin` when emulatable | Flipper `mf_ultralight_*` tests in `nfc_test.c` |
+| FeliCa / SLIX / Classic (clone-only) | Tier B poller scripts + store roundtrip | **SKIP E+** — no listener loopback | Flipper poller tests only; Tier B + store save/load |
+
+Regen NDEF loopback goldens: `python3 scripts/nfc/ndef_to_fixture.py --variant all`. See cookbook [§14.12 Phase 1b](NFC_PROTOCOLS_COOKBOOK.md#1412-protocol-golden-chain-workflow-locked).
+
 **NDEF first:** `tests/unit/nfc_ndef/` is the Tier A/B/C template. Other protocols copy after cookbook §14.10 exit criteria.
 
 **CI fixture rule (LOCKED):** Twister links `tests/fixtures/<proto>/*.inc` and `*.bin` only — **no FlipperFormat parser in ztest**.
@@ -63,7 +75,7 @@ tests/
   fixtures/
     nfc/flipper/     # 12 GPL .nfc reference files (not linked by CI)
     ndef/            # NDEF *.inc, *.bin
-    store/           # Tier E *.card.bin envelopes (e.g. ndef_empty.card.bin)
+    store/           # Tier E *.card.bin envelopes (e.g. ndef_empty.card.bin, ndef_uri_5byte.card.bin)
     ultralight/      # (post–F1) derived from flipper/
     classic/         # (post–F2)
     …
@@ -143,7 +155,7 @@ Twister and ztest never parse FlipperFormat. Host-only validation may parse `.nf
 ### Implementation order (locked)
 
 1. Gate 4 applets on `.card` from live read (HIL)
-2. NDEF `.card.bin` golden for Tier E emulate-without-RF — **`tests/fixtures/store/ndef_empty.card.bin`** (regen: `scripts/nfc/ndef_to_fixture.py`)
+2. NDEF `.card.bin` goldens for Tier E emulate-without-RF — **`tests/fixtures/store/ndef_{empty,uri_5byte,chunk_255}.card.bin`** (regen: `scripts/nfc/ndef_to_fixture.py --variant all`)
 3. Extend `flipper_nfc_to_fixture.py`: `.nfc` → `.card.bin` + `.inc` + `.bin` per protocol (checklist: cookbook §14.12)
 4. FF store v2: disk `.nfc`, load same as step 3 host path
 

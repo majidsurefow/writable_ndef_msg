@@ -1721,12 +1721,14 @@ NDEF worked example (loopback):
 
 | Step | API / file |
 |------|------------|
-| Golden | `tests/fixtures/store/ndef_empty.card.bin` → `store_fixture.h` |
+| Golden | `tests/fixtures/store/ndef_empty.card.bin`, `ndef_uri_5byte.card.bin`, `ndef_chunk_255.card.bin` → `store_fixture.h` |
 | Load → emulate | `nfc_store_load` + `ndef_listener_get()` |
 | Virtual RF | `nfc_virtual_rf_enable(ndef_listener_get())` |
 | Poller read | `ndef_poller_detect` + `ndef_poller_read` |
 | Save + compare | `nfc_store_save("cloned")` + `nfc_applet_verify_compare` + blob `memcmp` vs golden |
-| Test | `tests/unit/nfc_reader/src/test_virtual_loopback.c` |
+| Test | `tests/unit/nfc_reader/src/test_virtual_loopback.c` (`test_virtual_loopback_{empty,uri_5byte,chunk_255}`) |
+
+Per-card parity policy (every emulatable variant): [NFC_APPLETS_AND_TESTING.md](NFC_APPLETS_AND_TESTING.md) — **Per-card Flipper parity for offline sim**.
 
 #### Phase 2 — Implement
 
@@ -1757,9 +1759,10 @@ NDEF worked example (loopback):
 **Regen:**
 
 ```bash
-python3 scripts/nfc/ndef_to_fixture.py
-# or: ndef_to_card_bin.py --model tests/fixtures/ndef/empty.bin \
-#       --output tests/fixtures/store/ndef_empty.card.bin
+python3 scripts/nfc/ndef_to_fixture.py --variant all
+# or per variant:
+# python3 scripts/nfc/ndef_to_card_bin.py --model tests/fixtures/ndef/uri_5byte.bin \
+#       --output tests/fixtures/store/ndef_uri_5byte.card.bin
 ```
 
 **Provenance:** cookbook §5.1 + NXP `RW_NDEF_T4T` + existing `tests/fixtures/ndef/` — not Flipper unit_tests `.nfc` set.
