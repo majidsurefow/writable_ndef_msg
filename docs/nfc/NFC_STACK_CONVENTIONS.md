@@ -3,6 +3,8 @@
 **Status:** LOCKED — binding for every layer and service in `src/nfc/`.
 **Last updated:** 2026-06-14. Execution: [`NFC_STACK_PLAN.md`](NFC_STACK_PLAN.md). Design: [`specs/2026-06-13-nfc-final-design.md`](specs/2026-06-13-nfc-final-design.md). Historical architecture: [`archive/specs/2026-06-12-nfc-stack-architecture.md`](archive/specs/2026-06-12-nfc-stack-architecture.md).
 
+**Path note:** this doc uses `services/` for the protocol layer; implement as `protocols/` in `src/nfc/`.
+
 This is the single conventions reference every wave agent reads in Step 1. It
 adapts the firmware-wide design docs to the NFC stack and pre-resolves the
 NFC-specific decisions so no wave re-derives them.
