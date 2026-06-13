@@ -267,7 +267,7 @@ Flipper uses a **`FuriThread`** per `Nfc` worker that blocks on `furi_hal_nfc_*_
 
 | Path | Model |
 |------|--------|
-| **Inbound listen** | FIXED `net_buf` pool; ISR allocates first fragment `K_NO_WAIT`; WQ owns after `k_fifo` handoff; framing **`net_buf_unref`** after router returns |
+| **Inbound listen** | Single shared **`nfc_apdu_pool`** (`hal/nfc_apdu_pool.c`); sized by `NFC_APDU_*` Kconfig. NFCT: ISR alloc + fifo; PN7160 Gate 3: WQ alloc after `card_mode_recv`. Framing **`net_buf_unref`** after router returns |
 | **Outbound listen** | File-static service response buffer; HAL **borrows** until next event |
 | **Poll transceive** | Caller-supplied `rx` buffer on WQ thread; no heap |
 
@@ -293,14 +293,37 @@ Pool exhaustion: increment **`dropped`** stat — never `__ASSERT`. Oversized AP
 - [ ] Shell: `nfc_transport` subcmds (driver debug stays under `pn7160`)
 - [ ] Stats/getters per conventions §2 + §6
 
+**PN7160 listen — incomplete (Gate 3)**
+
+- Recv loop does not yet deliver `on_apdu` via `nfc_apdu_pool` (drops only).
+- `set_uid` live rotation returns `-EBUSY` during listen (NFCT has full impl).
+- Field on/off synthetic at `start`/`stop`.
+- Poll sub-API is complete for Gate 1/2.
+
+### NFCT (nrfx) — nrfxlib choice (locked)
+
+nrfxlib ships two CE libraries only: **`nfc_t2t_lib`** (Type-2, READ-only NDEF) and
+**`nfc_t4t_lib`** (Type-4 ISO-DEP, NDEF RO/RW + raw PICC for router/listeners). Both
+may **link** in one image (NCS ≥2.3); only **one** may own NFCT at runtime — stop +
+`*_done()` + re-init to switch.
+
+| Gate | Library | Why |
+|------|---------|-----|
+| **v1 / Gate 5** | `nfc_t4t_lib` only | Default product emulate, live persist, ISO-DEP listeners (NDEF, DeSFire, EMV, Aliro), Ultralight T4 adapter |
+| **Backlog** | `nfc_t2t_lib` optional | Read-only Type-2 NDEF physical mimic for verify; native lane (not APDU) — no WRITE persist |
+
+HAL exposes **one listen profile at a time** (capability bitmask + `nfc_stack` profile),
+not concurrent T2+T4. Poller-side NCS modules (`nfc_t2t_parser`, `nfc_t4t_hl_procedure`)
+are for external readers — do not use for NFCT listen backend.
+
 ### NFCT (nrfx) stub checklist
 
-- [ ] Kconfig: `NFC_HAL_BACKEND_NRFX`; mutually exclusive with PN7160 backend selection where required
+- [ ] Kconfig: `NFC_HAL_BACKEND_NRFX` → `CONFIG_NFC_T4T_NRFXLIB=y` (v1); optional `NFC_HAL_NRFX_T2T` backlog
 - [ ] Caps: listen only (`NFC_ROLE_LISTEN`); poll API absent or `-ENOTSUP`
 - [ ] Stub: init/shutdown + `get_capabilities()` + listen start/stop returning `-ENOTSUP` until Gate 3
 - [ ] `BUILD_ASSERT(NFC_TRANSPORT_MAX_RESPONSE_LEN == NFC_T4T_MAX_PAYLOAD_SIZE)`
 - [ ] ISR → **`nfc_stack_wq`** bridge skeleton (field on/off, fragment fifo)
-- [ ] Document NFCT exclusivity: one of T2T/T4T libs at a time; runtime switch = stop + re-init
+- [ ] Runtime exclusivity: one active CE lib; profile switch requires `nfc_transport_stop()` first
 
 ---
 

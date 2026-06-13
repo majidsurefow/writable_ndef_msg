@@ -64,6 +64,7 @@ Add when the gated path above is green. Archived wave detail in
 - **Memory:** static buffers and FIXED pools only; [`NFC_STACK_CONVENTIONS.md`](NFC_STACK_CONVENTIONS.md) is binding law.
 - **Execution:** five gated commits on greenfield `src/nfc/` (no carry-forward from prototype).
 - **Backends:** PN7160 = reader + optional card emulation; NFCT = listen-only; P2P out of scope for v1.
+- **PN7160 listen HAL:** poll complete (Gates 1–2); listen path finishes in Gate 3 — see [`NFC_HAL_GUIDE.md`](NFC_HAL_GUIDE.md) §6.
 - **Shell:** `pn7160 *` (driver/debug NCI) vs `nfc *` (stack/applets) — separate command trees.
 
 ## Before any module work
@@ -73,6 +74,8 @@ stats recipe, threading, MISRA. Do not re-derive decisions locked here or there.
 
 ## Next steps
 
-1. **[`NFC_HAL_GUIDE.md`](NFC_HAL_GUIDE.md)** — slim backend authoring reference (this doc).
-2. **`src/nfc/hal/` PN7160 backend** — poll + listen on frozen driver API.
-3. **NFCT HAL stub** — listen sub-API skeleton wrapping nrfxlib (no full CE until gate 3).
+1. ~~**[`NFC_HAL_GUIDE.md`](NFC_HAL_GUIDE.md)**~~ — **done** (`52f3136` + nrfxlib NFCT §6 lock).
+2. ~~**Gate 1 HAL + reader**~~ — **done** (`b37c559`).
+3. ~~**NFCT HAL**~~ — **done** (`428fa52`): T4T listen + `overlay-nfct-stack.conf`.
+4. ~~**net_buf / `nfc_apdu_pool`**~~ — **done** (`266ef13`): shared pool, asm helpers, ztests, NFCT path audited.
+5. **Gate 2** — `store/` + `reader/` NDEF clone.
