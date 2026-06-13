@@ -6,9 +6,10 @@ NXP RW_NDEF_T4T, and tests/fixtures/ndef/ (not flipper_nfc_to_fixture.py).
 
 Usage:
   python3 scripts/nfc/ndef_to_fixture.py
-  python3 scripts/nfc/ndef_to_fixture.py --variant empty
+  python3 scripts/nfc/ndef_to_fixture.py --variant uri_5byte
+  python3 scripts/nfc/ndef_to_fixture.py --variant all
 
-Outputs (default variant empty):
+Outputs (variant empty):
   tests/fixtures/ndef/empty.bin
   tests/fixtures/ndef/empty.inc
   tests/fixtures/store/ndef_empty.card.bin
@@ -27,17 +28,58 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 NDEF_FIXTURE_DIR = REPO_ROOT / "tests" / "fixtures" / "ndef"
 STORE_FIXTURE_DIR = REPO_ROOT / "tests" / "fixtures" / "store"
 
-# Empty NDEF model: format v1, zero CC, NLEN=0 (18 bytes) — cookbook §5.1 / Tier A golden.
-EMPTY_MODEL = bytes([
-    0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-])
+NDEF_CC_LEN = 15
+NDEF_FORMAT_VERSION = 0x01
+
+URI_PAYLOAD = bytes([0xD1, 0x01, 0x03, 0x55, 0x01])
+CHUNK_NLEN = 300  # 0x012C — matches ndef_fixture.h NDEF_FIXTURE_CHUNK_NLEN
+
+
+def build_model(ndef_file: bytes) -> bytes:
+    if len(ndef_file) < 2:
+        raise ValueError("ndef_file must include NLEN field")
+    return bytes([NDEF_FORMAT_VERSION]) + bytes(NDEF_CC_LEN) + ndef_file
+
+
+def build_chunk_payload() -> bytes:
+    return bytes(i & 0xFF for i in range(CHUNK_NLEN))
+
+
+VARIANTS: dict[str, dict[str, object]] = {
+    "empty": {
+        "model_bin": "empty.bin",
+        "model_inc": "empty.inc",
+        "model_comment": "Golden empty NDEF blob: format v1, zero CC, NLEN=0 (18 bytes).",
+        "card_bin": "ndef_empty.card.bin",
+        "card_inc": "ndef_empty_card.inc",
+        "card_comment": "Tier E golden: nfc_store envelope for empty NDEF.",
+        "build_model": lambda: build_model(bytes([0x00, 0x00])),
+    },
+    "uri_5byte": {
+        "model_bin": "uri_5byte.bin",
+        "model_inc": "uri_5byte.inc",
+        "model_comment": "Golden URI NDEF blob: format v1, zero CC, NLEN=5 (23 bytes).",
+        "card_bin": "ndef_uri_5byte.card.bin",
+        "card_inc": "ndef_uri_5byte_card.inc",
+        "card_comment": "Tier E golden: nfc_store envelope for URI NDEF (5-byte payload).",
+        "build_model": lambda: build_model(bytes([0x00, len(URI_PAYLOAD)]) + URI_PAYLOAD),
+    },
+    "chunk_255": {
+        "model_bin": "chunk_255.bin",
+        "model_inc": "chunk_255.inc",
+        "model_comment": "Golden chunked NDEF blob: format v1, zero CC, NLEN=300 (318 bytes).",
+        "card_bin": "ndef_chunk_255.card.bin",
+        "card_inc": "ndef_chunk_255_card.inc",
+        "card_comment": "Tier E golden: nfc_store envelope for chunked NDEF (NLEN=300).",
+        "build_model": lambda: build_model(bytes([0x01, 0x2C]) + build_chunk_payload()),
+    },
+}
 
 
 def bytes_to_inc(data: bytes, comment: str) -> str:
     lines = [f"/* {comment} */"]
     row: list[str] = []
-    for i, b in enumerate(data):
+    for b in data:
         row.append(f"0x{b:02X}U")
         if len(row) == 8:
             lines.append(", ".join(row) + ",")
@@ -47,40 +89,49 @@ def bytes_to_inc(data: bytes, comment: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-def emit_empty_fixtures() -> None:
+def emit_variant(name: str) -> None:
+    spec = VARIANTS[name]
+    build_fn = spec["build_model"]
+    assert callable(build_fn)
+    model: bytes = build_fn()
+
     NDEF_FIXTURE_DIR.mkdir(parents=True, exist_ok=True)
     STORE_FIXTURE_DIR.mkdir(parents=True, exist_ok=True)
 
-    (NDEF_FIXTURE_DIR / "empty.bin").write_bytes(EMPTY_MODEL)
-    (NDEF_FIXTURE_DIR / "empty.inc").write_text(
-        bytes_to_inc(EMPTY_MODEL, "Golden empty NDEF blob: format v1, zero CC, NLEN=0 (18 bytes)."),
-        encoding="utf-8",
-    )
+    model_bin = NDEF_FIXTURE_DIR / str(spec["model_bin"])
+    model_inc = NDEF_FIXTURE_DIR / str(spec["model_inc"])
+    card_bin = STORE_FIXTURE_DIR / str(spec["card_bin"])
+    card_inc = STORE_FIXTURE_DIR / str(spec["card_inc"])
 
-    card = build_card_envelope(EMPTY_MODEL)
-    (STORE_FIXTURE_DIR / "ndef_empty.card.bin").write_bytes(card)
-    (STORE_FIXTURE_DIR / "ndef_empty_card.inc").write_text(
-        bytes_to_inc(card, "Tier E golden: nfc_store envelope for empty NDEF (30 bytes)."),
-        encoding="utf-8",
-    )
+    model_bin.write_bytes(model)
+    model_inc.write_text(bytes_to_inc(model, str(spec["model_comment"])), encoding="utf-8")
 
-    print(f"Wrote {NDEF_FIXTURE_DIR / 'empty.bin'} ({len(EMPTY_MODEL)} bytes)", file=sys.stderr)
-    print(f"Wrote {NDEF_FIXTURE_DIR / 'empty.inc'}", file=sys.stderr)
-    print(f"Wrote {STORE_FIXTURE_DIR / 'ndef_empty.card.bin'} ({len(card)} bytes)", file=sys.stderr)
-    print(f"Wrote {STORE_FIXTURE_DIR / 'ndef_empty_card.inc'}", file=sys.stderr)
+    card = build_card_envelope(model)
+    card_bin.write_bytes(card)
+    card_inc.write_text(bytes_to_inc(card, str(spec["card_comment"])), encoding="utf-8")
+
+    print(f"Wrote {model_bin} ({len(model)} bytes)", file=sys.stderr)
+    print(f"Wrote {model_inc}", file=sys.stderr)
+    print(f"Wrote {card_bin} ({len(card)} bytes)", file=sys.stderr)
+    print(f"Wrote {card_inc}", file=sys.stderr)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Regenerate NDEF Tier A + Tier E fixtures.")
-    parser.add_argument("--variant", default="empty", choices=["empty"],
-                        help="Fixture variant (only empty today)")
+    parser.add_argument(
+        "--variant",
+        default="empty",
+        choices=["empty", "uri_5byte", "chunk_255", "all"],
+        help="Fixture variant (default empty; all regenerates every variant)",
+    )
     args = parser.parse_args()
 
-    if args.variant != "empty":
-        print(f"error: unsupported variant: {args.variant}", file=sys.stderr)
-        return 1
+    if args.variant == "all":
+        for name in ("empty", "uri_5byte", "chunk_255"):
+            emit_variant(name)
+    else:
+        emit_variant(args.variant)
 
-    emit_empty_fixtures()
     return 0
 
 

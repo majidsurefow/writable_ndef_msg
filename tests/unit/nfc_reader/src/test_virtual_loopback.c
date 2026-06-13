@@ -81,13 +81,12 @@ static int ndef_poller_read_wrap(nfc_reader_session_t *session, void *read_out)
 	return ndef_poller_read(session, read_out);
 }
 
-static void set_empty_ndef_model(ndef_data_t *data)
+static void fill_synthesized_cc(ndef_data_t *data)
 {
 	uint16_t mle = (uint16_t)(CONFIG_NFC_NDEF_MAX_SIZE + NFC_NDEF_NLEN_FIELD_LEN);
 	uint16_t mlc = (uint16_t)CONFIG_NFC_NDEF_MAX_SIZE;
 	uint16_t max_ndef = (uint16_t)CONFIG_NFC_NDEF_MAX_SIZE;
 
-	ndef_data_reset(data);
 	data->cc[0] = 0x00U;
 	data->cc[1] = NFC_NDEF_CC_LEN;
 	data->cc[2] = 0x20U;
@@ -104,9 +103,39 @@ static void set_empty_ndef_model(ndef_data_t *data)
 	data->cc[13] = 0x00U;
 	data->cc[14] = 0xFFU;
 	data->cc_len = NFC_NDEF_CC_LEN;
+}
+
+static void set_empty_ndef_model(ndef_data_t *data)
+{
+	ndef_data_reset(data);
+	fill_synthesized_cc(data);
 	data->ndef_file[0] = 0U;
 	data->ndef_file[1] = 0U;
 	data->ndef_file_len = NFC_NDEF_NLEN_FIELD_LEN;
+}
+
+static void set_uri_5byte_ndef_model(ndef_data_t *data)
+{
+	static const uint8_t uri[] = {0xD1U, 0x01U, 0x03U, 0x55U, 0x01U};
+
+	ndef_data_reset(data);
+	fill_synthesized_cc(data);
+	data->ndef_file[0] = 0U;
+	data->ndef_file[1] = (uint8_t)sizeof(uri);
+	(void)memcpy(&data->ndef_file[2], uri, sizeof(uri));
+	data->ndef_file_len = (uint16_t)(NFC_NDEF_NLEN_FIELD_LEN + sizeof(uri));
+}
+
+static void set_chunk_255_ndef_model(ndef_data_t *data)
+{
+	ndef_data_reset(data);
+	fill_synthesized_cc(data);
+	data->ndef_file[0] = 0x01U;
+	data->ndef_file[1] = 0x2CU;
+	for (uint16_t i = 0U; i < 300U; i++) {
+		data->ndef_file[2U + i] = (uint8_t)(i & 0xFFU);
+	}
+	data->ndef_file_len = (uint16_t)(NFC_NDEF_NLEN_FIELD_LEN + 300U);
 }
 
 static void *suite_setup(void)
@@ -141,6 +170,78 @@ ZTEST(nfc_reader_loopback, test_virtual_loopback_empty_card)
 		.golden_blob_len = STORE_FIXTURE_NDEF_EMPTY_CARD_LEN,
 		.golden_slot = "golden",
 		.output_slot = "cloned",
+		.poller_detect = ndef_poller_detect_wrap,
+		.poller_read = ndef_poller_read_wrap,
+		.read_out = &s_read,
+		.listener_setup = ndef_listener_setup,
+		.listener_teardown = ndef_listener_teardown,
+		.save_model = &s_clone_model,
+		.copy_read_to_save = ndef_copy_read,
+		.expected = &s_expected,
+		.compare = ndef_compare,
+		.verify_envelope = true,
+	});
+	zassert_ok(ret);
+
+	zassert_ok(nfc_virtual_loopback_last_saved(&saved_blob, &saved_len));
+	zassert_true(saved_len >= NFC_STORE_ENVELOPE_OVERHEAD);
+	zassert_equal(saved_blob[0], NFC_STORE_BLOB_MAGIC_0);
+	zassert_equal(saved_blob[1], NFC_STORE_BLOB_MAGIC_1);
+	zassert_equal(saved_blob[2], NFC_STORE_BLOB_VERSION);
+}
+
+/* Flipper intent: listener_start → poller_sync_read → data equal (NDEF URI, cookbook §5.1). */
+ZTEST(nfc_reader_loopback, test_virtual_loopback_uri_5byte)
+{
+	const uint8_t *saved_blob;
+	size_t saved_len;
+	int ret;
+
+	set_uri_5byte_ndef_model(&s_expected);
+
+	ret = nfc_virtual_loopback_run(&(nfc_virtual_loopback_params_t){
+		.listener_svc = ndef_listener_get(),
+		.save_svc = &s_clone_svc,
+		.golden_blob = store_fixture_ndef_uri_5byte_card,
+		.golden_blob_len = STORE_FIXTURE_NDEF_URI_5BYTE_CARD_LEN,
+		.golden_slot = "golden_uri",
+		.output_slot = "cloned_uri",
+		.poller_detect = ndef_poller_detect_wrap,
+		.poller_read = ndef_poller_read_wrap,
+		.read_out = &s_read,
+		.listener_setup = ndef_listener_setup,
+		.listener_teardown = ndef_listener_teardown,
+		.save_model = &s_clone_model,
+		.copy_read_to_save = ndef_copy_read,
+		.expected = &s_expected,
+		.compare = ndef_compare,
+		.verify_envelope = true,
+	});
+	zassert_ok(ret);
+
+	zassert_ok(nfc_virtual_loopback_last_saved(&saved_blob, &saved_len));
+	zassert_true(saved_len >= NFC_STORE_ENVELOPE_OVERHEAD);
+	zassert_equal(saved_blob[0], NFC_STORE_BLOB_MAGIC_0);
+	zassert_equal(saved_blob[1], NFC_STORE_BLOB_MAGIC_1);
+	zassert_equal(saved_blob[2], NFC_STORE_BLOB_VERSION);
+}
+
+/* Flipper intent: chunked poller read through virtual RF (Tier B chunk_255 parity). */
+ZTEST(nfc_reader_loopback, test_virtual_loopback_chunk_255)
+{
+	const uint8_t *saved_blob;
+	size_t saved_len;
+	int ret;
+
+	set_chunk_255_ndef_model(&s_expected);
+
+	ret = nfc_virtual_loopback_run(&(nfc_virtual_loopback_params_t){
+		.listener_svc = ndef_listener_get(),
+		.save_svc = &s_clone_svc,
+		.golden_blob = store_fixture_ndef_chunk_255_card,
+		.golden_blob_len = STORE_FIXTURE_NDEF_CHUNK_255_CARD_LEN,
+		.golden_slot = "golden_chunk",
+		.output_slot = "cloned_chunk",
 		.poller_detect = ndef_poller_detect_wrap,
 		.poller_read = ndef_poller_read_wrap,
 		.read_out = &s_read,
