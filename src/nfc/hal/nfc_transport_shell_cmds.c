@@ -41,6 +41,10 @@ static int cmd_nfc_transport_stats(const struct shell *sh, size_t argc, char **a
 	shell_print(sh, "field_on:       %u", stats.field_on_count);
 	shell_print(sh, "field_off:      %u", stats.field_off_count);
 	shell_print(sh, "fragment_rx:    %u", stats.fragment_rx_count);
+	shell_print(sh, "apdu_assembled: %u", stats.apdu_assembled_count);
+	shell_print(sh, "frag_drop_buf:  %u", stats.frag_dropped_no_buffer);
+	shell_print(sh, "apdu_oversized: %u", stats.apdu_oversized_count);
+	shell_print(sh, "apdu_drop_cons: %u", stats.apdu_dropped_no_consumer);
 	shell_print(sh, "response_tx:    %u", stats.response_tx_count);
 	shell_print(sh, "errors:         %u (last %d)", stats.error_count, stats.last_error_code);
 	return 0;

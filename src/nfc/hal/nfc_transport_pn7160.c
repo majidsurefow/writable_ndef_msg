@@ -102,8 +102,10 @@ static void listen_recv_work_handler(struct k_work *work)
 		STATS_INC(&s_stats_lock, s_stats, fragment_rx_count);
 
 		/*
-		 * Gate 1 skeleton: APDU up-dispatch via on_apdu deferred to Gate 3
-		 * (net_buf pool + apdu_assembler).
+		 * Gate 3 TODO: mirror nfc_transport_nrfx.c listen path —
+		 * nfc_apdu_pool_get(), WQ recv loop allocates/copies into net_buf,
+		 * k_fifo handoff, on_apdu (callee unref). No net_buf on poll
+		 * transceive or send_response.
 		 */
 		if (!s_ops_registered || s_ops.on_apdu == NULL) {
 			STATS_INC(&s_stats_lock, s_stats, apdu_dropped_no_consumer);

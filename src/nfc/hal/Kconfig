@@ -21,7 +21,6 @@ config NFC_HAL_BACKEND_PN7160
 config NFC_HAL_BACKEND_NRFX
 	bool "NFCT T4T (nrfxlib listen-only)"
 	depends on NFC_T4T_NRFXLIB
-	select NET_BUF
 	help
 	  On-die NFCT card emulation via nrfxlib nfc_t4t_lib (raw PICC / ISO-DEP).
 	  Poll APIs return -ENOTSUP.
@@ -39,6 +38,7 @@ config NFC_ROLE_LISTEN
 	bool "Listen (card emulation) role"
 	default y
 	depends on NFC_STACK
+	select NET_BUF
 	help
 	  Enable listen sub-API (start/stop/send_response). Gate 1 skeleton on PN7160.
 

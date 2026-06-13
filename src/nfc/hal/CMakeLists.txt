@@ -1,3 +1,12 @@
+if(CONFIG_NFC_STACK)
+  if(CONFIG_NFC_ROLE_LISTEN)
+    target_sources(app PRIVATE
+      ${CMAKE_CURRENT_SOURCE_DIR}/nfc_apdu_pool.c
+      ${CMAKE_CURRENT_SOURCE_DIR}/nfc_apdu_asm.c
+    )
+  endif()
+endif()
+
 if(CONFIG_NFC_HAL_BACKEND_PN7160)
   target_sources(app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/nfc_transport_pn7160.c)
 endif()

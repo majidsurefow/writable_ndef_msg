@@ -5,6 +5,8 @@
  * NFCT (nrfxlib nfc_t4t_lib) listen-only nfc_transport backend.
  */
 
+#include "hal/nfc_apdu_asm.h"
+#include "hal/nfc_apdu_pool.h"
 #include "hal/nfc_transport.h"
 #include "run/nfc_stack_workq.h"
 
@@ -33,11 +35,7 @@ BUILD_ASSERT(!IS_ENABLED(CONFIG_NFC_ROLE_READER),
 #define NFC_SESSION_NONE   0
 #define NFC_SESSION_LISTEN 1
 
-enum {
-	ASM_OK = 0,
-	ASM_DROP_NOBUF,
-	ASM_DROP_OVERSIZE,
-};
+/* nfc_apdu_asm_drop_t values — kept as uint8_t for irq_lock-free ISR state. */
 
 static const uint8_t s_sw_wrong_length[] = { 0x67U, 0x00U };
 
@@ -62,12 +60,11 @@ static struct k_work s_field_on_work;
 static struct k_work s_field_off_work;
 static struct k_work s_apdu_work;
 
-NET_BUF_POOL_FIXED_DEFINE(nfc_apdu_pool, CONFIG_NFC_APDU_POOL_COUNT,
-			  CONFIG_NFC_APDU_BUF_SIZE, 0, NULL);
+/* ISR → fifo → apdu_work_handler → on_apdu (callee unref). Shared pool in nfc_apdu_pool.c. */
 static struct k_fifo s_apdu_fifo;
 
 static struct net_buf *s_cur_buf;
-static uint8_t s_asm_drop;
+static nfc_apdu_asm_drop_t s_asm_drop;
 
 static const nfc_transport_caps_t s_caps = {
 	.roles = NFC_ROLE_LISTEN,
@@ -92,7 +89,7 @@ static void discard_cur_buf(void)
 	struct net_buf *buf = s_cur_buf;
 
 	s_cur_buf = NULL;
-	s_asm_drop = ASM_OK;
+	s_asm_drop = NFC_APDU_ASM_OK;
 	irq_unlock(key);
 
 	if (buf != NULL) {
@@ -116,30 +113,31 @@ static void nfc_transport_stats_on_fragment(bool dropped_nobuf, bool oversized, 
 	});
 }
 
-static bool frag_fits(size_t cur_len, size_t add, size_t cap)
-{
-	return (cur_len + add) <= cap;
-}
-
 static void nfc_hal_on_fragment(const uint8_t *data, size_t len, bool more)
 {
 	bool dropped_nobuf = false;
 	bool oversized = false;
 	bool assembled = false;
+	bool send_wrong_length = false;
+	struct net_buf *enqueue_buf = NULL;
+	unsigned int key = irq_lock();
 
-	if (s_cur_buf == NULL && s_asm_drop == ASM_OK) {
-		s_cur_buf = net_buf_alloc(&nfc_apdu_pool, K_NO_WAIT);
+	if (s_cur_buf == NULL && s_asm_drop == NFC_APDU_ASM_OK) {
+		s_cur_buf = net_buf_alloc(nfc_apdu_pool_get(), K_NO_WAIT);
 		if (s_cur_buf == NULL) {
-			s_asm_drop = ASM_DROP_NOBUF;
+			s_asm_drop = NFC_APDU_ASM_DROP_NOBUF;
 			dropped_nobuf = true;
 		}
 	}
 
-	if (s_asm_drop == ASM_OK && s_cur_buf != NULL) {
-		if (!frag_fits(s_cur_buf->len, len, net_buf_tailroom(s_cur_buf))) {
+	if (s_asm_drop == NFC_APDU_ASM_OK && s_cur_buf != NULL) {
+		nfc_apdu_asm_drop_t next_drop = nfc_apdu_asm_on_frag(s_asm_drop, s_cur_buf->len,
+								     len, s_cur_buf->size);
+
+		if (next_drop == NFC_APDU_ASM_DROP_OVERSIZE) {
 			net_buf_unref(s_cur_buf);
 			s_cur_buf = NULL;
-			s_asm_drop = ASM_DROP_OVERSIZE;
+			s_asm_drop = NFC_APDU_ASM_DROP_OVERSIZE;
 			oversized = true;
 		} else {
 			net_buf_add_mem(s_cur_buf, data, len);
@@ -148,23 +146,32 @@ static void nfc_hal_on_fragment(const uint8_t *data, size_t len, bool more)
 
 	if (!more) {
 		switch (s_asm_drop) {
-		case ASM_OK:
+		case NFC_APDU_ASM_OK:
 			if (s_cur_buf != NULL) {
-				k_fifo_put(&s_apdu_fifo, s_cur_buf);
+				/* Ownership: ISR → fifo (WQ owns after k_fifo_get). */
+				enqueue_buf = s_cur_buf;
 				s_cur_buf = NULL;
 				assembled = true;
-				(void)k_work_submit_to_queue(nfc_stack_wq_get(), &s_apdu_work);
 			}
 			break;
-		case ASM_DROP_OVERSIZE:
-			(void)nfc_t4t_response_pdu_send(s_sw_wrong_length,
-							sizeof(s_sw_wrong_length));
+		case NFC_APDU_ASM_DROP_OVERSIZE:
+			send_wrong_length = true;
+			oversized = true;
 			break;
-		case ASM_DROP_NOBUF:
+		case NFC_APDU_ASM_DROP_NOBUF:
 		default:
 			break;
 		}
-		s_asm_drop = ASM_OK;
+		s_asm_drop = NFC_APDU_ASM_OK;
+	}
+
+	irq_unlock(key);
+
+	if (enqueue_buf != NULL) {
+		k_fifo_put(&s_apdu_fifo, enqueue_buf);
+		(void)k_work_submit_to_queue(nfc_stack_wq_get(), &s_apdu_work);
+	} else if (send_wrong_length) {
+		(void)nfc_t4t_response_pdu_send(s_sw_wrong_length, sizeof(s_sw_wrong_length));
 	}
 
 	nfc_transport_stats_on_fragment(dropped_nobuf, oversized, assembled);
@@ -196,6 +203,7 @@ static void apdu_work_handler(struct k_work *work)
 
 	while ((buf = k_fifo_get(&s_apdu_fifo, K_NO_WAIT)) != NULL) {
 		if (s_ops_registered && s_ops.on_apdu != NULL) {
+			/* Callee owns ref — must net_buf_unref after router returns. */
 			s_ops.on_apdu(buf, s_ops_user_ctx);
 		} else {
 			net_buf_unref(buf);

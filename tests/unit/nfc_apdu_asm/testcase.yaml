@@ -1,0 +1,11 @@
+tests:
+  sample.nfc.unit.nfc_apdu_asm:
+    tags:
+      - ci_unit
+      - nfc
+    platform_allow:
+      - qemu_cortex_m3
+      - native_sim
+      - native_sim/native
+    integration_platforms:
+      - qemu_cortex_m3
