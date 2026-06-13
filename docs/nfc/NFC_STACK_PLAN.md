@@ -40,18 +40,45 @@ One application work queue: `nfc_stack_wq`. PN7160 driver owns `pn7160_wq`
 | 4 | `applets/` emulate + verify on PN7160 | clone → emulate → verify **PASS** on same chip |
 | 5 | NFCT backend + port proven `protocols/` listeners | same `.card` on NFCT emulate; PN7160 verify **PASS** |
 
-## Backlog (per protocol — not waves)
+## Backlog (per protocol — surgical review locked 2026-06-14)
 
-Add when the gated path above is green. Archived wave detail in
-[`archive/waves/`](archive/waves/README.md).
+Add when the gated path above is green. Eleven per-protocol reviews complete. See [`NFC_PROTOCOLS_COOKBOOK.md`](NFC_PROTOCOLS_COOKBOOK.md).
 
-| Protocol | Direction | Notes |
-|----------|-----------|-------|
-| ultralight | poller + T4 adapter listener | page model via NDEF wrapper |
-| classic | poller only | clone-only; NFCT cannot emulate |
-| emv | poller + static listener | public APDU data |
-| desfire | poller + partial listener | auth SMF per conventions §2 |
-| aliro | poller transcript + PSA listener | hand-provision path |
+| Protocol | Module? | Poller | Listener | NFCT emulate | When |
+|----------|---------|--------|----------|--------------|------|
+| **ndef (Type-4)** | `protocols/ndef/` | ✓ Gate 2 (ISO-DEP SELECT/READ) | ✓ Gate 3 (T4 + router) | ✓ Gate 5 (`nfc_t4t_lib` raw) | Gate 2 |
+| **mf_ultralight** | `protocols/ultralight/` | ✓ page READ (Flipper port) | skip — via `ndef` T4 adapter | partial (T4 NDEF RW or backlog `nfc_t2t_lib` READ-only) | post–Gate 2 |
+| **mf_classic** | `protocols/classic/` | ✓ TAG-CMD + crypto1 | skip | no | post–Gate 4, clone-only |
+| **mf_desfire** | `protocols/desfire/` | ✓ Flipper poller SM; partial without keys | partial — auth `desfire_auth_state_t` enum | partial T4 raw PICC | post–Gate 5 |
+| **emv** | `protocols/emv/` | PN7160 ISO-DEP transcript; READ_ONLY_PARTIAL | static TLV caches; 2 AIDs | partial raw PICC | post–Gate 5 |
+| **aliro** | `protocols/aliro/` | public AUTH transcript; READ_ONLY_PARTIAL | PSA crypto; 2 AIDs; `submit_work` | partial raw PICC + PSA | post–Gate 5 |
+| **mf_plus** | — | skip v1 | — | — | ID-only; use ndef/desfire |
+| **felica** | `protocols/felica/` | ✓ Flipper poller | skip | no | defer, clone-only |
+| **iso15693_3** | `protocols/iso15693_3/` | ✓ raw tag_transceive | skip | no | defer, clone-only |
+| **slix** | `protocols/slix/` child of iso15693_3 | ✓ NXP SLIX detect | skip | no | post–Gate 5 optional |
+| **st25tb** | `protocols/st25tb/` | ✓ NFC-B | skip | no | low priority |
+| **iso14443 (3a/4a/3b/4b)** | no — HAL fold | PN7160 NCI + session transceive | 4a: nrfx T4T + router; 3b/4b clone-only | partial 4a only | implicit Gate 1–3 |
+
+**Product-only modules (no Flipper folder):** `ndef`, `emv`, `aliro` — ISO-DEP lane above transport.
+
+### HAL capability gaps (to close)
+
+- **`tech_mask` ignored in `discover_start`** — PN7160 backend ARG_UNUSED; always default table (NFC-A + NFC-B + 15693).
+- **`tag_info` missing ATQA/SAK/ATS/ATQB** — doc/impl mismatch; `pn7160_nci_rf_intf` and `nfc_transport_tag_info_t` expose UID + protocol/interface/mode only.
+- ~~**Reader engine stops discovery + clears session after scan**~~ — **closed Step A1** (`688c370`).
+- ~~**PN7160 listen recv drops APDUs**~~ — **closed Step A2** (`cfd30b0`); router wiring remains Gate 3.
+- **`NFC_TECH_TYPE3_FELICA` missing; NFC-F not in default discovery** — FeliCa poller needs custom discovery table.
+- **`NFC_TRANSPORT_MAX_RESPONSE_LEN` = 255 B** — chunk READ BINARY in protocol layer; T4T lib allows 0xFFF0.
+- ~~**NFCT `NFC_T4T_EMUMODE_PICC` not explicitly set in nrfx HAL**~~ — **closed Step A3** (`646c5ab`).
+- **No `protocols/` tree yet** — greenfield; Gate 2 lands `protocols/ndef/` first.
+
+### NFCT vs PN7160 roles
+
+- **PN7160** — sole **reader**: poll NFC-A/B/F + ISO15693, raw transceive; optional ISO-DEP card emulation (Gate 3+).
+- **NFCT (nrfx)** — **listen-only** card emulation via `nfc_t4t_lib` (v1 default); never polls.
+- **Product loop:** clone/verify on PN7160 → emulate on NFCT → re-verify on PN7160 (Gates 4–5).
+- **Single-flight:** one poll session **or** one listen session per controller; T2T ↔ T4T switch requires stop + re-init.
+- **Protocol modules** talk to reader session or `aid_router`, never vendor HAL directly.
 
 ## Locked decisions
 
@@ -69,13 +96,15 @@ Add when the gated path above is green. Archived wave detail in
 
 ## Before any module work
 
-Read `NFC_STACK_CONVENTIONS.md` §1–12 — lifecycle, coupling map, buffers,
-stats recipe, threading, MISRA. Do not re-derive decisions locked here or there.
+Read `NFC_STACK_CONVENTIONS.md` §1–12 and [`NFC_PROTOCOLS_COOKBOOK.md`](NFC_PROTOCOLS_COOKBOOK.md)
+before any `protocols/` work — lifecycle, coupling, file layout, Gate 2/3 recipes.
 
 ## Next steps
 
 1. ~~**[`NFC_HAL_GUIDE.md`](NFC_HAL_GUIDE.md)**~~ — **done** (`52f3136` + nrfxlib NFCT §6 lock).
-2. ~~**Gate 1 HAL + reader**~~ — **done** (`b37c559`).
-3. ~~**NFCT HAL**~~ — **done** (`428fa52`): T4T listen + `overlay-nfct-stack.conf`.
-4. ~~**net_buf / `nfc_apdu_pool`**~~ — **done** (`266ef13`): shared pool, asm helpers, ztests, NFCT path audited.
-5. **Gate 2** — `store/` + `reader/` NDEF clone.
+2. ~~**[`NFC_PROTOCOLS_COOKBOOK.md`](NFC_PROTOCOLS_COOKBOOK.md)**~~ — **done** (`0a81476`).
+3. ~~**Gate 1 HAL + reader**~~ — **done** (`b37c559`).
+4. ~~**NFCT HAL**~~ — **done** (`428fa52`).
+5. ~~**net_buf / `nfc_apdu_pool`**~~ — **done** (`266ef13`).
+6. ~~**Step A — HAL unblock**~~ — **done** (`688c370`, `cfd30b0`, `646c5ab`); plan: [`plans/2026-06-14-nfc-sequential-execution.md`](plans/2026-06-14-nfc-sequential-execution.md).
+7. **Gate 2** — `protocols/ndef` poller + `reader/` clone (+ save when poller works).
