@@ -1075,14 +1075,14 @@ def build_classic_model(meta: dict) -> bytes:
     key_a_mask = 0
     key_b_mask = 0
 
-    for block_num in range(blocks_total):
-        key = f"Block {block_num}"
-        if key not in meta:
+    for block_num, raw in meta.get("blocks", {}).items():
+        if (not isinstance(block_num, int)) or (block_num < 0) or (block_num >= blocks_total):
             continue
-        raw = parse_classic_block_str(meta[key])
+        if isinstance(raw, str):
+            raw = parse_classic_block_str(raw)
         if raw is None:
             continue
-        blocks_map[block_num] = raw
+        blocks_map[block_num] = raw[:16].ljust(16, b"\x00")
         mask[block_num // 32] |= 1 << (block_num % 32)
         if (block_num & 0x03) == 0x03 and block_num < 128:
             sector = block_num // 4
@@ -1124,30 +1124,32 @@ def _classic_auth_crypto_state(nt: bytes, cuid: int) -> Crypto1:
     return crypto
 
 
-def classic_read_steps(meta: dict) -> list[tuple[str, bytes]]:
+def classic_framed_steps(meta: dict) -> list[tuple[str, bytes, bytes]]:
     uid = parse_hex_bytes(meta.get("UID", ""))
     type_id = classic_type_from_meta(meta)
-    blocks_map: dict[int, bytes] = {}
     blocks_total = classic_blocks_total(type_id)
     sectors = classic_sectors_total(type_id)
     cuid = cuid_from_uid(uid)
-    steps: list[tuple[str, bytes]] = []
+    framed: list[tuple[str, bytes, bytes]] = []
+    blocks_map: dict[int, bytes] = {}
 
-    for block_num in range(blocks_total):
-        key = f"Block {block_num}"
-        if key in meta:
-            raw = parse_classic_block_str(meta[key])
-            if raw is not None:
-                blocks_map[block_num] = raw
+    for block_num, raw in meta.get("blocks", {}).items():
+        if (not isinstance(block_num, int)) or (block_num < 0) or (block_num >= blocks_total):
+            continue
+        if isinstance(raw, str):
+            raw = parse_classic_block_str(raw)
+        if raw is not None:
+            blocks_map[block_num] = raw[:16].ljust(16, b"\x00")
 
     if type_id == CLASSIC_TYPE_1K:
-        steps.append(("classic detect 4k probe fail", b""))
-        steps.append(("classic detect 1k probe nt", struct.pack(">I", 0x2000003E)))
+        framed.append(("classic detect 4k probe fail", bytes([0x60, 254]), b""))
+        framed.append(("classic detect 1k probe nt", bytes([0x60, 62]),
+                        struct.pack(">I", 0x2000003E)))
 
     for sector in range(sectors):
         first = classic_first_block_of_sector(sector)
         nt = struct.pack(">I", 0x10000000 + sector)
-        steps.append((f"classic AUTH NT sector {sector}", nt))
+        framed.append((f"classic AUTH NT sector {sector}", bytes([0x60, first]), nt))
 
         nt_num = int.from_bytes(nt, "big")
         at_plain = struct.pack(">I", Crypto1.prng_successor(nt_num, 96))
@@ -1157,7 +1159,11 @@ def classic_read_steps(meta: dict) -> list[tuple[str, bytes]]:
         for b in CLASSIC_TEST_NR:
             at_crypto.byte(b, 0)
         at_enc = at_crypto.encrypt_bytes(at_plain)
-        steps.append((f"classic AUTH AT sector {sector}", at_enc))
+
+        tx_auth = Crypto1().encrypt_reader_nonce(
+            CLASSIC_DEFAULT_KEY, cuid, nt, CLASSIC_TEST_NR
+        )
+        framed.append((f"classic AUTH NR|AR sector {sector}", tx_auth, at_enc))
 
         crypto = _classic_auth_crypto_state(nt, cuid)
 
@@ -1169,54 +1175,25 @@ def classic_read_steps(meta: dict) -> list[tuple[str, bytes]]:
             tx_plain = bytes([0x30, block_num])
             crc = iso14443_crc_a(tx_plain)
             tx_plain += struct.pack("<H", crc)
-            crypto.encrypt_bytes(tx_plain)
+            tx_enc = crypto.encrypt_bytes(tx_plain)
             rx_plain = block + struct.pack("<H", iso14443_crc_a(block))
             rx_enc = crypto.encrypt_bytes(rx_plain)
-            steps.append((f"classic READ block {block_num}", rx_enc))
+            framed.append((f"classic READ block {block_num}", tx_enc, rx_enc))
 
-    return steps
+    return framed
+
+
+def classic_read_steps(meta: dict) -> list[tuple[str, bytes]]:
+    return [(label, rx) for label, _tx, rx in classic_framed_steps(meta)]
 
 
 def classic_read_tx_steps(meta: dict) -> list[tuple[str, bytes]]:
-    uid = parse_hex_bytes(meta.get("UID", ""))
-    type_id = classic_type_from_meta(meta)
-    blocks_total = classic_blocks_total(type_id)
-    sectors = classic_sectors_total(type_id)
-    cuid = cuid_from_uid(uid)
-    steps: list[tuple[str, bytes]] = []
-
-    if type_id == CLASSIC_TYPE_1K:
-        steps.append(("classic TX detect 4k probe", bytes([0x60, 254])))
-        steps.append(("classic TX detect 1k probe", bytes([0x60, 62])))
-
-    for sector in range(sectors):
-        first = classic_first_block_of_sector(sector)
-        nt = struct.pack(">I", 0x10000000 + sector)
-        steps.append((f"classic TX AUTH NT sector {sector}", bytes([0x60, first])))
-
-        at_crypto = Crypto1()
-        tx_auth = at_crypto.encrypt_reader_nonce(
-            CLASSIC_DEFAULT_KEY, cuid, nt, CLASSIC_TEST_NR
-        )
-        steps.append((f"classic TX AUTH NR|AR sector {sector}", tx_auth))
-
-        crypto = _classic_auth_crypto_state(nt, cuid)
-
-        for i in range(classic_blocks_in_sector(sector)):
-            block_num = first + i
-            if block_num >= blocks_total:
-                break
-            tx_plain = bytes([0x30, block_num])
-            crc = iso14443_crc_a(tx_plain)
-            tx_plain += struct.pack("<H", crc)
-            tx_enc = crypto.encrypt_bytes(tx_plain)
-            steps.append((f"classic TX READ block {block_num}", tx_enc))
-
-    return steps
+    return [(label, tx) for label, tx, _rx in classic_framed_steps(meta)]
 
 
 def emit_classic_mock_header(stem: str, steps: list[tuple[str, bytes]], model: bytes,
-                              out_dir: Path) -> None:
+                              out_dir: Path,
+                              tx_steps: list[tuple[str, bytes]] | None = None) -> None:
     sym = stem.replace("-", "_")
     lines = [
         f"/* Auto-generated from Flipper {stem}.nfc — do not edit. */",
@@ -1257,6 +1234,35 @@ def emit_classic_mock_header(stem: str, steps: list[tuple[str, bytes]], model: b
         f"ARRAY_SIZE(classic_{sym}_read_steps)"
     )
     lines.append("")
+    if tx_steps:
+        lines.append(f"#define CLASSIC_{sym.upper()}_TX_STEP_COUNT {len(tx_steps)}U")
+        lines.append("")
+        tx_ptrs: list[str] = []
+        tx_lens: list[str] = []
+        for idx, (_label, payload) in enumerate(tx_steps):
+            tx_arr = f"classic_{sym}_step{idx}_tx"
+            lines.append(f"static const uint8_t {tx_arr}[] = {{")
+            if payload:
+                lines.append(model_bin_to_inc(payload).rstrip())
+            lines.append("};")
+            lines.append("")
+            lines.append(f"#define CLASSIC_{sym.upper()}_STEP{idx}_TX_LEN {len(payload)}U")
+            tx_ptrs.append(tx_arr)
+            tx_lens.append(f"CLASSIC_{sym.upper()}_STEP{idx}_TX_LEN")
+        lines.append(
+            f"static const uint8_t *const classic_{sym}_tx_steps"
+            f"[CLASSIC_{sym.upper()}_TX_STEP_COUNT] = {{"
+        )
+        lines.append(",\n".join(f"\t{ptr}" for ptr in tx_ptrs))
+        lines.append("};")
+        lines.append("")
+        lines.append(
+            f"static const size_t classic_{sym}_tx_lens"
+            f"[CLASSIC_{sym.upper()}_TX_STEP_COUNT] = {{"
+        )
+        lines.append(",\n".join(f"\t{length}" for length in tx_lens))
+        lines.append("};")
+        lines.append("")
     lines.append("#endif")
     lines.append("")
     out_path = out_dir / f"{stem}_mock.h"
@@ -1534,7 +1540,7 @@ def emit_fixture(meta: dict, out_dir: Path, stem: str, *, write_card_bin: bool) 
     if proto == "ultralight":
         emit_ultralight_mock_header(stem, steps, model, out_dir)
     elif proto == "classic":
-        emit_classic_mock_header(stem, steps, model, out_dir)
+        emit_classic_mock_header(stem, steps, model, out_dir, tx_steps)
     elif proto == "felica":
         emit_felica_framed_mock_header(stem, _felica_framed, model, out_dir)
         framed_inc = out_dir / f"{stem}_framed.inc"

@@ -24,11 +24,21 @@ if(CONFIG_NFC_CLASSIC_TEST_TIER_POLLER)
     src/test_poller.c
     ${REPO_NFC}/protocols/classic/classic_poller.c
   )
+  target_compile_definitions(app PRIVATE NFC_SESSION_MOCK_MAX_TX=128)
+endif()
+
+if(CONFIG_NFC_CLASSIC_TEST_TIER_LISTENER)
+  target_sources(app PRIVATE
+    src/test_listener.c
+    ${REPO_NFC}/protocols/classic/classic_poller.c
+    ${REPO_NFC}/protocols/classic/classic_listener.c
+  )
 endif()
 
 target_include_directories(app PRIVATE
   ${REPO_NFC}
   ${REPO_NFC}/protocols/classic
   ${CMAKE_CURRENT_SOURCE_DIR}/../../fixtures/classic
+  ${CMAKE_CURRENT_SOURCE_DIR}/../../fixtures/store
   ${NFC_TEST_COMMON_INCLUDES}
 )

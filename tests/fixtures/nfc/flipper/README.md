@@ -65,7 +65,7 @@ See `scripts/nfc/flipper_nfc_to_fixture.py --help`. After upstream Flipper updat
 | `Slix_cap_accept_all_pass.nfc` | yes | **SHIPPED** | **SHIPPED** | yes |
 | `nfc_nfca_signal_short.nfc` | `tests/fixtures/hal/` | pending (HAL) | n/a | n/a |
 | `nfc_nfca_signal_long.nfc` | `tests/fixtures/hal/` | pending (HAL) | n/a | n/a |
-| `MfClassic_1K_4b.nfc` | `tests/fixtures/classic/` | **Tier A/B** (`nfc_classic/`, §14.3 TX) | **SKIP** | yes |
+| `MfClassic_1K_4b.nfc` | `tests/fixtures/classic/` | **SHIPPED** (Tier A/B/C) | **SHIPPED** (virtual listener) | yes |
 | `MfDesfire_EV1_sample.nfc` | `tests/fixtures/desfire/` | **SHIPPED** (13-TX keyless) | **SHIPPED** (virtual listener) | yes |
 
 Full policy: [NFC_APPLETS_AND_TESTING.md](../../../docs/nfc/NFC_APPLETS_AND_TESTING.md) — per-card Flipper parity.

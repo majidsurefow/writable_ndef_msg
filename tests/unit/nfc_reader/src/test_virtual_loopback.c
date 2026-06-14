@@ -42,6 +42,12 @@
 #include "protocols/slix/slix_poller.h"
 #include "slix_store_fixture.h"
 #endif /* CONFIG_NFC_PROTOCOL_SLIX */
+#if defined(CONFIG_NFC_PROTOCOL_CLASSIC)
+#include "protocols/classic/classic.h"
+#include "protocols/classic/classic_listener.h"
+#include "protocols/classic/classic_poller.h"
+#include "classic_store_fixture.h"
+#endif /* CONFIG_NFC_PROTOCOL_CLASSIC */
 
 #include "nfc_virtual_loopback.h"
 
@@ -57,6 +63,9 @@
 #endif
 #if defined(CONFIG_NFC_PROTOCOL_SLIX)
 #include "Slix_cap_default_mock.h"
+#endif
+#if defined(CONFIG_NFC_PROTOCOL_CLASSIC)
+#include "MfClassic_1K_4b_mock.h"
 #endif
 
 #include <string.h>
@@ -428,6 +437,9 @@ static void loopback_before(void *fixture)
 	(void)aliro_listener_shutdown();
 #if defined(CONFIG_NFC_PROTOCOL_FELICA)
 	(void)felica_listener_shutdown();
+#endif
+#if defined(CONFIG_NFC_PROTOCOL_CLASSIC)
+	(void)classic_listener_shutdown();
 #endif
 	ndef_data_reset(&s_read);
 	ndef_data_reset(&s_clone_model);
@@ -1267,3 +1279,118 @@ ZTEST(nfc_reader_loopback, test_virtual_loopback_slix)
 	zassert_ok(ret, "nfc_virtual_loopback_run failed: %d", ret);
 }
 #endif /* CONFIG_NFC_PROTOCOL_SLIX */
+
+#if defined(CONFIG_NFC_PROTOCOL_CLASSIC)
+static classic_data_t s_classic_expected;
+static classic_data_t s_classic_work;
+
+static int classic_clone_serialize(uint8_t *out, size_t out_max, size_t *out_len, void *user_ctx)
+{
+	ARG_UNUSED(user_ctx);
+
+	return classic_serialize(&s_classic_work, out, out_max, out_len);
+}
+
+static int classic_clone_deserialize(const uint8_t *in, size_t in_len, void *user_ctx)
+{
+	ARG_UNUSED(user_ctx);
+
+	return classic_deserialize(&s_classic_work, in, in_len);
+}
+
+static nfc_service_t s_classic_clone_svc = {
+	.serialize = classic_clone_serialize,
+	.deserialize = classic_clone_deserialize,
+	.persist_id = NFC_PERSIST_ID_CLASSIC,
+};
+
+static int classic_listener_setup(void *user_ctx)
+{
+	const classic_data_t *golden = user_ctx;
+
+	(void)classic_listener_shutdown();
+	if (golden == NULL) {
+		return -EINVAL;
+	}
+
+	return classic_listener_init(golden);
+}
+
+static void classic_listener_teardown(void *user_ctx)
+{
+	ARG_UNUSED(user_ctx);
+
+	(void)classic_listener_shutdown();
+}
+
+static int classic_copy_read(void *save_model, const void *read_out, void *user_ctx)
+{
+	ARG_UNUSED(user_ctx);
+
+	*(classic_data_t *)save_model = *(const classic_data_t *)read_out;
+	return 0;
+}
+
+static int classic_compare_wrap(const void *expected, const void *actual, void *user_ctx)
+{
+	ARG_UNUSED(user_ctx);
+
+	return classic_compare(expected, actual);
+}
+
+static int classic_poller_detect_wrap(nfc_reader_session_t *session)
+{
+	if (s_classic_expected.uid_len > 0U) {
+		session->tag.valid = true;
+		session->tag.uid.len = s_classic_expected.uid_len;
+		(void)memcpy(session->tag.uid.bytes, s_classic_expected.uid,
+			     s_classic_expected.uid_len);
+	}
+
+	return classic_poller_detect(session);
+}
+
+static int classic_poller_read_wrap(nfc_reader_session_t *session, void *read_out)
+{
+	if (s_classic_expected.uid_len > 0U) {
+		session->tag.valid = true;
+		session->tag.uid.len = s_classic_expected.uid_len;
+		(void)memcpy(session->tag.uid.bytes, s_classic_expected.uid,
+			     s_classic_expected.uid_len);
+	}
+
+	return classic_poller_read(session, read_out);
+}
+
+ZTEST(nfc_reader_loopback, test_virtual_loopback_classic)
+{
+	int ret;
+
+	classic_data_reset(&s_classic_expected);
+	classic_data_reset(&s_classic_work);
+	ret = classic_deserialize(&s_classic_expected, classic_MfClassic_1K_4b_model,
+				  CLASSIC_MFCLASSIC_1K_4B_MODEL_LEN);
+	zassert_ok(ret, "classic_deserialize failed: %d", ret);
+
+	ret = nfc_virtual_loopback_run(&(nfc_virtual_loopback_params_t){
+		.listener_svc = classic_listener_get(),
+		.save_svc = &s_classic_clone_svc,
+		.golden_blob = store_fixture_mfclassic_1k_4b_card,
+		.golden_blob_len = STORE_FIXTURE_MFCLASSIC_1K_4B_CARD_LEN,
+		.golden_slot = "golden_classic",
+		.output_slot = "cloned_classic",
+		.poller_detect = classic_poller_detect_wrap,
+		.poller_read = classic_poller_read_wrap,
+		.read_out = &s_classic_work,
+		.listener_setup = classic_listener_setup,
+		.listener_teardown = classic_listener_teardown,
+		.listener_user_ctx = &s_classic_expected,
+		.save_model = &s_classic_work,
+		.copy_read_to_save = classic_copy_read,
+		.expected = &s_classic_expected,
+		.compare = classic_compare_wrap,
+		.verify_envelope = true,
+	});
+	zassert_ok(ret, "nfc_virtual_loopback_run failed: %d", ret);
+}
+#endif /* CONFIG_NFC_PROTOCOL_CLASSIC */

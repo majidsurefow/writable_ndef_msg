@@ -13,7 +13,11 @@ config NFC_CLASSIC_TEST_TIER_POLLER
 	bool "Build Classic poller tier tests"
 	default n
 
+config NFC_CLASSIC_TEST_TIER_LISTENER
+	bool "Build Classic listener tier tests"
+	default n
+
 config NFC_CLASSIC_TEST_DETERMINISTIC_NR
 	bool "Use fixed NR bytes in poller unit tests"
 	default n
-	depends on NFC_CLASSIC_TEST_TIER_POLLER
+	depends on NFC_CLASSIC_TEST_TIER_POLLER || NFC_CLASSIC_TEST_TIER_LISTENER

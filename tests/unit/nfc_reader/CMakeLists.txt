@@ -69,6 +69,7 @@ if(CONFIG_NFC_PROTOCOL_CLASSIC)
     ${REPO_NFC}/protocols/classic/classic.c
     ${REPO_NFC}/protocols/classic/classic_i.c
     ${REPO_NFC}/protocols/classic/classic_poller.c
+    ${REPO_NFC}/protocols/classic/classic_listener.c
     ${REPO_NFC}/protocols/classic/crypto1.c
     ${REPO_NFC}/protocols/classic/iso14443_crc.c
   )
