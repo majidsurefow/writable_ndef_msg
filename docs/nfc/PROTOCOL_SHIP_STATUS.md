@@ -11,6 +11,6 @@ Track sequential Flipper parity ship. **Only one protocol in PROGRESS at a time.
 | P4b | Aliro | **SHIPPED** | wave5 + `Aliro.card.bin` | SELECT+AUTH+EXCHANGE | AUTH chain + EXCHANGE | yes (`aliro_compare_auth_chain`) | 9ade00f |
 | P5 | DESFire | **SHIPPED** | MfDesfire_EV1 + `.card.bin` | 13-TX app/file SM | listener file types | yes (`desfire_compare`) | c0fc501 |
 | P6 | Classic | **SHIPPED** | MfClassic_1K_4b + `.card.bin` | 98-TX full assert | virtual listener + Crypto1 | yes (`classic_compare`) | 38eb14b |
-| P8 | NDEF T4 | **SHIPPED** (reference) | NXP goldens | full | yes | yes | 7d469ec |
+| P8 | NDEF T4 | **SHIPPED** (reference) | NXP goldens | full | yes | yes (`nfc_applet_verify_compare`) | d62310e |
 
-**Program gate:** all rows SHIPPED + full twister green on `77ef29a` baseline.
+**Program gate:** PASS — all rows SHIPPED; twister 475/475 ci_unit + ci_build + pn7160 + 4 nrf54l15 profiles green on `b3258c6`.

@@ -1,6 +1,6 @@
 # protocols/ndef — CONTEXT
 
-**Layer:** L0 (protocol model) · **Lifecycle:** full
+**Layer:** L0 (protocol model) · **Lifecycle:** full · **Status:** SHIPPED
 
 ## Purpose
 

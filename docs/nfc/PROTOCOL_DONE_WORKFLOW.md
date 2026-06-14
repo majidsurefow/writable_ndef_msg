@@ -101,4 +101,4 @@ P7 (NDEF docs split) merges into P8.
 
 ## DONE definition (program level)
 
-All rows in `PROTOCOL_SHIP_STATUS.md` = **SHIPPED**; twister 431+ cases green; every Flipper `.nfc` in tree has `.card.bin`; no `Deferred` sections in protocol CONTEXT files.
+All rows in `PROTOCOL_SHIP_STATUS.md` = **SHIPPED**; twister 475 ci_unit cases green (12 dirs) + ci_build integration + pn7160 tag + nrf54l15 profile matrix; every Flipper `.nfc` in tree has `.card.bin`; no `Deferred` sections in protocol CONTEXT files.
