@@ -29,6 +29,7 @@ import sys
 from pathlib import Path
 
 from nfc_persist_ids import (
+    NFC_PERSIST_ID_CLASSIC,
     NFC_PERSIST_ID_FELICA,
     NFC_PERSIST_ID_SLIX,
     NFC_PERSIST_ID_ULTRALIGHT,
@@ -36,6 +37,7 @@ from nfc_persist_ids import (
     NFC_STORE_ENTRY_FLAG_HAND_AUTHORED,
     PERSIST_HAND_FLAGS,
 )
+from mf_classic_crypto1 import Crypto1, cuid_from_uid, iso14443_crc_a
 from ndef_to_card_bin import build_card_envelope
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -62,7 +64,16 @@ PROTO_OUT_DIRS: dict[str, Path] = {
     "felica": REPO_ROOT / "tests" / "fixtures" / "felica",
     "slix": REPO_ROOT / "tests" / "fixtures" / "slix",
     "hal": REPO_ROOT / "tests" / "fixtures" / "hal",
+    "classic": REPO_ROOT / "tests" / "fixtures" / "classic",
 }
+
+CLASSIC_FORMAT_VERSION = 0x01
+CLASSIC_TYPE_MINI = 0
+CLASSIC_TYPE_1K = 1
+CLASSIC_TYPE_4K = 2
+CLASSIC_BLOCK_MASK_WORDS = 8
+CLASSIC_DEFAULT_KEY = 0xFFFFFFFFFFFF
+CLASSIC_TEST_NR = bytes([0x01, 0x02, 0x03, 0x04])
 
 
 def parse_hex_bytes(value: str) -> bytes:
@@ -438,6 +449,213 @@ def hal_signal_read_steps(meta: dict) -> list[tuple[str, bytes]]:
     return steps
 
 
+def classic_type_from_meta(meta: dict) -> int:
+    name = meta.get("Mifare Classic type", "1K")
+    if name == "MINI":
+        return CLASSIC_TYPE_MINI
+    if name == "4K":
+        return CLASSIC_TYPE_4K
+    return CLASSIC_TYPE_1K
+
+
+def classic_blocks_total(type_id: int) -> int:
+    if type_id == CLASSIC_TYPE_MINI:
+        return 20
+    if type_id == CLASSIC_TYPE_4K:
+        return 256
+    return 64
+
+
+def classic_sectors_total(type_id: int) -> int:
+    if type_id == CLASSIC_TYPE_MINI:
+        return 5
+    if type_id == CLASSIC_TYPE_4K:
+        return 40
+    return 16
+
+
+def classic_first_block_of_sector(sector: int) -> int:
+    if sector < 32:
+        return sector * 4
+    return 32 * 4 + (sector - 32) * 16
+
+
+def classic_blocks_in_sector(sector: int) -> int:
+    return 16 if sector >= 32 else 4
+
+
+def parse_classic_block_str(value: str) -> bytes | None:
+    parts = value.replace(",", " ").split()
+    out = bytearray(16)
+    for i, part in enumerate(parts[:16]):
+        if part == "??":
+            return None
+        out[i] = int(part, 16)
+    return bytes(out)
+
+
+def build_classic_model(meta: dict) -> bytes:
+    uid = parse_hex_bytes(meta.get("UID", ""))
+    atqa = parse_hex_bytes(meta.get("ATQA", "00 00"))
+    sak = int(meta.get("SAK", "00"), 16)
+    type_id = classic_type_from_meta(meta)
+    blocks_map: dict[int, bytes] = {}
+    blocks_total = classic_blocks_total(type_id)
+    mask = [0] * CLASSIC_BLOCK_MASK_WORDS
+    key_a_mask = 0
+    key_b_mask = 0
+
+    for block_num in range(blocks_total):
+        key = f"Block {block_num}"
+        if key not in meta:
+            continue
+        raw = parse_classic_block_str(meta[key])
+        if raw is None:
+            continue
+        blocks_map[block_num] = raw
+        mask[block_num // 32] |= 1 << (block_num % 32)
+        if (block_num & 0x03) == 0x03 and block_num < 128:
+            sector = block_num // 4
+            key_a_mask |= 1 << sector
+            key_b_mask |= 1 << sector
+        elif block_num >= 128 and (block_num & 0x0F) == 0x0F:
+            sector = 32 + (block_num - 128) // 16
+            key_a_mask |= 1 << sector
+            key_b_mask |= 1 << sector
+
+    buf = bytearray()
+    buf.append(CLASSIC_FORMAT_VERSION)
+    buf.append(type_id)
+    buf.append(len(uid))
+    buf.extend(uid)
+    buf.append(sak)
+    buf.extend(atqa[:2].ljust(2, b"\x00"))
+    for word in mask:
+        buf.extend(struct.pack("<I", word))
+    buf.extend(struct.pack("<Q", key_a_mask))
+    buf.extend(struct.pack("<Q", key_b_mask))
+    for block_num in range(blocks_total):
+        buf.extend(blocks_map.get(block_num, b"\x00" * 16))
+    return bytes(buf)
+
+
+def _classic_auth_crypto_state(nt: bytes, cuid: int) -> Crypto1:
+    crypto = Crypto1()
+    nt_num = int.from_bytes(nt, "big")
+    crypto.init(CLASSIC_DEFAULT_KEY)
+    crypto.word(nt_num ^ cuid, 0)
+    for b in CLASSIC_TEST_NR:
+        crypto.byte(b, 0)
+    nt_num = crypto.prng_successor(nt_num, 32)
+    for _ in range(4):
+        nt_num = crypto.prng_successor(nt_num, 8)
+        crypto.byte(0, 0)
+    crypto.word(0, 0)
+    return crypto
+
+
+def classic_read_steps(meta: dict) -> list[tuple[str, bytes]]:
+    uid = parse_hex_bytes(meta.get("UID", ""))
+    type_id = classic_type_from_meta(meta)
+    blocks_map: dict[int, bytes] = {}
+    blocks_total = classic_blocks_total(type_id)
+    sectors = classic_sectors_total(type_id)
+    cuid = cuid_from_uid(uid)
+    steps: list[tuple[str, bytes]] = []
+
+    for block_num in range(blocks_total):
+        key = f"Block {block_num}"
+        if key in meta:
+            raw = parse_classic_block_str(meta[key])
+            if raw is not None:
+                blocks_map[block_num] = raw
+
+    if type_id == CLASSIC_TYPE_1K:
+        steps.append(("classic detect 4k probe fail", b""))
+        steps.append(("classic detect 1k probe nt", struct.pack(">I", 0x2000003E)))
+
+    for sector in range(sectors):
+        first = classic_first_block_of_sector(sector)
+        nt = struct.pack(">I", 0x10000000 + sector)
+        steps.append((f"classic AUTH NT sector {sector}", nt))
+
+        nt_num = int.from_bytes(nt, "big")
+        at_plain = struct.pack(">I", Crypto1.prng_successor(nt_num, 96))
+        at_crypto = Crypto1()
+        at_crypto.init(CLASSIC_DEFAULT_KEY)
+        at_crypto.word(nt_num ^ cuid, 0)
+        for b in CLASSIC_TEST_NR:
+            at_crypto.byte(b, 0)
+        at_enc = at_crypto.encrypt_bytes(at_plain)
+        steps.append((f"classic AUTH AT sector {sector}", at_enc))
+
+        crypto = _classic_auth_crypto_state(nt, cuid)
+
+        for i in range(classic_blocks_in_sector(sector)):
+            block_num = first + i
+            if block_num >= blocks_total:
+                break
+            block = blocks_map.get(block_num, b"\x00" * 16)
+            tx_plain = bytes([0x30, block_num])
+            crc = iso14443_crc_a(tx_plain)
+            tx_plain += struct.pack("<H", crc)
+            crypto.encrypt_bytes(tx_plain)
+            rx_plain = block + struct.pack("<H", iso14443_crc_a(block))
+            rx_enc = crypto.encrypt_bytes(rx_plain)
+            steps.append((f"classic READ block {block_num}", rx_enc))
+
+    return steps
+
+
+def emit_classic_mock_header(stem: str, steps: list[tuple[str, bytes]], model: bytes,
+                              out_dir: Path) -> None:
+    sym = stem.replace("-", "_")
+    lines = [
+        f"/* Auto-generated from Flipper {stem}.nfc — do not edit. */",
+        "#ifndef CLASSIC_FIXTURE_" + sym.upper() + "_H_",
+        "#define CLASSIC_FIXTURE_" + sym.upper() + "_H_",
+        "",
+        "#include \"nfc_session_mock.h\"",
+        "",
+        "#include <stddef.h>",
+        "#include <stdint.h>",
+        "",
+        "#include <zephyr/sys/util.h>",
+        "",
+        f"static const uint8_t classic_{sym}_model[] = {{",
+        model_bin_to_inc(model).rstrip(),
+        "};",
+        "",
+        f"#define CLASSIC_{sym.upper()}_MODEL_LEN sizeof(classic_{sym}_model)",
+        "",
+    ]
+    step_refs: list[str] = []
+    for idx, (_label, payload) in enumerate(steps):
+        arr = f"classic_{sym}_step{idx}_rx"
+        lines.append(f"static const uint8_t {arr}[] = {{")
+        if payload:
+            lines.append(model_bin_to_inc(payload).rstrip())
+        lines.append("};")
+        lines.append("")
+        step_refs.append(
+            f"\t{{ .rx = {arr}, .rx_len = sizeof({arr}), .err = 0 }},"
+        )
+    lines.append(f"static const nfc_session_mock_step_t classic_{sym}_read_steps[] = {{")
+    lines.extend(step_refs)
+    lines.append("};")
+    lines.append("")
+    lines.append(
+        f"#define CLASSIC_{sym.upper()}_READ_STEP_COUNT "
+        f"ARRAY_SIZE(classic_{sym}_read_steps)"
+    )
+    lines.append("")
+    lines.append("#endif")
+    lines.append("")
+    out_path = out_dir / f"{stem}_mock.h"
+    out_path.write_text("\n".join(lines), encoding="utf-8")
+    print(f"Wrote {out_path}", file=sys.stderr)
+
+
 def classify(meta: dict, stem: str) -> str:
     filetype = meta.get("Filetype", "")
     if filetype == "Flipper NFC test":
@@ -450,6 +668,8 @@ def classify(meta: dict, stem: str) -> str:
     if device in ("Mifare Ultralight 11", "Mifare Ultralight 21", "NTAG213",
                   "NTAG215", "NTAG216") or device == "NTAG/Ultralight":
         return "ultralight"
+    if device == "Mifare Classic":
+        return "classic"
     raise ValueError(f"unsupported device type: {device!r} in {stem}")
 
 
@@ -460,11 +680,13 @@ def persist_id_for(proto: str) -> int:
         return NFC_PERSIST_ID_FELICA
     if proto == "slix":
         return NFC_PERSIST_ID_SLIX
+    if proto == "classic":
+        return NFC_PERSIST_ID_CLASSIC
     raise ValueError(f"no persist_id for proto {proto}")
 
 
 def card_bin_allowed(proto: str) -> bool:
-    return proto in ("ultralight", "felica", "slix")
+    return proto in ("ultralight", "felica", "slix", "classic")
 
 
 def hand_flags_for(persist_id: int) -> int:
@@ -488,6 +710,9 @@ def emit_fixture(meta: dict, out_dir: Path, stem: str, *, write_card_bin: bool) 
     elif proto == "hal":
         model = build_hal_signal_model(meta, stem)
         steps = hal_signal_read_steps(meta)
+    elif proto == "classic":
+        model = build_classic_model(meta)
+        steps = classic_read_steps(meta)
     else:
         raise ValueError(f"unknown proto {proto}")
 
@@ -497,6 +722,8 @@ def emit_fixture(meta: dict, out_dir: Path, stem: str, *, write_card_bin: bool) 
     read_path.write_text(read_inc_steps(steps), encoding="utf-8")
     if proto == "ultralight":
         emit_ultralight_mock_header(stem, steps, model, out_dir)
+    elif proto == "classic":
+        emit_classic_mock_header(stem, steps, model, out_dir)
     print(f"Wrote {model_path} ({len(model)} bytes)", file=sys.stderr)
     print(f"Wrote {read_path} ({len(steps)} steps)", file=sys.stderr)
 
