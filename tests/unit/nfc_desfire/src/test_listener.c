@@ -134,6 +134,78 @@ ZTEST(desfire_listener, test_select_read_data_golden)
 	zassert_mem_equal(buf, "HELLO DESFIRE!!", 15U);
 }
 
+ZTEST(desfire_listener, test_get_value_golden)
+{
+	static const uint8_t select_app[] = {DESFIRE_CLA_NATIVE, DESFIRE_CMD_SELECT_APPLICATION,
+					     0x00U, 0x00U, 0x03U, 0x01U, 0x02U, 0x03U};
+	static const uint8_t get_value[] = {DESFIRE_CLA_NATIVE, DESFIRE_CMD_GET_VALUE, 0x00U, 0x00U,
+					    0x01U, 0x02U};
+	const uint8_t *buf = NULL;
+	size_t len = 0U;
+
+	listener_reset(NULL);
+	(void)memset(&s_model, 0, sizeof(s_model));
+	zassert_ok(desfire_deserialize(&s_model, desfire_Desfire_model, DESFIRE_DESFIRE_MODEL_LEN));
+	s_model.apps[0].file_ids[0] = 0x02U;
+	s_model.apps[0].file_settings[0].type = DESFIRE_FILE_TYPE_VALUE;
+	s_model.apps[0].file_settings[0].access_rights = 0x0E0EU;
+	s_model.apps[0].file_data[0][0] = 0x10U;
+	s_model.apps[0].file_data[0][1] = 0x27U;
+	s_model.apps[0].file_data[0][2] = 0x00U;
+	s_model.apps[0].file_data[0][3] = 0x00U;
+	s_model.apps[0].file_data_len[0] = 4U;
+	zassert_ok(desfire_listener_init(&s_model));
+
+	listener_send_native(select_app, sizeof(select_app));
+	listener_assert_status(DESFIRE_STATUS_OK);
+
+	listener_send_native(get_value, sizeof(get_value));
+	zassert_ok(nfc_response_spy_last(&buf, &len));
+	zassert_true(len >= 6U);
+	zassert_equal(buf[len - 2U], DESFIRE_SW1);
+	zassert_equal(buf[len - 1U], DESFIRE_STATUS_OK);
+	zassert_equal(buf[0], 0x10U);
+	zassert_equal(buf[1], 0x27U);
+}
+
+ZTEST(desfire_listener, test_read_records_golden)
+{
+	static const uint8_t select_app[] = {DESFIRE_CLA_NATIVE, DESFIRE_CMD_SELECT_APPLICATION,
+					     0x00U, 0x00U, 0x03U, 0x01U, 0x02U, 0x03U};
+	static const uint8_t read_records[] = {DESFIRE_CLA_NATIVE, DESFIRE_CMD_READ_RECORDS, 0x00U,
+					     0x00U, 0x07U, 0x03U, 0x00U, 0x00U, 0x00U,
+					     0x04U, 0x00U, 0x00U};
+	const uint8_t *buf = NULL;
+	size_t len = 0U;
+
+	listener_reset(NULL);
+	(void)memset(&s_model, 0, sizeof(s_model));
+	zassert_ok(desfire_deserialize(&s_model, desfire_Desfire_model, DESFIRE_DESFIRE_MODEL_LEN));
+	s_model.apps[0].file_ids[0] = 0x03U;
+	s_model.apps[0].file_settings[0].type = DESFIRE_FILE_TYPE_LINEAR_REC;
+	s_model.apps[0].file_settings[0].settings.record.record_size = 4U;
+	s_model.apps[0].file_settings[0].access_rights = 0x0E0EU;
+	s_model.apps[0].file_data[0][0] = 0xAAU;
+	s_model.apps[0].file_data[0][1] = 0xBBU;
+	s_model.apps[0].file_data[0][2] = 0xCCU;
+	s_model.apps[0].file_data[0][3] = 0xDDU;
+	s_model.apps[0].file_data_len[0] = 4U;
+	zassert_ok(desfire_listener_init(&s_model));
+
+	listener_send_native(select_app, sizeof(select_app));
+	listener_assert_status(DESFIRE_STATUS_OK);
+
+	listener_send_native(read_records, sizeof(read_records));
+	zassert_ok(nfc_response_spy_last(&buf, &len));
+	zassert_true(len >= 6U);
+	zassert_equal(buf[len - 2U], DESFIRE_SW1);
+	zassert_equal(buf[len - 1U], DESFIRE_STATUS_OK);
+	zassert_equal(buf[0], 0xAAU);
+	zassert_equal(buf[1], 0xBBU);
+	zassert_equal(buf[2], 0xCCU);
+	zassert_equal(buf[3], 0xDDU);
+}
+
 ZTEST(desfire_listener, test_illegal_ins_rejects)
 {
 	static const uint8_t bad[] = {DESFIRE_CLA_NATIVE, 0xFFU, 0x00U, 0x00U, 0x00U};

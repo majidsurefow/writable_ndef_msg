@@ -133,7 +133,10 @@ static int desfire_poller_read_application(nfc_reader_session_t *session,
 		}
 
 		if ((fs.type != DESFIRE_FILE_TYPE_STANDARD) &&
-		    (fs.type != DESFIRE_FILE_TYPE_BACKUP)) {
+		    (fs.type != DESFIRE_FILE_TYPE_BACKUP) &&
+		    (fs.type != DESFIRE_FILE_TYPE_VALUE) &&
+		    (fs.type != DESFIRE_FILE_TYPE_LINEAR_REC) &&
+		    (fs.type != DESFIRE_FILE_TYPE_CYCLIC_REC)) {
 			LOG_DBG("Skip unsupported file type %u", (unsigned int)fs.type);
 			continue;
 		}
@@ -155,10 +158,25 @@ static int desfire_poller_read_application(nfc_reader_session_t *session,
 		if (file_size > 0U) {
 			size_t read_len = 0U;
 
-			ret = desfire_poller_i_read_file_data(session, file_ids[fi], 0U, file_size,
-							    app->file_data[slot],
-							    CONFIG_NFC_DESFIRE_MAX_FILE_SIZE,
-							    &read_len);
+			if (fs.type == DESFIRE_FILE_TYPE_VALUE) {
+				ret = desfire_poller_i_read_file_value(session, file_ids[fi],
+								       app->file_data[slot],
+								       CONFIG_NFC_DESFIRE_MAX_FILE_SIZE,
+								       &read_len);
+			} else if ((fs.type == DESFIRE_FILE_TYPE_LINEAR_REC) ||
+				   (fs.type == DESFIRE_FILE_TYPE_CYCLIC_REC)) {
+				ret = desfire_poller_i_read_file_records(session, file_ids[fi], 0U,
+									 file_size,
+									 app->file_data[slot],
+									 CONFIG_NFC_DESFIRE_MAX_FILE_SIZE,
+									 &read_len);
+			} else {
+				ret = desfire_poller_i_read_file_data(session, file_ids[fi], 0U,
+								      file_size,
+								      app->file_data[slot],
+								      CONFIG_NFC_DESFIRE_MAX_FILE_SIZE,
+								      &read_len);
+			}
 			if (ret != 0) {
 				LOG_DBG("Skip file %u data: %d", file_ids[fi], ret);
 				continue;

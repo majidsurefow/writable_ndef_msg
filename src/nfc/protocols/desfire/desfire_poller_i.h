@@ -43,6 +43,13 @@ int desfire_poller_i_read_file_data(nfc_reader_session_t *session, uint8_t file_
 				    uint32_t length, uint8_t *out, size_t out_max,
 				    size_t *out_len);
 
+int desfire_poller_i_read_file_value(nfc_reader_session_t *session, uint8_t file_id, uint8_t *out,
+				     size_t out_max, size_t *out_len);
+
+int desfire_poller_i_read_file_records(nfc_reader_session_t *session, uint8_t file_id,
+				       uint32_t offset, uint32_t length, uint8_t *out,
+				       size_t out_max, size_t *out_len);
+
 #ifdef __cplusplus
 }
 #endif

@@ -15,6 +15,7 @@ typedef enum {
 	DESFIRE_PENDING_NONE = 0,
 	DESFIRE_PENDING_GET_VERSION,
 	DESFIRE_PENDING_READ_DATA,
+	DESFIRE_PENDING_READ_RECORDS,
 } desfire_pending_cmd_t;
 
 static desfire_data_t s_model;
@@ -230,6 +231,15 @@ static void desfire_listener_cmd_get_file_settings(const nfc_apdu_t *apdu)
 		buf[5] = (uint8_t)((fs->settings.data.size >> 8U) & 0xFFU);
 		buf[6] = (uint8_t)((fs->settings.data.size >> 16U) & 0xFFU);
 		break;
+	case DESFIRE_FILE_TYPE_VALUE:
+		(void)memcpy(&buf[4], &fs->settings.value.lo_limit, 4U);
+		break;
+	case DESFIRE_FILE_TYPE_LINEAR_REC:
+	case DESFIRE_FILE_TYPE_CYCLIC_REC:
+		buf[4] = (uint8_t)(fs->settings.record.record_size & 0xFFU);
+		buf[5] = (uint8_t)((fs->settings.record.record_size >> 8U) & 0xFFU);
+		buf[6] = (uint8_t)((fs->settings.record.record_size >> 16U) & 0xFFU);
+		break;
 	default:
 		desfire_listener_send_status(DESFIRE_STATUS_ILLEGAL_CMD);
 		return;
@@ -336,6 +346,122 @@ static void desfire_listener_cmd_read_data(const nfc_apdu_t *apdu)
 	desfire_listener_send_data_status(&app->file_data[file_idx][offset], chunk, sw2);
 }
 
+static bool desfire_listener_check_file_auth(const desfire_application_t *app, uint8_t file_idx)
+{
+	if (app->file_settings[file_idx].comm != DESFIRE_COMM_PLAIN) {
+		if (s_auth_state != DESFIRE_AUTH_STATE_AUTHENTICATED) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+static void desfire_listener_cmd_get_value(const nfc_apdu_t *apdu)
+{
+	const desfire_application_t *app = desfire_listener_selected_app();
+	uint8_t file_idx;
+
+	if (app == NULL) {
+		desfire_listener_send_status(DESFIRE_STATUS_PERMISSION_DENIED);
+		return;
+	}
+
+	if ((apdu->lc < 1U) || (apdu->data == NULL)) {
+		desfire_listener_send_status(DESFIRE_STATUS_LENGTH_ERROR);
+		return;
+	}
+
+	if (desfire_listener_find_file(app, apdu->data[0], &file_idx) != 0) {
+		desfire_listener_send_status(DESFIRE_STATUS_FILE_NOT_FOUND);
+		return;
+	}
+
+	if (app->file_settings[file_idx].type != DESFIRE_FILE_TYPE_VALUE) {
+		desfire_listener_send_status(DESFIRE_STATUS_ILLEGAL_CMD);
+		return;
+	}
+
+	if (!desfire_listener_check_file_auth(app, file_idx)) {
+		desfire_listener_send_status(DESFIRE_STATUS_AUTH_ERROR);
+		return;
+	}
+
+	if (app->file_data_len[file_idx] < 4U) {
+		desfire_listener_send_status(DESFIRE_STATUS_BOUNDARY_ERROR);
+		return;
+	}
+
+	desfire_listener_send_data_status(app->file_data[file_idx], 4U, DESFIRE_STATUS_OK);
+}
+
+static void desfire_listener_cmd_read_records(const nfc_apdu_t *apdu)
+{
+	const desfire_application_t *app = desfire_listener_selected_app();
+	uint8_t file_idx;
+	uint32_t offset;
+	uint32_t length;
+	size_t chunk;
+	uint8_t sw2;
+
+	if (app == NULL) {
+		desfire_listener_send_status(DESFIRE_STATUS_PERMISSION_DENIED);
+		return;
+	}
+
+	if ((apdu->lc < 7U) || (apdu->data == NULL)) {
+		desfire_listener_send_status(DESFIRE_STATUS_LENGTH_ERROR);
+		return;
+	}
+
+	if (desfire_listener_find_file(app, apdu->data[0], &file_idx) != 0) {
+		desfire_listener_send_status(DESFIRE_STATUS_FILE_NOT_FOUND);
+		return;
+	}
+
+	if ((app->file_settings[file_idx].type != DESFIRE_FILE_TYPE_LINEAR_REC) &&
+	    (app->file_settings[file_idx].type != DESFIRE_FILE_TYPE_CYCLIC_REC)) {
+		desfire_listener_send_status(DESFIRE_STATUS_ILLEGAL_CMD);
+		return;
+	}
+
+	if (!desfire_listener_check_file_auth(app, file_idx)) {
+		desfire_listener_send_status(DESFIRE_STATUS_AUTH_ERROR);
+		return;
+	}
+
+	offset = (uint32_t)apdu->data[1] | ((uint32_t)apdu->data[2] << 8U) |
+		 ((uint32_t)apdu->data[3] << 16U);
+	length = (uint32_t)apdu->data[4] | ((uint32_t)apdu->data[5] << 8U) |
+		 ((uint32_t)apdu->data[6] << 16U);
+
+	if ((offset + length) > app->file_data_len[file_idx]) {
+		desfire_listener_send_status(DESFIRE_STATUS_BOUNDARY_ERROR);
+		return;
+	}
+
+	if (s_pending_cmd == DESFIRE_PENDING_READ_RECORDS) {
+		offset = s_pending_offset;
+		length = app->file_data_len[file_idx] - offset;
+	} else {
+		s_pending_file_id = apdu->data[0];
+		s_pending_offset = (uint16_t)offset;
+	}
+
+	chunk = length;
+	if (chunk > (NFC_TRANSPORT_MAX_RESPONSE_LEN - 2U)) {
+		chunk = NFC_TRANSPORT_MAX_RESPONSE_LEN - 2U;
+		sw2 = DESFIRE_STATUS_ADDITIONAL_FRAME;
+		s_pending_cmd = DESFIRE_PENDING_READ_RECORDS;
+		s_pending_offset = (uint16_t)(offset + chunk);
+	} else {
+		sw2 = DESFIRE_STATUS_OK;
+		s_pending_cmd = DESFIRE_PENDING_NONE;
+	}
+
+	desfire_listener_send_data_status(&app->file_data[file_idx][offset], chunk, sw2);
+}
+
 static void desfire_listener_cmd_authenticate(void)
 {
 	if (!desfire_listener_has_master_key()) {
@@ -402,6 +528,12 @@ static void desfire_listener_on_apdu(const nfc_apdu_t *apdu, void *user_ctx)
 	case DESFIRE_CMD_READ_DATA:
 		desfire_listener_cmd_read_data(apdu);
 		break;
+	case DESFIRE_CMD_GET_VALUE:
+		desfire_listener_cmd_get_value(apdu);
+		break;
+	case DESFIRE_CMD_READ_RECORDS:
+		desfire_listener_cmd_read_records(apdu);
+		break;
 	case DESFIRE_CMD_AUTHENTICATE_AES:
 	case DESFIRE_CMD_AUTH_EV2_FIRST:
 		desfire_listener_cmd_authenticate();
@@ -411,6 +543,8 @@ static void desfire_listener_on_apdu(const nfc_apdu_t *apdu, void *user_ctx)
 			desfire_listener_cmd_get_version();
 		} else if (s_pending_cmd == DESFIRE_PENDING_READ_DATA) {
 			desfire_listener_cmd_read_data(apdu);
+		} else if (s_pending_cmd == DESFIRE_PENDING_READ_RECORDS) {
+			desfire_listener_cmd_read_records(apdu);
 		} else {
 			desfire_listener_send_status(DESFIRE_STATUS_ILLEGAL_CMD);
 		}

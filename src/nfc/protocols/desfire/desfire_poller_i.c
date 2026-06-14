@@ -238,6 +238,17 @@ static int desfire_poller_i_parse_file_settings(const uint8_t *in, size_t in_len
 		*size_out = (uint32_t)in[4] | ((uint32_t)in[5] << 8U) | ((uint32_t)in[6] << 16U);
 		fs->settings.data.size = *size_out;
 		break;
+	case DESFIRE_FILE_TYPE_VALUE:
+		(void)memcpy(&fs->settings.value.lo_limit, &in[4], 4U);
+		*size_out = 4U;
+		break;
+	case DESFIRE_FILE_TYPE_LINEAR_REC:
+	case DESFIRE_FILE_TYPE_CYCLIC_REC:
+		*size_out = (uint32_t)in[4] | ((uint32_t)in[5] << 8U) | ((uint32_t)in[6] << 16U);
+		fs->settings.record.record_size = *size_out;
+		fs->settings.record.max_records = 1U;
+		fs->settings.record.cur_records = 1U;
+		break;
 	default:
 		return -ENOTSUP;
 	}
@@ -300,6 +311,102 @@ int desfire_poller_i_read_file_data(nfc_reader_session_t *session, uint8_t file_
 
 		tx[0] = DESFIRE_CLA_NATIVE;
 		tx[1] = DESFIRE_CMD_READ_DATA;
+		tx[2] = 0x00U;
+		tx[3] = 0x00U;
+		tx[4] = 0x07U;
+		tx[5] = file_id;
+		tx[6] = (uint8_t)(current_offset & 0xFFU);
+		tx[7] = (uint8_t)((current_offset >> 8U) & 0xFFU);
+		tx[8] = (uint8_t)((current_offset >> 16U) & 0xFFU);
+		tx[9] = (uint8_t)(chunk_size & 0xFFU);
+		tx[10] = (uint8_t)((chunk_size >> 8U) & 0xFFU);
+		tx[11] = (uint8_t)((chunk_size >> 16U) & 0xFFU);
+
+		ret = desfire_poller_i_send_chunks(session, tx, sizeof(tx), chunk_buf,
+						   sizeof(chunk_buf), &chunk_len);
+		if (ret != 0) {
+			return ret;
+		}
+
+		if (chunk_len > remaining) {
+			return -EBADMSG;
+		}
+
+		(void)memcpy(&out[total], chunk_buf, chunk_len);
+		total += chunk_len;
+		current_offset += (uint32_t)chunk_len;
+		remaining -= (uint32_t)chunk_len;
+
+		if (chunk_len < chunk_size) {
+			break;
+		}
+	}
+
+	*out_len = total;
+	return 0;
+}
+
+int desfire_poller_i_read_file_value(nfc_reader_session_t *session, uint8_t file_id,
+				     uint8_t *out, size_t out_max, size_t *out_len)
+{
+	uint8_t tx[6];
+	uint8_t buf[NFC_TRANSPORT_MAX_RESPONSE_LEN];
+	size_t len = 0U;
+	int ret;
+
+	if ((out == NULL) || (out_len == NULL)) {
+		return -EINVAL;
+	}
+
+	tx[0] = DESFIRE_CLA_NATIVE;
+	tx[1] = DESFIRE_CMD_GET_VALUE;
+	tx[2] = 0x00U;
+	tx[3] = 0x00U;
+	tx[4] = 0x01U;
+	tx[5] = file_id;
+
+	ret = desfire_poller_i_send_chunks(session, tx, sizeof(tx), buf, sizeof(buf), &len);
+	if (ret != 0) {
+		return ret;
+	}
+
+	if (len > out_max) {
+		return -ENOSPC;
+	}
+
+	(void)memcpy(out, buf, len);
+	*out_len = len;
+	return 0;
+}
+
+int desfire_poller_i_read_file_records(nfc_reader_session_t *session, uint8_t file_id,
+				       uint32_t offset, uint32_t length, uint8_t *out,
+				       size_t out_max, size_t *out_len)
+{
+	uint8_t tx[12];
+	uint8_t chunk_buf[NFC_TRANSPORT_MAX_RESPONSE_LEN];
+	size_t chunk_len = 0U;
+	size_t total = 0U;
+	uint32_t current_offset = offset;
+	uint32_t remaining = length;
+	int ret;
+
+	if ((out == NULL) || (out_len == NULL)) {
+		return -EINVAL;
+	}
+
+	while (remaining > 0U) {
+		uint32_t chunk_size = remaining;
+
+		if (chunk_size > (NFC_TRANSPORT_MAX_RESPONSE_LEN - 2U)) {
+			chunk_size = NFC_TRANSPORT_MAX_RESPONSE_LEN - 2U;
+		}
+		if ((total + chunk_size) > out_max) {
+			return -ENOSPC;
+		}
+
+		tx[0] = DESFIRE_CLA_NATIVE;
+		tx[1] = DESFIRE_CMD_READ_RECORDS;
 		tx[2] = 0x00U;
 		tx[3] = 0x00U;
 		tx[4] = 0x07U;
