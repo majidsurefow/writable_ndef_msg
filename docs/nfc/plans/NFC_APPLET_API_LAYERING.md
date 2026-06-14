@@ -1,8 +1,10 @@
 # NFC Applet API Layering Plan
 
+> **DEPRECATED as plan of record.** This work is now integrated into [`NFC_HARMONIZATION_MASTER_PLAN.md`](NFC_HARMONIZATION_MASTER_PLAN.md) **Part C** (deconvolution, lands at Phases 5 & 7) and **Part E** (headless tests). This file remains as reference detail for the result structs and per-applet mapping.
+
 **Date:** 2026-06-14
 **Branch:** `nfc-stack`
-**Status:** Plan only — no refactor implemented in this commit.
+**Status:** Reference only — superseded by master plan Part C.
 **Companion:** `docs/nfc/plans/NFC_SHELL_KCONFIG_AUDIT.md` (shell-gating audit findings).
 
 ---
