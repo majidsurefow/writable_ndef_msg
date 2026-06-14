@@ -1,6 +1,6 @@
 # protocols/emv — CONTEXT
 
-**Layer:** L0 (protocol model) · **Lifecycle:** full
+**Layer:** L0 (protocol model) · **Lifecycle:** full · **Status: SHIPPED**
 
 ## Purpose
 
@@ -10,12 +10,12 @@ EMV contactless protocol: data model (PPSE response, AID, GPO, READ RECORD recor
 
 | File | Owns |
 |------|------|
-| `emv.c` | Data model: `emv_t` struct, PPSE, AID, GPO, records, serialize/deserialize |
+| `emv.c` | Data model: `emv_card_image_t`, PPSE, AID, GPO, records, serialize/deserialize |
 | `emv.h` | Public types, model API, capacity symbols |
-| `emv_poller.c` | Reader poller: SELECT PPSE → SELECT AID → GPO → READ RECORD |
-| `emv_poller.h` | Poller API: `emv_poller_read` |
-| `emv_listener.c` | ISO-DEP listener: responds to EMV APDU sequence |
-| `emv_listener.h` | Listener API: `emv_listener_load`, `emv_listener_on_apdu` |
+| `emv_poller.c` | Reader poller: SELECT PPSE → parse FCI AID → SELECT AID → GPO → AFL READ RECORD loop |
+| `emv_poller.h` | Poller API: `emv_poller_detect`, `emv_poller_read` |
+| `emv_listener.c` | ISO-DEP listener: PPSE/app SELECT, GPO, READ RECORD per AFL |
+| `emv_listener.h` | Listener API: `emv_listener_init`, `emv_listener_get` |
 
 ## Kconfig
 
@@ -33,17 +33,18 @@ EMV contactless protocol: data model (PPSE response, AID, GPO, READ RECORD recor
 ## Invariants & safety
 
 - **Buffers:** Record count validated against `NFC_EMV_MAX_RECORDS`
-- **Error propagation:** Functions return negative errno; record not found → `-ENOENT`
+- **Error propagation:** Functions return negative errno; record not found → `-ENOENT` / SW `6A83`
 
 ## Roles
 
-- **Poller:** `emv_poller.c` (Tier B) — reader ISO-DEP
-- **Listener:** `emv_listener.c` (Tier C) — ISO-DEP emulation
+- **Poller:** `emv_poller.c` (Tier B) — PPSE FCI AID parse, AFL multi-record READ RECORD, PAN/track2 TLV extract
+- **Listener:** `emv_listener.c` (Tier C) — ISO-DEP emulation with AFL-bound READ RECORD
 
 ## Wire/spec
 
 - EMV Contactless Specifications for Payment Systems, Book B/C
 - **Emulatable:** Yes (partial; public records only, no cryptographic auth)
+- APDU catalog: [`docs/nfc/archive/waves/wave5-emv.md`](../../../docs/nfc/archive/waves/wave5-emv.md) §8
 
 ## Capacity symbols
 
@@ -54,9 +55,11 @@ EMV contactless protocol: data model (PPSE response, AID, GPO, READ RECORD recor
 
 ## Fixtures ↔ goldens
 
-- **Flipper:** No Flipper EMV fixture (reader-captured `.card`)
-- **Generated:** Reader-captured card via `nfc read`
-- **Loopback:** `tests/common/nfc_virtual_loopback` (poller↔listener)
+- **Flipper:** No Flipper EMV fixture (no `emv/` protocol in upstream)
+- **Synthetic:** `tests/fixtures/emv/Emv.card.bin`, `Emv_mc.card.bin` via `scripts/nfc/protocol_to_card_bin.py --emv` / `--emv-mc`
+- **Store envelope:** `tests/fixtures/store/Emv_card.inc`, `Emv_mc_card.inc`
+- **Poller mocks:** `tests/fixtures/emv/Emv_mock.h` — PPSE/GPO/READ RECORD RX scripts (single + multi-record AFL)
+- **Loopback:** `test_virtual_loopback_emv` with `emv_compare` (AID, PAN, track2, AFL, record bytes)
 
 ## Profile membership
 
@@ -67,24 +70,26 @@ EMV contactless protocol: data model (PPSE response, AID, GPO, READ RECORD recor
 
 | Test | Tier | Profile gate | Proves |
 |------|------|--------------|--------|
-| `sample.nfc.unit.nfc_emv.model` | A (model) | `NFC_PROTOCOL_EMV` | Serialize/deserialize, PPSE/AID parse |
-| `sample.nfc.unit.nfc_emv.poller` | B (poller) | `+NFC_EMV_TEST_TIER_POLLER` | Poller PPSE → GPO → READ RECORD |
-| `sample.nfc.unit.nfc_emv.listener` | C (listener) | `+NFC_EMV_TEST_TIER_LISTENER` | Listener APDU responses |
+| `sample.nfc.unit.nfc_emv.model` | A (model) | `NFC_PROTOCOL_EMV` | Serialize/deserialize, Mastercard AID roundtrip |
+| `sample.nfc.unit.nfc_emv.poller` | B (poller) | `+NFC_EMV_TEST_TIER_POLLER` | PPSE AID select, AFL multi-record READ RECORD |
+| `sample.nfc.unit.nfc_emv.listener` | C (listener) | `+NFC_EMV_TEST_TIER_LISTENER` | PPSE/app SELECT, GPO, READ RECORD, wrong SFI/range |
+| `nfc_reader_emv_store` | E (store) | `NFC_PROTOCOL_EMV` | Golden `.card.bin` load/save |
+| `nfc_reader_loopback.test_virtual_loopback_emv` | E+ | `CONFIG_NFC_TEST_LOOPBACK` | Deep compare poller↔listener |
 
-**Tier counts:** 3 configs, 17 cases (model + poller + listener).
+**Tier counts:** 3 configs, 14 cases (model 5 + poller 3 + listener 6).
 **Twister dir:** `tests/unit/nfc_emv`
 
 ## Live HIL
 
 - **Tag:** EMV contactless card
-- **Golden:** Reader-captured `.card`
+- **Golden:** Reader-captured `.card` (optional; synthetic goldens cover CI)
 - **Overlay:** `overlay-pn7160-stack.conf` (reader); `+overlay-pn7160-listen.conf` (emulate)
 - **Shell sequence:**
   ```
   nfc read tag1 → nfc stack stop → nfc emulate tag1
   nfc_transport stats  # apdu_assembled > 0
   ```
-- **PASS criteria:** External reader receives valid PPSE response; SELECT AID → GPO sequence completes
+- **PASS criteria:** External reader receives valid PPSE response; SELECT AID → GPO → READ RECORD sequence completes
 
 ## Shell
 

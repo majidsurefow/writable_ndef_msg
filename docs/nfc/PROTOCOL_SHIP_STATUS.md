@@ -7,7 +7,7 @@ Track sequential Flipper parity ship. **Only one protocol in PROGRESS at a time.
 | P1 | Ultralight | **SHIPPED** | 6 `.nfc` + `.card.bin` | full TX all fixtures | native T2 + T4 adapter | yes (`ultralight_compare`) | 6b3b804 |
 | P2 | FeliCa | **SHIPPED** | Felica.nfc + `.card.bin` | 29-TX full assert | virtual listener | yes (`felica_compare`) | 0d4db7b |
 | P3 | SLIX / ISO15693 | **SHIPPED** | 3× Slix_cap + `.card.bin` | 85/87-TX full assert | virtual listener | yes (`slix_compare`) | 13b9d86 |
-| P4a | EMV | WIP | synthetic | yes | yes | **envelope only** | b80d127 |
+| P4a | EMV | **SHIPPED** | synthetic + MC `.card.bin` | PPSE/AFL/READ RECORD | listener Tier C | yes (`emv_compare`) | pending |
 | P4b | Aliro | WIP | wave5 | SELECT+AUTH | AUTH chain | yes | e259343 |
 | P5 | DESFire | WIP | MfDesfire_EV1 | app/file SM | partial | yes | 906c68e |
 | P6 | Classic | WIP | MfClassic_1K_4b | spot TX | none | SKIP | 35838a4 |
