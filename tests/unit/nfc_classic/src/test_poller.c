@@ -81,6 +81,35 @@ ZTEST(classic_poller, test_detect_enotsup_short_rx)
 	zassert_equal(classic_poller_detect(&s_session), -ENOTSUP);
 }
 
+ZTEST(classic_poller, test_detect_eio)
+{
+	static const nfc_session_mock_step_t script[] = {
+		{.rx = NULL, .rx_len = 0U, .err = -EIO},
+	};
+
+	poller_before(NULL);
+	nfc_session_mock_load(script, ARRAY_SIZE(script));
+	zassert_equal(classic_poller_detect(&s_session), -ENOTSUP);
+}
+
+ZTEST(classic_poller, test_detect_timeout)
+{
+	static const nfc_session_mock_step_t script[] = {
+		{.rx = NULL, .rx_len = 0U, .err = -ETIMEDOUT},
+	};
+
+	poller_before(NULL);
+	nfc_session_mock_load(script, ARRAY_SIZE(script));
+	zassert_equal(classic_poller_detect(&s_session), -ENOTSUP);
+}
+
+ZTEST(classic_poller, test_detect_inactive_session)
+{
+	poller_before(NULL);
+	s_session.active = false;
+	zassert_equal(classic_poller_detect(&s_session), -EINVAL);
+}
+
 ZTEST(classic_poller, test_crypto_decrypt_block0_golden)
 {
 	struct crypto1 crypto;
@@ -177,6 +206,78 @@ ZTEST(classic_poller, test_read_tx_sequence)
 	assert_tx_equals(2U, TX_AUTH_NT_S0, sizeof(TX_AUTH_NT_S0));
 	assert_tx_equals(3U, TX_AUTH_NR_AR_S0, sizeof(TX_AUTH_NR_AR_S0));
 	assert_tx_equals(4U, TX_READ_BLOCK0, sizeof(TX_READ_BLOCK0));
+}
+
+ZTEST(classic_poller, test_read_truncated)
+{
+	static const nfc_session_mock_step_t script[] = {
+		{.rx = classic_MfClassic_1K_4b_step0_rx,
+		 .rx_len = sizeof(classic_MfClassic_1K_4b_step0_rx), .err = 0},
+		{.rx = classic_MfClassic_1K_4b_step1_rx,
+		 .rx_len = sizeof(classic_MfClassic_1K_4b_step1_rx), .err = 0},
+		{.rx = classic_MfClassic_1K_4b_step2_rx,
+		 .rx_len = sizeof(classic_MfClassic_1K_4b_step2_rx), .err = 0},
+		{.rx = classic_MfClassic_1K_4b_step3_rx,
+		 .rx_len = sizeof(classic_MfClassic_1K_4b_step3_rx), .err = 0},
+	};
+
+	poller_before(NULL);
+	nfc_session_mock_load(script, ARRAY_SIZE(script));
+	zassert_equal(classic_poller_read(&s_session, &s_data), -EIO);
+}
+
+ZTEST(classic_poller, test_read_eio)
+{
+	static const nfc_session_mock_step_t script[] = {
+		{.rx = classic_MfClassic_1K_4b_step0_rx,
+		 .rx_len = sizeof(classic_MfClassic_1K_4b_step0_rx), .err = 0},
+		{.rx = classic_MfClassic_1K_4b_step1_rx,
+		 .rx_len = sizeof(classic_MfClassic_1K_4b_step1_rx), .err = 0},
+		{.rx = classic_MfClassic_1K_4b_step2_rx,
+		 .rx_len = sizeof(classic_MfClassic_1K_4b_step2_rx), .err = 0},
+		{.rx = classic_MfClassic_1K_4b_step3_rx,
+		 .rx_len = sizeof(classic_MfClassic_1K_4b_step3_rx), .err = 0},
+		{.rx = NULL, .rx_len = 0U, .err = -EIO},
+	};
+
+	poller_before(NULL);
+	nfc_session_mock_load(script, ARRAY_SIZE(script));
+	zassert_equal(classic_poller_read(&s_session, &s_data), -EIO);
+}
+
+ZTEST(classic_poller, test_read_timeout)
+{
+	static const nfc_session_mock_step_t script[] = {
+		{.rx = classic_MfClassic_1K_4b_step0_rx,
+		 .rx_len = sizeof(classic_MfClassic_1K_4b_step0_rx), .err = 0},
+		{.rx = classic_MfClassic_1K_4b_step1_rx,
+		 .rx_len = sizeof(classic_MfClassic_1K_4b_step1_rx), .err = 0},
+		{.rx = classic_MfClassic_1K_4b_step2_rx,
+		 .rx_len = sizeof(classic_MfClassic_1K_4b_step2_rx), .err = 0},
+		{.rx = classic_MfClassic_1K_4b_step3_rx,
+		 .rx_len = sizeof(classic_MfClassic_1K_4b_step3_rx), .err = 0},
+		{.rx = NULL, .rx_len = 0U, .err = -ETIMEDOUT},
+	};
+
+	poller_before(NULL);
+	nfc_session_mock_load(script, ARRAY_SIZE(script));
+	zassert_equal(classic_poller_read(&s_session, &s_data), -ETIMEDOUT);
+}
+
+ZTEST(classic_poller, test_read_no_session_end)
+{
+	poller_before(NULL);
+	nfc_session_mock_load(classic_MfClassic_1K_4b_read_steps,
+			      CLASSIC_MFCLASSIC_1K_4B_READ_STEP_COUNT);
+	zassert_ok(classic_poller_read(&s_session, &s_data));
+	zassert_equal(nfc_session_mock_session_end_count(), 0U);
+}
+
+ZTEST(classic_poller, test_read_inactive_session)
+{
+	poller_before(NULL);
+	s_session.active = false;
+	zassert_equal(classic_poller_read(&s_session, &s_data), -EINVAL);
 }
 
 ZTEST_SUITE(classic_poller, NULL, NULL, poller_before, NULL, NULL);
