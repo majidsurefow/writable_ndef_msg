@@ -580,7 +580,7 @@ Proves L1 applet code compiles and runs without shell. Exercises all store round
 
 | Finding | Category | Severity | Notes |
 |---------|----------|----------|-------|
-| `test_virtual_loopback_desfire` fails with SHELL=n | F (Test fidelity) | minor | Pre-existing: DESFire loopback passes with SHELL=y but fails with SHELL=n. Needs investigation in separate task. |
+| `test_virtual_loopback_desfire` fails with SHELL=n | F (Test fidelity) | **HIGH** | Shell is debugging-only — production may disable it. Temporarily skipped; **P5b audit required**. |
 | store_ram at 99.98% RAM | D (Kconfig↔CMake) | addressed | Fixed by gating applet sources under NFC_APPLETS and disabling in store_ram overlay |
 | prj.conf enables all protocols | D | acceptable | Current approach: prj.conf enables reader profile (all 9 protocols); CMake gating ensures only enabled protocols compile |
 
@@ -594,6 +594,48 @@ Proves L1 applet code compiles and runs without shell. Exercises all store round
 | **Total** | **3** | **156** | **155 PASS** (99.36%) |
 
 **Baseline comparison:** P1 was 97/97 tests in 2 configs. P5 adds headless tests (+7) and shell_off scenario (+55), bringing total to 156 tests in 3 configs. 155 pass; 1 pre-existing DESFire loopback failure under SHELL=n
+
+---
+
+## P5b — Shell Independence Audit (POST-P6)
+
+**Status:** PENDING  
+**Priority:** HIGH — shell is debugging infrastructure, not production dependency
+
+### Problem Statement
+
+The `test_virtual_loopback_desfire` test was **skipped** rather than **fixed** when it failed with `CONFIG_SHELL=n`. This is technical debt that masks a real issue:
+
+- Shell should be optional for all NFC stack functionality
+- Tests that depend on shell being present are hiding production bugs
+- Current skip is a workaround, not a solution
+
+### Required Actions
+
+1. **Root cause DESFire loopback failure**
+   - QEMU trace comparison: SHELL=y vs SHELL=n
+   - Memory layout diff between builds
+   - Check if any NFC code has implicit shell dependencies
+
+2. **Audit for shell-dependent test skips**
+   - `grep -r "ztest_test_skip" tests/ | grep -i shell`
+   - `grep -r "#ifndef CONFIG_SHELL" tests/`
+   - Any test that skips when shell is disabled needs fixing
+
+3. **Verify full suite with SHELL=n**
+   - All `tests/unit/nfc_*` must pass with `CONFIG_SHELL=n`
+   - Add CI matrix entry for SHELL=n builds
+
+4. **Remove temporary skip**
+   - Fix root cause in `test_virtual_loopback.c`
+   - Delete the `#ifndef CONFIG_SHELL` / `ztest_test_skip()` block
+
+### Exit Criteria
+
+- [ ] DESFire loopback passes with `CONFIG_SHELL=n`
+- [ ] No `ztest_test_skip()` calls gated on shell presence
+- [ ] Full unit test suite green with SHELL=n
+- [ ] CI includes SHELL=n test matrix
 
 ---
 
