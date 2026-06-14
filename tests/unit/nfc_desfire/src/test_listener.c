@@ -15,6 +15,8 @@
 
 #include <zephyr/ztest.h>
 
+static desfire_data_t s_model; /* Static to avoid ~450 byte stack allocation */
+
 static void listener_reset(void *fixture)
 {
 	ARG_UNUSED(fixture);
@@ -26,10 +28,9 @@ static void listener_reset(void *fixture)
 
 static void listener_load_golden(void)
 {
-	desfire_data_t model;
-
-	zassert_ok(desfire_deserialize(&model, desfire_Desfire_model, DESFIRE_DESFIRE_MODEL_LEN));
-	zassert_ok(desfire_listener_init(&model));
+	(void)memset(&s_model, 0, sizeof(s_model));
+	zassert_ok(desfire_deserialize(&s_model, desfire_Desfire_model, DESFIRE_DESFIRE_MODEL_LEN));
+	zassert_ok(desfire_listener_init(&s_model));
 }
 
 static void listener_send_native(const uint8_t *apdu, size_t apdu_len)

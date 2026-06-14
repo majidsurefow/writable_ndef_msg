@@ -17,6 +17,7 @@
 #include <zephyr/ztest.h>
 
 static ultralight_data_t s_data;
+static ultralight_data_t s_copy; /* Static to avoid ~1KB stack allocation */
 static uint8_t s_out[ULTRALIGHT_MAX_SERIALIZED];
 static uint8_t s_round[ULTRALIGHT_MAX_SERIALIZED];
 
@@ -32,8 +33,9 @@ ZTEST(ultralight_model, test_model_reset)
 ZTEST(ultralight_model, test_serialize_roundtrip_ul11_golden)
 {
 	size_t out_len = 0U;
-	ultralight_data_t copy;
 	int ret;
+
+	(void)memset(&s_copy, 0, sizeof(s_copy));
 
 	ret = ultralight_deserialize(&s_data, ultralight_Ultralight_11_model,
 				     ULTRALIGHT_ULTRALIGHT_11_MODEL_LEN);
@@ -44,10 +46,10 @@ ZTEST(ultralight_model, test_serialize_roundtrip_ul11_golden)
 	zassert_equal(out_len, ULTRALIGHT_ULTRALIGHT_11_MODEL_LEN);
 	zassert_mem_equal(s_out, ultralight_Ultralight_11_model, out_len);
 
-	ret = ultralight_deserialize(&copy, s_out, out_len);
+	ret = ultralight_deserialize(&s_copy, s_out, out_len);
 	zassert_ok(ret);
-	zassert_equal(copy.pages_total, s_data.pages_total);
-	zassert_mem_equal(copy.pages, s_data.pages,
+	zassert_equal(s_copy.pages_total, s_data.pages_total);
+	zassert_mem_equal(s_copy.pages, s_data.pages,
 			  (size_t)s_data.pages_total * ULTRALIGHT_PAGE_SIZE);
 }
 

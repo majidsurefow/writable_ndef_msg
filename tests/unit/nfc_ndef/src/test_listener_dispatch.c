@@ -14,6 +14,8 @@
 
 #include <zephyr/ztest.h>
 
+static ndef_data_t s_model; /* Static to avoid stack allocation */
+
 static void *listener_dispatch_setup(void)
 {
 	ndef_fixture_init_read_scripts();
@@ -35,24 +37,24 @@ ZTEST(ndef_listener_dispatch, test_bad_cla)
 
 ZTEST(ndef_listener_dispatch, test_deserialize_then_read)
 {
-	ndef_data_t model;
 	uint8_t blob[1U + NFC_NDEF_CC_LEN + NFC_NDEF_NLEN_FIELD_LEN + CONFIG_NFC_NDEF_MAX_SIZE];
 	size_t blob_len = 0U;
 	const nfc_service_t *svc = ndef_listener_get();
 	const uint8_t *buf = NULL;
 	size_t len = 0U;
 
-	ndef_data_reset(&model);
-	(void)memcpy(model.cc, ndef_fixture_cc_std, NFC_NDEF_CC_LEN);
-	model.cc_len = NFC_NDEF_CC_LEN;
-	model.ndef_file[0] = 0x00U;
-	model.ndef_file[1] = (uint8_t)sizeof(ndef_fixture_uri_payload);
-	(void)memcpy(&model.ndef_file[2], ndef_fixture_uri_payload,
+	(void)memset(&s_model, 0, sizeof(s_model));
+	ndef_data_reset(&s_model);
+	(void)memcpy(s_model.cc, ndef_fixture_cc_std, NFC_NDEF_CC_LEN);
+	s_model.cc_len = NFC_NDEF_CC_LEN;
+	s_model.ndef_file[0] = 0x00U;
+	s_model.ndef_file[1] = (uint8_t)sizeof(ndef_fixture_uri_payload);
+	(void)memcpy(&s_model.ndef_file[2], ndef_fixture_uri_payload,
 		     sizeof(ndef_fixture_uri_payload));
-	model.ndef_file_len =
+	s_model.ndef_file_len =
 		(uint16_t)(NFC_NDEF_NLEN_FIELD_LEN + sizeof(ndef_fixture_uri_payload));
 
-	zassert_ok(ndef_serialize(&model, blob, sizeof(blob), &blob_len));
+	zassert_ok(ndef_serialize(&s_model, blob, sizeof(blob), &blob_len));
 
 	ndef_listener_shutdown();
 	zassert_ok(ndef_listener_init(NULL, &(ndef_listener_config_t){ .writable = true }));

@@ -13,6 +13,7 @@
 #include <zephyr/ztest.h>
 
 static ndef_data_t s_data;
+static ndef_data_t s_copy; /* Static to avoid stack allocation */
 static uint8_t s_out[1U + NFC_NDEF_CC_LEN + NFC_NDEF_NLEN_FIELD_LEN + CONFIG_NFC_NDEF_MAX_SIZE];
 static uint8_t s_round[sizeof(s_out)];
 
@@ -71,8 +72,9 @@ ZTEST(ndef_model, test_serialize_empty)
 ZTEST(ndef_model, test_serialize_roundtrip)
 {
 	size_t out_len = 0U;
-	ndef_data_t copy;
 	int ret;
+
+	(void)memset(&s_copy, 0, sizeof(s_copy));
 
 	ndef_data_reset(&s_data);
 	fill_cc(&s_data);
@@ -81,19 +83,20 @@ ZTEST(ndef_model, test_serialize_roundtrip)
 	ret = ndef_serialize(&s_data, s_out, sizeof(s_out), &out_len);
 	zassert_ok(ret);
 
-	ret = ndef_deserialize(&copy, s_out, out_len);
+	ret = ndef_deserialize(&s_copy, s_out, out_len);
 	zassert_ok(ret);
-	zassert_mem_equal(copy.cc, s_data.cc, NFC_NDEF_CC_LEN);
-	zassert_equal(copy.cc_len, s_data.cc_len);
-	zassert_equal(copy.ndef_file_len, s_data.ndef_file_len);
-	zassert_mem_equal(copy.ndef_file, s_data.ndef_file, s_data.ndef_file_len);
+	zassert_mem_equal(s_copy.cc, s_data.cc, NFC_NDEF_CC_LEN);
+	zassert_equal(s_copy.cc_len, s_data.cc_len);
+	zassert_equal(s_copy.ndef_file_len, s_data.ndef_file_len);
+	zassert_mem_equal(s_copy.ndef_file, s_data.ndef_file, s_data.ndef_file_len);
 }
 
 ZTEST(ndef_model, test_serialize_roundtrip_generated)
 {
 	size_t out_len = 0U;
-	ndef_data_t copy;
 	int ret;
+
+	(void)memset(&s_copy, 0, sizeof(s_copy));
 
 	ndef_data_reset(&s_data);
 	fill_cc(&s_data);
@@ -107,9 +110,9 @@ ZTEST(ndef_model, test_serialize_roundtrip_generated)
 	ret = ndef_serialize(&s_data, s_out, sizeof(s_out), &out_len);
 	zassert_ok(ret);
 
-	ret = ndef_deserialize(&copy, s_out, out_len);
+	ret = ndef_deserialize(&s_copy, s_out, out_len);
 	zassert_ok(ret);
-	zassert_mem_equal(&copy, &s_data, sizeof(copy));
+	zassert_mem_equal(&s_copy, &s_data, sizeof(s_copy));
 }
 
 ZTEST(ndef_model, test_deserialize_bad_version)
@@ -199,8 +202,9 @@ ZTEST(ndef_model, test_persist_id_stable)
 ZTEST(ndef_model, test_cc_preserved_on_roundtrip)
 {
 	size_t out_len = 0U;
-	ndef_data_t copy;
 	int ret;
+
+	(void)memset(&s_copy, 0, sizeof(s_copy));
 
 	ndef_data_reset(&s_data);
 	fill_cc(&s_data);
@@ -209,10 +213,10 @@ ZTEST(ndef_model, test_cc_preserved_on_roundtrip)
 	ret = ndef_serialize(&s_data, s_out, sizeof(s_out), &out_len);
 	zassert_ok(ret);
 
-	ndef_data_reset(&copy);
-	ret = ndef_deserialize(&copy, s_out, out_len);
+	ndef_data_reset(&s_copy);
+	ret = ndef_deserialize(&s_copy, s_out, out_len);
 	zassert_ok(ret);
-	zassert_mem_equal(copy.cc, s_data.cc, NFC_NDEF_CC_LEN);
+	zassert_mem_equal(s_copy.cc, s_data.cc, NFC_NDEF_CC_LEN);
 }
 
 ZTEST(ndef_model, test_fixture_empty_bin)

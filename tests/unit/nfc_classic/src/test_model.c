@@ -15,6 +15,7 @@
 #include <zephyr/ztest.h>
 
 static classic_data_t s_data;
+static classic_data_t s_copy; /* Static to avoid ~4KB stack allocation */
 static uint8_t s_out[4096];
 
 ZTEST(classic_model, test_model_reset)
@@ -34,8 +35,9 @@ ZTEST(classic_model, test_persist_id)
 ZTEST(classic_model, test_serialize_roundtrip_1k_golden)
 {
 	size_t out_len = 0U;
-	classic_data_t copy;
 	int ret;
+
+	(void)memset(&s_copy, 0, sizeof(s_copy));
 
 	ret = classic_deserialize(&s_data, classic_MfClassic_1K_4b_model,
 				  CLASSIC_MFCLASSIC_1K_4B_MODEL_LEN);
@@ -48,12 +50,12 @@ ZTEST(classic_model, test_serialize_roundtrip_1k_golden)
 	zassert_equal(out_len, CLASSIC_MFCLASSIC_1K_4B_MODEL_LEN);
 	zassert_mem_equal(s_out, classic_MfClassic_1K_4b_model, out_len);
 
-	ret = classic_deserialize(&copy, s_out, out_len);
+	ret = classic_deserialize(&s_copy, s_out, out_len);
 	zassert_ok(ret);
-	zassert_equal(copy.type, s_data.type);
-	zassert_equal(copy.uid_len, s_data.uid_len);
-	zassert_mem_equal(copy.uid, s_data.uid, copy.uid_len);
-	zassert_mem_equal(copy.blocks[0], s_data.blocks[0], CLASSIC_BLOCK_SIZE);
+	zassert_equal(s_copy.type, s_data.type);
+	zassert_equal(s_copy.uid_len, s_data.uid_len);
+	zassert_mem_equal(s_copy.uid, s_data.uid, s_copy.uid_len);
+	zassert_mem_equal(s_copy.blocks[0], s_data.blocks[0], CLASSIC_BLOCK_SIZE);
 }
 
 ZTEST(classic_model, test_deserialize_bad_version)

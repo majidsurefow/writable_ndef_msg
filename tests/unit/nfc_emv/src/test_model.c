@@ -5,6 +5,7 @@
 #include <zephyr/ztest.h>
 
 static emv_card_image_t s_image;
+static emv_card_image_t s_copy; /* Static to avoid stack allocation */
 static uint8_t s_out[512];
 
 ZTEST(emv_model, test_default_load)
@@ -17,13 +18,14 @@ ZTEST(emv_model, test_default_load)
 ZTEST(emv_model, test_serialize_roundtrip)
 {
 	size_t len = 0U;
-	emv_card_image_t copy;
+
+	(void)memset(&s_copy, 0, sizeof(s_copy));
 
 	emv_card_image_load_default(&s_image);
 	zassert_ok(emv_serialize(&s_image, s_out, sizeof(s_out), &len));
-	zassert_ok(emv_deserialize(&copy, s_out, len));
-	zassert_equal(copy.pan_len, s_image.pan_len);
-	zassert_equal(copy.record_count, s_image.record_count);
+	zassert_ok(emv_deserialize(&s_copy, s_out, len));
+	zassert_equal(s_copy.pan_len, s_image.pan_len);
+	zassert_equal(s_copy.record_count, s_image.record_count);
 }
 
 ZTEST(emv_model, test_deserialize_bad_aid)

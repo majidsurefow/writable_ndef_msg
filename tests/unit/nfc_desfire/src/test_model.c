@@ -15,6 +15,7 @@
 #include <zephyr/ztest.h>
 
 static desfire_data_t s_data;
+static desfire_data_t s_copy; /* Static to avoid ~450 byte stack allocation */
 static uint8_t s_out[512];
 
 ZTEST(desfire_model, test_model_reset)
@@ -45,8 +46,9 @@ ZTEST(desfire_model, test_access_free_read)
 ZTEST(desfire_model, test_serialize_roundtrip_golden)
 {
 	size_t out_len = 0U;
-	desfire_data_t copy;
 	int ret;
+
+	(void)memset(&s_copy, 0, sizeof(s_copy));
 
 	ret = desfire_deserialize(&s_data, desfire_Desfire_model, DESFIRE_DESFIRE_MODEL_LEN);
 	zassert_ok(ret);
@@ -58,9 +60,9 @@ ZTEST(desfire_model, test_serialize_roundtrip_golden)
 	zassert_equal(out_len, DESFIRE_DESFIRE_MODEL_LEN);
 	zassert_mem_equal(s_out, desfire_Desfire_model, out_len);
 
-	ret = desfire_deserialize(&copy, s_out, out_len);
+	ret = desfire_deserialize(&s_copy, s_out, out_len);
 	zassert_ok(ret);
-	zassert_mem_equal(copy.apps[0].file_data[0], s_data.apps[0].file_data[0], 15U);
+	zassert_mem_equal(s_copy.apps[0].file_data[0], s_data.apps[0].file_data[0], 15U);
 }
 
 ZTEST(desfire_model, test_deserialize_bad_version)

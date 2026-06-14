@@ -74,6 +74,51 @@ QEMU tests for **applet orchestration** — not protocol poller/listener logic (
 |------|-------|
 | `test_reader_clone_slot` | poller walk → `nfc_store_save` for named slot — not implemented yet |
 
+---
+
+## Memory Pattern for Test Files
+
+### Problem
+Large NFC protocol data structures can cause **stack overflow** when allocated as local variables in test functions. This happens when build configuration changes memory layout (e.g., `CONFIG_SHELL=n` in the `shell_off` scenario).
+
+### Solution
+**For separate test binaries** (e.g., `nfc_classic`, `nfc_ultralight`), use static storage for structs > 256 bytes.
+
+**For nfc_reader tests**, all source files compile into a single binary. Adding static storage to multiple files accumulates RAM and causes overflow. Keep local stack allocation unless a specific test proves problematic.
+
+```c
+// In SEPARATE test binaries (nfc_classic, nfc_ultralight, etc.):
+static classic_data_t s_copy;  /* Static to avoid ~4KB stack allocation */
+
+ZTEST(suite, test_foo)
+{
+    (void)memset(&s_copy, 0, sizeof(s_copy));
+    ...
+}
+
+// In nfc_reader (shared binary) — use stack, be careful with multiple large locals:
+ZTEST(suite, test_foo)
+{
+    classic_data_t expected;  // OK if only one large struct
+    ...
+}
+```
+
+### Affected Data Types
+| Type | Approx Size | Notes |
+|------|-------------|-------|
+| `classic_data_t` | ~4KB | `blocks[256][16]` |
+| `ultralight_data_t` | ~1KB | `pages[256][4]` |
+| `desfire_data_t` | ~450 bytes | DESFire EV1/2/3 |
+| `felica_data_t` | ~500+ bytes | FeliCa blocks |
+| `aliro_data_t` | ~300+ bytes | Aliro credential |
+| `emv_card_image_t` | ~300+ bytes | EMV records |
+
+### Reference
+P5b fixed `test_virtual_loopback_desfire` stack overflow by moving `desfire_data_t` to static (`s_desfire_loopback`).
+
+---
+
 ## Twister
 
 ```bash

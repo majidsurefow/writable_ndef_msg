@@ -16,6 +16,7 @@
 #include <zephyr/ztest.h>
 
 static desfire_data_t s_data;
+static desfire_data_t s_expected; /* Static to avoid ~450 byte stack allocation */
 static nfc_reader_session_t s_session;
 
 static void poller_before(void *fixture)
@@ -50,18 +51,18 @@ ZTEST(desfire_poller, test_detect_enotsup_on_bad_version)
 
 ZTEST(desfire_poller, test_read_golden)
 {
-	desfire_data_t expected;
 	int ret;
 
+	(void)memset(&s_expected, 0, sizeof(s_expected));
 	poller_before(NULL);
 	nfc_session_mock_load(desfire_Desfire_read_steps, DESFIRE_DESFIRE_READ_STEP_COUNT);
-	ret = desfire_deserialize(&expected, desfire_Desfire_model, DESFIRE_DESFIRE_MODEL_LEN);
+	ret = desfire_deserialize(&s_expected, desfire_Desfire_model, DESFIRE_DESFIRE_MODEL_LEN);
 	zassert_ok(ret);
 
 	zassert_ok(desfire_poller_read(&s_session, &s_data));
-	zassert_mem_equal(s_data.uid, expected.uid, DESFIRE_UID_SIZE);
-	zassert_equal(s_data.free_memory, expected.free_memory);
-	zassert_equal(s_data.master_key_settings, expected.master_key_settings);
+	zassert_mem_equal(s_data.uid, s_expected.uid, DESFIRE_UID_SIZE);
+	zassert_equal(s_data.free_memory, s_expected.free_memory);
+	zassert_equal(s_data.master_key_settings, s_expected.master_key_settings);
 }
 
 ZTEST(desfire_poller, test_read_partial_without_keys)

@@ -19,6 +19,11 @@
 #include <zephyr/ztest.h>
 
 static classic_data_t s_model;
+/*
+ * NOTE: classic_data_t is ~4KB. These tests work because s_model is shared
+ * (via serialize/deserialize callbacks) and local variables are assigned
+ * directly from it, avoiding duplicate large structs on stack simultaneously.
+ */
 static uint8_t s_saved_blob[2048];
 static size_t s_saved_len;
 

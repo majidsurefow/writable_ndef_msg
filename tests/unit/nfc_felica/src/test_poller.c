@@ -16,6 +16,7 @@
 #include <zephyr/ztest.h>
 
 static felica_data_t s_data;
+static felica_data_t s_expected; /* Static to avoid large stack allocation */
 static nfc_reader_session_t s_session;
 
 static void poller_before(void *fixture)
@@ -49,20 +50,20 @@ ZTEST(felica_poller, test_detect_enotsup_short_rx)
 
 ZTEST(felica_poller, test_read_golden)
 {
-	felica_data_t expected;
 	int ret;
 
+	(void)memset(&s_expected, 0, sizeof(s_expected));
 	poller_before(NULL);
 	nfc_session_mock_load(felica_Felica_read_steps, FELICA_FELICA_READ_STEP_COUNT);
-	ret = felica_deserialize(&expected, felica_Felica_model, FELICA_FELICA_MODEL_LEN);
+	ret = felica_deserialize(&s_expected, felica_Felica_model, FELICA_FELICA_MODEL_LEN);
 	zassert_ok(ret);
 
 	zassert_ok(felica_poller_read(&s_session, &s_data));
-	zassert_equal(s_data.blocks_total, expected.blocks_total);
-	zassert_mem_equal(s_data.idm, expected.idm, FELICA_IDM_SIZE);
-	zassert_mem_equal(s_data.pmm, expected.pmm, FELICA_PMM_SIZE);
-	zassert_mem_equal(s_data.blocks[0].data, expected.blocks[0].data, FELICA_BLOCK_DATA_SIZE);
-	zassert_mem_equal(s_data.blocks[14].data, expected.blocks[14].data, FELICA_BLOCK_DATA_SIZE);
+	zassert_equal(s_data.blocks_total, s_expected.blocks_total);
+	zassert_mem_equal(s_data.idm, s_expected.idm, FELICA_IDM_SIZE);
+	zassert_mem_equal(s_data.pmm, s_expected.pmm, FELICA_PMM_SIZE);
+	zassert_mem_equal(s_data.blocks[0].data, s_expected.blocks[0].data, FELICA_BLOCK_DATA_SIZE);
+	zassert_mem_equal(s_data.blocks[14].data, s_expected.blocks[14].data, FELICA_BLOCK_DATA_SIZE);
 }
 
 ZTEST_SUITE(felica_poller, NULL, NULL, poller_before, NULL, NULL);
