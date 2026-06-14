@@ -153,6 +153,7 @@ jobs:
             tests/unit/nfc_classic
             tests/unit/nfc_felica
             tests/unit/nfc_slix
+            tests/unit/nfc_desfire
             tests/unit/nfc_ndef
           )
           for dir in "${UNIT_DIRS[@]}"; do

@@ -37,6 +37,11 @@
 #include "protocols/slix/slix_poller.h"
 #endif
 
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_DESFIRE)
+#include "protocols/desfire/desfire_listener.h"
+#include "protocols/desfire/desfire_poller.h"
+#endif
+
 #if IS_ENABLED(CONFIG_NFC_STORE)
 #include "store/nfc_store.h"
 #endif
@@ -275,6 +280,55 @@ static int slix_poller_read_stub(const nfc_reader_session_t *session, void *out)
 }
 #endif
 
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_DESFIRE)
+static int desfire_poller_read_wrap(const nfc_reader_session_t *session, void *out)
+{
+	return desfire_poller_read(session, out);
+}
+
+static int desfire_poller_clone(const nfc_reader_session_t *session, const char *tag)
+{
+	desfire_data_t data;
+	const nfc_service_t *svcs[] = { desfire_listener_get() };
+	int ret;
+
+	desfire_data_reset(&data);
+	ret = desfire_poller_read(session, &data);
+	if (ret != 0) {
+		LOG_WRN("DESFire poller read failed: %d", ret);
+		return ret;
+	}
+
+	ret = desfire_listener_init(&data);
+	if (ret != 0 && ret != -EALREADY) {
+		LOG_ERR("desfire_listener_init failed: %d", ret);
+		return ret;
+	}
+
+	ret = nfc_store_save(tag, svcs, ARRAY_SIZE(svcs));
+	if (ret != 0) {
+		LOG_ERR("nfc_store_save failed: %d", ret);
+	}
+
+	return ret;
+}
+#else
+static int desfire_poller_detect_stub(const nfc_reader_session_t *session)
+{
+	ARG_UNUSED(session);
+
+	return -ENOTSUP;
+}
+
+static int desfire_poller_read_stub(const nfc_reader_session_t *session, void *out)
+{
+	ARG_UNUSED(session);
+	ARG_UNUSED(out);
+
+	return -ENOTSUP;
+}
+#endif
+
 #if IS_ENABLED(CONFIG_NFC_PROTOCOL_NDEF)
 static int nfc_reader_poller_ndef_read(const nfc_reader_session_t *session, void *out)
 {
@@ -417,6 +471,27 @@ static const nfc_reader_poller_entry_t s_pollers[] = {
 		.tech_mask = NFC_TECH_ISO15693,
 		.detect = iso15693_3_poller_detect_stub,
 		.read = iso15693_3_poller_read_stub,
+		.listener_get = NULL,
+		.clone_fn = NULL,
+	},
+#endif
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_DESFIRE)
+	{
+		.name = "desfire",
+		.persist_id = NFC_PERSIST_ID_DESFIRE,
+		.tech_mask = NFC_TECH_ISO_DEP_A,
+		.detect = desfire_poller_detect,
+		.read = desfire_poller_read_wrap,
+		.listener_get = desfire_listener_get,
+		.clone_fn = desfire_poller_clone,
+	},
+#else
+	{
+		.name = "desfire",
+		.persist_id = NFC_PERSIST_ID_DESFIRE,
+		.tech_mask = NFC_TECH_ISO_DEP_A,
+		.detect = desfire_poller_detect_stub,
+		.read = desfire_poller_read_stub,
 		.listener_get = NULL,
 		.clone_fn = NULL,
 	},

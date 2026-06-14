@@ -16,6 +16,7 @@ target_sources(app PRIVATE
   src/test_store_classic_roundtrip.c
   src/test_store_felica_roundtrip.c
   src/test_store_slix_roundtrip.c
+  src/test_store_desfire_roundtrip.c
   src/test_verify_diff.c
   src/test_virtual_loopback.c
   src/test_poller_registry.c
@@ -37,6 +38,9 @@ target_sources(app PRIVATE
   ${REPO_NFC}/protocols/iso15693_3/iso15693_3_poller.c
   ${REPO_NFC}/protocols/slix/slix.c
   ${REPO_NFC}/protocols/slix/slix_poller.c
+  ${REPO_NFC}/protocols/desfire/desfire.c
+  ${REPO_NFC}/protocols/desfire/desfire_listener.c
+  ${REPO_NFC}/protocols/desfire/desfire_poller.c
   ${REPO_NFC}/store/nfc_store.c
   ${REPO_NFC}/applets/nfc_applet_policy.c
   ${REPO_NFC}/applets/nfc_applet_verify_compare.c
@@ -56,5 +60,6 @@ target_include_directories(app PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/../../fixtures/classic
   ${CMAKE_CURRENT_SOURCE_DIR}/../../fixtures/felica
   ${CMAKE_CURRENT_SOURCE_DIR}/../../fixtures/slix
+  ${CMAKE_CURRENT_SOURCE_DIR}/../../fixtures/desfire
   ${NFC_TEST_COMMON_INCLUDES}
 )

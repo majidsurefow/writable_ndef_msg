@@ -30,6 +30,28 @@ config NFC_PROTOCOL_SLIX
 	default n
 	select NFC_PROTOCOL_ISO15693_3
 
+config NFC_PROTOCOL_DESFIRE
+	bool "MIFARE DESFire protocol model (partial emulatable)"
+	default n
+
+config NFC_DESFIRE_MAX_APPS
+	int "Maximum DESFire applications"
+	default 1
+	range 1 4
+	depends on NFC_PROTOCOL_DESFIRE
+
+config NFC_DESFIRE_MAX_FILES_PER_APP
+	int "Maximum DESFire files per application"
+	default 2
+	range 1 8
+	depends on NFC_PROTOCOL_DESFIRE
+
+config NFC_DESFIRE_MAX_FILE_SIZE
+	int "Maximum DESFire file payload"
+	default 64
+	range 16 256
+	depends on NFC_PROTOCOL_DESFIRE
+
 config FELICA_BLOCKS_MAX
 	int "Maximum FeliCa blocks in data model"
 	default 64

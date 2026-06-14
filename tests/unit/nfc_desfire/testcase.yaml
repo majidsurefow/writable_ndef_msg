@@ -1,0 +1,39 @@
+tests:
+  sample.nfc.unit.nfc_desfire.model:
+    tags:
+      - ci_unit
+      - nfc
+      - writable_ndef.nfc.desfire
+    platform_allow:
+      - qemu_cortex_m3
+      - native_sim
+      - native_sim/native
+    integration_platforms:
+      - qemu_cortex_m3
+    extra_args: CONF_FILE=prj_model.conf
+
+  sample.nfc.unit.nfc_desfire.poller:
+    tags:
+      - ci_unit
+      - nfc
+      - writable_ndef.nfc.desfire
+    platform_allow:
+      - qemu_cortex_m3
+      - native_sim
+      - native_sim/native
+    integration_platforms:
+      - qemu_cortex_m3
+    extra_args: CONF_FILE=prj_poller.conf
+
+  sample.nfc.unit.nfc_desfire.listener:
+    tags:
+      - ci_unit
+      - nfc
+      - writable_ndef.nfc.desfire
+    platform_allow:
+      - qemu_cortex_m3
+      - native_sim
+      - native_sim/native
+    integration_platforms:
+      - qemu_cortex_m3
+    extra_args: CONF_FILE=prj_listener.conf

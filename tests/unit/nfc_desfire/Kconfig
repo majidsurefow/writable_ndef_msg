@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: Apache-2.0
+
+mainmenu "DESFire protocol unit tests"
+
+source "Kconfig.zephyr"
+
+config NFC_DESFIRE_TEST_TIER_POLLER
+	bool "Build DESFire poller tier tests"
+	default n
+
+config NFC_DESFIRE_TEST_TIER_LISTENER
+	bool "Build DESFire listener tier tests"
+	default n

@@ -1,0 +1,32 @@
+# MIFARE DESFire protocol — cookbook §5.4 (F3, partial emulatable).
+
+config NFC_PROTOCOL_DESFIRE
+	bool "MIFARE DESFire protocol"
+	default n
+	depends on NFC_STACK
+	help
+	  DESFire EV1/EV2 model, poller (partial clone), and ISO-DEP listener.
+
+if NFC_PROTOCOL_DESFIRE
+
+config NFC_DESFIRE_MAX_APPS
+	int "Maximum applications in card model"
+	default 4
+	range 1 4
+
+config NFC_DESFIRE_MAX_FILES_PER_APP
+	int "Maximum files per application"
+	default 8
+	range 1 8
+
+config NFC_DESFIRE_MAX_FILE_SIZE
+	int "Maximum file payload bytes"
+	default 256
+	range 16 256
+
+config NFC_DESFIRE_FREE_MEMORY
+	int "GetFreeMemory response (bytes)"
+	default 7520
+	range 0 65535
+
+endif
