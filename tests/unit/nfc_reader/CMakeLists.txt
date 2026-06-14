@@ -13,6 +13,7 @@ set(REPO_SRC ${CMAKE_CURRENT_SOURCE_DIR}/../../../src)
 
 target_sources(app PRIVATE
   src/test_store_roundtrip.c
+  src/test_store_import.c
   src/test_store_classic_roundtrip.c
   src/test_store_felica_roundtrip.c
   src/test_store_slix_roundtrip.c
@@ -50,6 +51,7 @@ target_sources(app PRIVATE
   ${REPO_NFC}/protocols/aliro/aliro_listener.c
   ${REPO_NFC}/protocols/aliro/aliro_poller.c
   ${REPO_NFC}/store/nfc_store.c
+  ${REPO_NFC}/store/nfc_persist_name.c
   ${REPO_NFC}/applets/nfc_applet_policy.c
   ${REPO_NFC}/applets/nfc_applet_verify_compare.c
   ${NFC_TEST_COMMON_SOURCES}
@@ -58,6 +60,10 @@ target_sources(app PRIVATE
 
 if(CONFIG_NFC_STORE_RAM)
   target_sources(app PRIVATE ${REPO_NFC}/store/nfc_store_ram.c)
+endif()
+
+if(CONFIG_NFC_STORE_GOLDENS)
+  target_sources(app PRIVATE ${REPO_NFC}/store/nfc_store_golden.c)
 endif()
 
 target_include_directories(app PRIVATE

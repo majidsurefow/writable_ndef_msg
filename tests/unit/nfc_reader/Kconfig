@@ -142,4 +142,9 @@ config NFC_STORE_RAM_SLOT_COUNT
 	depends on NFC_STORE_RAM
 	range 1 16
 
+config NFC_STORE_GOLDENS
+	bool "Compiled-in store goldens for import tests"
+	default n
+	depends on NFC_STORE_RAM
+
 endif
