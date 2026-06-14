@@ -538,24 +538,21 @@ static int desfire_poller_read_wrap(nfc_reader_session_t *session, void *read_ou
 	return desfire_poller_read(session, read_out);
 }
 
+/*
+ * DESFire loopback uses static storage to avoid stack overflow that corrupts
+ * ztest state when CONFIG_SHELL=n reduces the memory layout. The desfire_data_t
+ * structure is ~450 bytes; two on stack caused corruption.
+ */
+static desfire_data_t s_desfire_loopback;
+
 ZTEST(nfc_reader_loopback, test_virtual_loopback_desfire)
 {
-#ifndef CONFIG_SHELL
-	/*
-	 * TODO(P5): DESFire loopback fails only when CONFIG_SHELL=n.
-	 * Other loopback tests (Aliro, EMV, Ultralight, NDEF) pass.
-	 * No shell guards in DESFire or test code — root cause unclear.
-	 * Skip for now; investigate QEMU trace or memory layout differences.
-	 */
-	ztest_test_skip();
-#endif
-	desfire_data_t read;
-	desfire_data_t expected;
 	int ret;
 
-	desfire_data_reset(&read);
-	zassert_ok(desfire_deserialize(&expected, desfire_Desfire_model,
-				       DESFIRE_DESFIRE_MODEL_LEN));
+	desfire_data_reset(&s_desfire_loopback);
+	ret = desfire_deserialize(&s_desfire_loopback, desfire_Desfire_model,
+				  DESFIRE_DESFIRE_MODEL_LEN);
+	zassert_ok(ret, "desfire_deserialize failed: %d", ret);
 
 	ret = nfc_virtual_loopback_run(&(nfc_virtual_loopback_params_t){
 		.listener_svc = desfire_listener_get(),
@@ -566,16 +563,16 @@ ZTEST(nfc_reader_loopback, test_virtual_loopback_desfire)
 		.output_slot = "cloned_desfire",
 		.poller_detect = desfire_poller_detect_wrap,
 		.poller_read = desfire_poller_read_wrap,
-		.read_out = &read,
+		.read_out = &s_desfire_clone,
 		.listener_setup = desfire_listener_setup,
 		.listener_teardown = desfire_listener_teardown,
 		.save_model = &s_desfire_clone,
 		.copy_read_to_save = desfire_copy_read,
-		.expected = &expected,
+		.expected = &s_desfire_loopback,
 		.compare = desfire_compare,
 		.verify_envelope = true,
 	});
-	zassert_ok(ret);
+	zassert_ok(ret, "nfc_virtual_loopback_run failed: %d", ret);
 }
 
 static int emv_clone_serialize(uint8_t *out, size_t out_max, size_t *out_len, void *user_ctx)
