@@ -1000,6 +1000,8 @@ static void build_aliro_poller_expected(aliro_data_t *expected)
 	offset += chunk_len;
 	aliro_vectors_build_auth1_rsp(&expected->transcript[offset], &chunk_len);
 	offset += chunk_len;
+	aliro_vectors_build_exchange_rsp(&expected->transcript[offset], &chunk_len);
+	offset += chunk_len;
 	expected->transcript_len = (uint16_t)offset;
 }
 
