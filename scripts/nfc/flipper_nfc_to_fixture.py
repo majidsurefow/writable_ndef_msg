@@ -59,10 +59,28 @@ CAP_DEFAULT = 0
 CAP_ACCEPT_ALL = 1
 CAP_MISSED = 2
 
+ISO15693_INV_FLAGS = 0x26
+ISO15693_CMD_FLAGS = 0x02
+ISO15693_ADDR_FLAGS = 0x22
+ISO15693_CMD_INVENTORY = 0x01
+ISO15693_CMD_READ = 0x20
+ISO15693_CMD_GET_SYS_INFO = 0x2B
+ISO15693_CMD_GET_BLOCKS_SEC = 0x2C
+ISO15693_BLOCKS_PER_QUERY = 32
+SLIX_CMD_GET_NXP_SYSINFO = 0xAB
+SLIX_CMD_READ_SIGNATURE = 0xBD
+SLIX_NXP_MFG_CODE = 0x04
+
+ISO15693_SYSINFO_FLAG_DSFID = 0x01
+ISO15693_SYSINFO_FLAG_AFI = 0x10
+ISO15693_SYSINFO_FLAG_MEMORY = 0x40
+ISO15693_SYSINFO_FLAG_IC_REF = 0x80
+
 PROTO_OUT_DIRS: dict[str, Path] = {
     "ultralight": REPO_ROOT / "tests" / "fixtures" / "ultralight",
     "felica": REPO_ROOT / "tests" / "fixtures" / "felica",
     "slix": REPO_ROOT / "tests" / "fixtures" / "slix",
+    "iso15693_3": REPO_ROOT / "tests" / "fixtures" / "iso15693_3",
     "hal": REPO_ROOT / "tests" / "fixtures" / "hal",
     "classic": REPO_ROOT / "tests" / "fixtures" / "classic",
 }
@@ -533,35 +551,257 @@ def build_slix_model(meta: dict, stem: str) -> bytes:
     return bytes(buf)
 
 
-def iso15693_read_steps(meta: dict) -> list[tuple[str, bytes]]:
+def iso15693_crc16(data: bytes) -> int:
+    crc = 0xFFFF
+    for b in data:
+        crc ^= b
+        for _ in range(8):
+            if crc & 1:
+                crc = (crc >> 1) ^ 0x8408
+            else:
+                crc >>= 1
+    return (~crc) & 0xFFFF
+
+
+def iso15693_append_crc(payload: bytes) -> bytes:
+    crc = iso15693_crc16(payload)
+    return payload + bytes([crc & 0xFF, (crc >> 8) & 0xFF])
+
+
+def slix_type_from_uid(uid: bytes) -> int:
+    if len(uid) != 8 or uid[0] != 0xE0 or uid[1] != SLIX_NXP_MFG_CODE:
+        return -1
+    mapping = {0x01: 0, 0x02: 1, 0x03: 2, 0x04: 3}
+    return mapping.get(uid[2], 0)
+
+
+def slix_type_has_nxp_sysinfo(slix_type: int) -> bool:
+    return slix_type == 3
+
+
+def slix_type_has_signature(slix_type: int) -> bool:
+    return slix_type == 3
+
+
+def iso15693_framed_steps(meta: dict) -> list[tuple[str, bytes, bytes]]:
     uid = parse_hex_bytes(meta.get("UID", ""))
     dsfid = int(meta.get("DSFID", "0"), 16) if "DSFID" in meta else 0
+    afi = int(meta.get("AFI", "0"), 16) if "AFI" in meta else 0
+    ic_ref = int(meta.get("IC Reference", "0"), 16) if "IC Reference" in meta else 0
     block_count = int(meta.get("Block Count", "0"))
     block_size = int(meta.get("Block Size", "4"), 16)
     data = parse_hex_bytes(meta.get("Data Content", ""))
-    steps = [("iso15693 inventory", bytes([0x00, dsfid]) + uid[::-1])]
-    steps.append(("iso15693 GET_SYSTEM_INFO",
-                  bytes([0x00]) + struct.pack("<H", block_count) + bytes([block_size])))
+    security = parse_hex_bytes(meta.get("Security Status", ""))
+
+    if len(security) < block_count:
+        security = security.ljust(block_count, b"\x00")
+    else:
+        security = security[:block_count]
+
+    steps: list[tuple[str, bytes, bytes]] = []
+    steps.append((
+        "iso15693 inventory",
+        bytes([ISO15693_INV_FLAGS, ISO15693_CMD_INVENTORY]),
+        bytes([0x00, dsfid]) + uid[::-1],
+    ))
+
+    info_flags = ISO15693_SYSINFO_FLAG_DSFID | ISO15693_SYSINFO_FLAG_AFI
+    info_flags |= ISO15693_SYSINFO_FLAG_MEMORY | ISO15693_SYSINFO_FLAG_IC_REF
+    sysinfo_rx = bytearray([0x00, info_flags, dsfid, afi, block_count - 1, block_size - 1, ic_ref])
+    steps.append((
+        "iso15693 GET_SYSTEM_INFO",
+        bytes([ISO15693_CMD_FLAGS, ISO15693_CMD_GET_SYS_INFO]),
+        bytes(sysinfo_rx),
+    ))
+
     for block_num in range(block_count):
         start = block_num * block_size
         payload = data[start:start + block_size].ljust(block_size, b"\x00")
-        steps.append((f"iso15693 READ block {block_num}", bytes([0x00]) + payload))
+        steps.append((
+            f"iso15693 READ block {block_num}",
+            bytes([ISO15693_CMD_FLAGS, ISO15693_CMD_READ, block_num]),
+            bytes([0x00]) + payload,
+        ))
+
+    for start in range(0, block_count, ISO15693_BLOCKS_PER_QUERY):
+        batch = min(block_count - start, ISO15693_BLOCKS_PER_QUERY)
+        steps.append((
+            f"iso15693 GET_BLOCKS_SECURITY start {start}",
+            bytes([ISO15693_CMD_FLAGS, ISO15693_CMD_GET_BLOCKS_SEC, start, batch - 1]),
+            bytes([0x00]) + security[start:start + batch],
+        ))
+
+    return steps
+
+
+def iso15693_read_steps(meta: dict) -> list[tuple[str, bytes]]:
+    return [(label, rx) for label, _tx, rx in iso15693_framed_steps(meta)]
+
+
+def slix_framed_steps(meta: dict, stem: str) -> list[tuple[str, bytes, bytes]]:
+    steps = iso15693_framed_steps(meta)
+    uid = parse_hex_bytes(meta.get("UID", ""))
+    slix_type = slix_type_from_uid(uid)
+    signature = parse_hex_bytes(meta.get("Signature", ""))
+    protection_pointer = int(meta.get("Protection Pointer", "0"), 16) if "Protection Pointer" in meta else 0
+    protection_condition = int(meta.get("Protection Condition", "0"), 16) if "Protection Condition" in meta else 0
+
+    if slix_type_has_nxp_sysinfo(slix_type):
+        tx = bytes([ISO15693_ADDR_FLAGS, SLIX_CMD_GET_NXP_SYSINFO, SLIX_NXP_MFG_CODE]) + uid[::-1]
+        steps.append((
+            "slix GET_NXP_SYSTEM_INFO",
+            tx,
+            bytes([0x00, protection_pointer, protection_condition]),
+        ))
+
+    if slix_type_has_signature(slix_type):
+        tx = bytes([ISO15693_ADDR_FLAGS, SLIX_CMD_READ_SIGNATURE, SLIX_NXP_MFG_CODE]) + uid[::-1]
+        steps.append((
+            "slix READ_SIGNATURE",
+            tx,
+            signature.ljust(32, b"\x00")[:32],
+        ))
+
     return steps
 
 
 def slix_read_steps(meta: dict, stem: str) -> list[tuple[str, bytes]]:
-    steps = iso15693_read_steps(meta)
-    signature = parse_hex_bytes(meta.get("Signature", ""))
-    steps.append(("slix GET_NXP_SYSTEM_INFO", bytes([0x00, 0x0F])))
-    steps.append(("slix READ_SIGNATURE", signature.ljust(32, b"\x00")[:32]))
-    cap = slix_capabilities(meta, stem)
-    if cap == CAP_MISSED:
-        steps.append(("slix CAP missed", b""))
-    elif cap == CAP_ACCEPT_ALL:
-        steps.append(("slix CAP accept all pass", b"\xAC"))
-    else:
-        steps.append(("slix CAP default", b"\x00"))
-    return steps
+    return [(label, rx) for label, _tx, rx in slix_framed_steps(meta, stem)]
+
+
+def framed_steps_to_rx(steps: list[tuple[str, bytes, bytes]]) -> list[tuple[str, bytes]]:
+    return [(label, rx) for label, _tx, rx in steps]
+
+
+def emit_framed_mock_header(prefix: str, stem: str, framed: list[tuple[str, bytes, bytes]],
+                            model: bytes, out_dir: Path) -> None:
+    sym = stem.replace("-", "_")
+    tag = prefix.upper()
+    lines = [
+        f"/* Auto-generated from Flipper {stem}.nfc — do not edit. */",
+        f"#ifndef {tag}_FIXTURE_{sym.upper()}_H_",
+        f"#define {tag}_FIXTURE_{sym.upper()}_H_",
+        "",
+        "#include \"nfc_session_mock.h\"",
+        "",
+        "#include <stddef.h>",
+        "#include <stdint.h>",
+        "",
+        "#include <zephyr/sys/util.h>",
+        "",
+        f"static const uint8_t {prefix}_{sym}_model[] = {{",
+        model_bin_to_inc(model).rstrip(),
+        "};",
+        "",
+        f"#define {tag}_{sym.upper()}_MODEL_LEN sizeof({prefix}_{sym}_model)",
+        "",
+    ]
+    step_refs: list[str] = []
+    for idx, (_label, tx_pre, rx_pre) in enumerate(framed):
+        tx_wire = iso15693_append_crc(tx_pre)
+        rx_wire = iso15693_append_crc(rx_pre)
+        tx_arr = f"{prefix}_{sym}_step{idx}_tx"
+        rx_arr = f"{prefix}_{sym}_step{idx}_rx"
+        lines.append(f"static const uint8_t {tx_arr}[] = {{")
+        lines.append(model_bin_to_inc(tx_wire).rstrip())
+        lines.append("};")
+        lines.append("")
+        lines.append(f"static const uint8_t {rx_arr}[] = {{")
+        if rx_wire:
+            lines.append(model_bin_to_inc(rx_wire).rstrip())
+        lines.append("};")
+        lines.append("")
+        step_refs.append(
+            f"\t{{ .rx = {rx_arr}, .rx_len = sizeof({rx_arr}), .err = 0 }},"
+        )
+    lines.append(f"static const nfc_session_mock_step_t {prefix}_{sym}_read_steps[] = {{")
+    lines.extend(step_refs)
+    lines.append("};")
+    lines.append("")
+    lines.append(
+        f"#define {tag}_{sym.upper()}_READ_STEP_COUNT "
+        f"ARRAY_SIZE({prefix}_{sym}_read_steps)"
+    )
+    lines.append("")
+    for idx, (_label, tx_pre, _rx_pre) in enumerate(framed):
+        tx_wire = iso15693_append_crc(tx_pre)
+        lines.append(
+            f"#define {tag}_{sym.upper()}_STEP{idx}_TX_LEN {len(tx_wire)}U"
+        )
+    lines.append("")
+    lines.append("#endif")
+    lines.append("")
+    out_path = out_dir / f"{stem}_mock.h"
+    out_path.write_text("\n".join(lines), encoding="utf-8")
+    print(f"Wrote {out_path}", file=sys.stderr)
+
+
+def emit_felica_framed_mock_header(stem: str, steps: list[tuple[str, bytes, bytes]],
+                                   model: bytes, out_dir: Path) -> None:
+    sym = stem.replace("-", "_")
+    lines = [
+        f"/* Auto-generated from Flipper {stem}.nfc — do not edit. */",
+        f"#ifndef FELICA_FIXTURE_{sym.upper()}_H_",
+        f"#define FELICA_FIXTURE_{sym.upper()}_H_",
+        "",
+        "#include \"nfc_session_mock.h\"",
+        "",
+        "#include <stddef.h>",
+        "#include <stdint.h>",
+        "",
+        "#include <zephyr/sys/util.h>",
+        "",
+        f"static const uint8_t felica_{sym}_model[] = {{",
+        model_bin_to_inc(model).rstrip(),
+        "};",
+        "",
+        f"#define FELICA_{sym.upper()}_MODEL_LEN sizeof(felica_{sym}_model)",
+        "",
+    ]
+    step_refs: list[str] = []
+    for idx, (_label, tx_payload, rx_payload) in enumerate(steps):
+        tx_arr = f"felica_{sym}_step{idx}_tx"
+        rx_arr = f"felica_{sym}_step{idx}_rx"
+        lines.append(f"static const uint8_t {tx_arr}[] = {{")
+        if tx_payload:
+            lines.append(model_bin_to_inc(tx_payload).rstrip())
+        lines.append("};")
+        lines.append("")
+        lines.append(f"static const uint8_t {rx_arr}[] = {{")
+        if rx_payload:
+            lines.append(model_bin_to_inc(rx_payload).rstrip())
+        lines.append("};")
+        lines.append("")
+        step_refs.append(f"\t{{ .rx = {rx_arr}, .rx_len = sizeof({rx_arr}), .err = 0 }},")
+    lines.append(f"static const nfc_session_mock_step_t felica_{sym}_read_steps[] = {{")
+    lines.extend(step_refs)
+    lines.append("};")
+    lines.append("")
+    lines.append(
+        f"#define FELICA_{sym.upper()}_READ_STEP_COUNT "
+        f"ARRAY_SIZE(felica_{sym}_read_steps)"
+    )
+    lines.append("")
+    lines.append(f"static const uint8_t *const felica_{sym}_read_tx_steps[] = {{")
+    for idx in range(len(steps)):
+        lines.append(f"\tfelica_{sym}_step{idx}_tx,")
+    lines.append("};")
+    lines.append("")
+    lines.append(f"static const size_t felica_{sym}_read_tx_lens[] = {{")
+    for idx, (_label, tx_payload, _rx_payload) in enumerate(steps):
+        lines.append(f"\tsizeof(felica_{sym}_step{idx}_tx),")
+    lines.append("};")
+    lines.append("")
+    lines.append(
+        f"#define FELICA_{sym.upper()}_READ_TX_STEP_COUNT "
+        f"ARRAY_SIZE(felica_{sym}_read_tx_steps)"
+    )
+    lines.append("")
+    lines.append("#endif")
+    lines.append("")
+    out_path = out_dir / f"{stem}_mock.h"
+    out_path.write_text("\n".join(lines), encoding="utf-8")
+    print(f"Wrote {out_path}", file=sys.stderr)
 
 
 def emit_protocol_mock_header(prefix: str, stem: str, steps: list[tuple[str, bytes]],
@@ -930,10 +1170,14 @@ def emit_fixture(meta: dict, out_dir: Path, stem: str, *, write_card_bin: bool) 
         steps = ultralight_read_steps(meta)
     elif proto == "felica":
         model = build_felica_model(meta)
-        steps = felica_read_steps(meta)
+        framed = felica_framed_read_steps(meta)
+        steps = [(label, rx) for label, _tx, rx in framed]
+        _felica_framed = framed
     elif proto == "slix":
         model = build_slix_model(meta, stem)
-        steps = slix_read_steps(meta, stem)
+        framed = slix_framed_steps(meta, stem)
+        steps = [(label, rx) for label, _tx, rx in framed]
+        _slix_framed = framed
     elif proto == "hal":
         model = build_hal_signal_model(meta, stem)
         steps = hal_signal_read_steps(meta)
@@ -957,9 +1201,32 @@ def emit_fixture(meta: dict, out_dir: Path, stem: str, *, write_card_bin: bool) 
     elif proto == "classic":
         emit_classic_mock_header(stem, steps, model, out_dir)
     elif proto == "felica":
-        emit_protocol_mock_header("felica", stem, steps, model, out_dir)
+        emit_felica_framed_mock_header(stem, _felica_framed, model, out_dir)
+        framed_inc = out_dir / f"{stem}_framed.inc"
+        framed_lines = ["/* Tier B framed FeliCa TX/RX — one STEP per transceive */"]
+        for idx, (label, tx, rx) in enumerate(_felica_framed):
+            framed_lines.append(f"/* STEP {idx}: {label} */")
+            framed_lines.append("/* TX */")
+            framed_lines.append(bytes_to_inc(tx, f"{label} TX").rstrip())
+            framed_lines.append("/* RX */")
+            framed_lines.append(bytes_to_inc(rx, f"{label} RX").rstrip())
+        framed_inc.write_text("\n".join(framed_lines) + "\n", encoding="utf-8")
+        print(f"Wrote {framed_inc}", file=sys.stderr)
     elif proto == "slix":
-        emit_protocol_mock_header("slix", stem, steps, model, out_dir)
+        emit_framed_mock_header("slix", stem, _slix_framed, model, out_dir)
+        if stem == "Slix_cap_default":
+            parent_model = build_iso15693_model(meta)
+            parent_framed = iso15693_framed_steps(meta)
+            parent_dir = PROTO_OUT_DIRS["iso15693_3"]
+            parent_dir.mkdir(parents=True, exist_ok=True)
+            emit_framed_mock_header("iso15693", stem, parent_framed, parent_model, parent_dir)
+            parent_read = parent_dir / f"{stem}_read.inc"
+            parent_read.write_text(read_inc_steps(framed_steps_to_rx(parent_framed)),
+                                   encoding="utf-8")
+            parent_model_path = parent_dir / f"{stem}_model.bin"
+            parent_model_path.write_bytes(parent_model)
+            print(f"Wrote {parent_model_path} ({len(parent_model)} bytes)", file=sys.stderr)
+            print(f"Wrote {parent_read} ({len(parent_framed)} steps)", file=sys.stderr)
     print(f"Wrote {model_path} ({len(model)} bytes)", file=sys.stderr)
     print(f"Wrote {read_path} ({len(steps)} steps)", file=sys.stderr)
 

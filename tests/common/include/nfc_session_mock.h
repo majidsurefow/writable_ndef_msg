@@ -17,7 +17,7 @@
 extern "C" {
 #endif
 
-#define NFC_SESSION_MOCK_MAX_TX 16U
+#define NFC_SESSION_MOCK_MAX_TX 32U
 
 typedef struct {
 	const uint8_t *rx;
