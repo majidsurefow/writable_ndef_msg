@@ -1,95 +1,55 @@
 # protocols/desfire — CONTEXT
 
-**Layer:** L0 (protocol model) · **Lifecycle:** full
+**Layer:** L0 (protocol model) · **Lifecycle:** full · **Status: SHIPPED**
 
 ## Purpose
 
-MIFARE DESFire protocol: application/file-based data model (PICC info, applications, files), serialize/deserialize, poller (reader partial clone), and ISO-DEP listener (card emulation). **Partially emulatable**—public file contents can be emulated; encrypted auth not replayed.
+MIFARE DESFire protocol: application/file-based data model (PICC info, applications, files), serialize/deserialize, keyless poller (reader partial clone), and ISO-DEP listener (card emulation). **Partially emulatable** — public file contents with free-read access (`0x0E`) are captured and emulated; encrypted/MAC comm and AES auth are not replayed.
 
 ## Key files
 
 | File | Owns |
 |------|------|
-| `desfire.c` | Data model: `desfire_t` struct, PICC info, app/file trees, serialize/deserialize |
-| `desfire.h` | Public types, model API, capacity symbols |
-| `desfire_poller.c` | Reader poller: GetVersion, GetApplicationIDs, SelectApplication, GetFileIDs, GetFileSettings, ReadData (keyless partial) |
-| `desfire_poller.h` | Poller API: `desfire_poller_read` |
-| `desfire_listener.c` | ISO-DEP listener: responds to DESFire APDU commands |
-| `desfire_listener.h` | Listener API: `desfire_listener_load`, `desfire_listener_on_apdu` |
+| `desfire.c` | Data model: `desfire_data_t`, PICC info, app/file trees, serialize/deserialize |
+| `desfire_poller.c` | Keyless poller SM: PICC → apps → files (standard/backup/value/record) |
+| `desfire_poller_i.c` | APDU transceive, `0x91AF` chunking, READ_DATA/GET_VALUE/READ_RECORDS |
+| `desfire_listener.c` | ISO-DEP listener: PICC/app/file commands, VALUE/RECORD file types |
 
-## Kconfig
+## Auth / capture policy
 
-| Symbol | Default | Effect |
-|--------|---------|--------|
-| `NFC_PROTOCOL_DESFIRE` | n | Gate model + poller + listener |
-| `NFC_DESFIRE_MAX_APPS` | 4 | Max applications in model |
-| `NFC_DESFIRE_MAX_FILES_PER_APP` | 8 | Max files per application |
-| `NFC_DESFIRE_MAX_FILE_SIZE` | 256 | Max file payload bytes |
-| `NFC_DESFIRE_FREE_MEMORY` | 7520 | GetFreeMemory response |
+| Path | Behavior |
+|------|----------|
+| **Keyless golden** | `MfDesfire_EV1_sample.nfc`: access `0E 0E`, no keys in model; poller reads app/file payloads without AUTH |
+| **Auth required** | Master/app key settings or file access ≠ free → poller skips with log; listener returns `91 AE` |
+| **Crypto auth** | Listener stub: AUTH step1 only when `master_key` non-zero; no full AES session replay |
 
-## Deps
-
-- **Upstream (calls):** None (standalone)
-- **Downstream (called by):** `nfc_reader` (poller registry), `nfc_router` (AID dispatch), `nfc_store`
-
-## Invariants & safety
-
-- **Buffers:** App/file counts validated against Kconfig limits
-- **Error propagation:** Functions return negative errno; file not found → `-ENOENT`
-
-## Roles
-
-- **Poller:** `desfire_poller.c` (Tier B) — reader ISO-DEP
-- **Listener:** `desfire_listener.c` (Tier C) — ISO-DEP emulation
-
-## Wire/spec
-
-- NXP MIFARE DESFire EV1/EV2/EV3 datasheet
-- **Emulatable:** Yes (partial; public files only, no encrypted auth replay)
-
-## Capacity symbols
-
-| CONFIG_NFC_DESFIRE_* | Default | Bound it protects |
-|----------------------|---------|-------------------|
-| `MAX_APPS` | 4 | Application array size |
-| `MAX_FILES_PER_APP` | 8 | File array per app |
-| `MAX_FILE_SIZE` | 256 | File data buffer |
+Flipper poller never authenticates; our poller matches that keyless path for the sample fixture.
 
 ## Fixtures ↔ goldens
 
-- **Flipper:** `tests/fixtures/nfc/flipper/MfDesfire_EV1_sample.nfc` (hand golden; converter deferred)
-- **Generated:** Reader-captured card via `nfc read` (PICC + apps/files when access allows)
-- **Loopback:** `tests/common/nfc_virtual_loopback` (poller↔listener)
+- **Flipper:** `tests/fixtures/nfc/flipper/MfDesfire_EV1_sample.nfc` → `tests/fixtures/desfire/` + `tests/fixtures/store/MfDesfire_EV1_sample.card.bin`
+- **Generated:** `flipper_nfc_to_fixture.py --input …/MfDesfire_EV1_sample.nfc --card-bin`
+- **Loopback:** E+ `test_virtual_loopback_desfire` with `desfire_compare` (UID, PICC, app/file payloads)
+
+## Tests that prove it
+
+| Test | Tier | Proves |
+|------|------|--------|
+| `sample.nfc.unit.nfc_desfire.model` | A | Serialize/deserialize, app/file bounds |
+| `sample.nfc.unit.nfc_desfire.poller` | B | 13-TX keyless read (PICC + app + file) |
+| `sample.nfc.unit.nfc_desfire.listener` | C | SELECT, READ_DATA, GET_VALUE, READ_RECORDS |
+| `sample.nfc.unit.nfc_reader.store` | E | DESFire store roundtrip |
+| `sample.nfc.unit.nfc_reader.store` | E+ | `test_virtual_loopback_desfire` deep compare |
+
+**Twister dir:** `tests/unit/nfc_desfire`, `tests/unit/nfc_reader`
 
 ## Profile membership
 
 - **Reader (`NFC_PROFILE_READER`):** Yes (poller compiled)
-- **CE (`NFC_PROFILE_CARD_EMULATION`):** Yes (emulate subset)
-
-## Tests that prove it
-
-| Test | Tier | Profile gate | Proves |
-|------|------|--------------|--------|
-| `sample.nfc.unit.nfc_desfire.model` | A (model) | `NFC_PROTOCOL_DESFIRE` | Serialize/deserialize, app/file bounds |
-| `sample.nfc.unit.nfc_desfire.poller` | B (poller) | `+NFC_DESFIRE_TEST_TIER_POLLER` | Poller command sequence, file read |
-| `sample.nfc.unit.nfc_desfire.listener` | C (listener) | `+NFC_DESFIRE_TEST_TIER_LISTENER` | Listener APDU responses |
-
-**Tier counts:** 3 configs, 30 cases (model + poller + listener).
-**Twister dir:** `tests/unit/nfc_desfire`
+- **CE (`NFC_PROFILE_CARD_EMULATION`):** Yes (public files; no encrypted auth replay)
 
 ## Live HIL
 
 - **Tag:** MIFARE DESFire EV1/EV2
-- **Golden:** Reader-captured `.card`
-- **Overlay:** `overlay-pn7160-stack.conf` (reader); `+overlay-pn7160-listen.conf` (emulate)
-- **Shell sequence:**
-  ```
-  nfc read tag1 → nfc stack stop → nfc emulate tag1
-  nfc_transport stats  # apdu_assembled > 0
-  nfc check tag1  # PASS
-  ```
-- **PASS criteria:** External reader performs app/file SELECT; emulated responses match stored
-
-## Shell
-
-Pointer: `src/nfc/applets/nfc_applet_shell_cmds.c` under `NFC_APPLETS_SHELL`. DESFire via `nfc read`, `nfc emulate`, `nfc loop`.
+- **Golden:** Reader-captured or Flipper `.nfc` → `.card.bin`
+- **PASS criteria:** External reader SELECT app/file; emulated responses match stored public payloads
