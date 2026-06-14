@@ -71,7 +71,7 @@ Aliro credential protocol: data model (public key, endpoint configuration, auth 
 | `sample.nfc.unit.nfc_aliro.poller` | B (poller) | `+NFC_ALIRO_TEST_TIER_POLLER` | Poller AUTH capture sequence |
 | `sample.nfc.unit.nfc_aliro.listener` | C (listener) | `+NFC_ALIRO_TEST_TIER_LISTENER` | Listener AUTH0/AUTH1/EXCHANGE responses |
 
-**Tier counts:** 3 configs, 19 cases (model + poller + listener).
+**Tier counts:** 3 configs, 30+ cases (model + poller + listener).
 **Twister dir:** `tests/unit/nfc_aliro`
 
 ## Live HIL
@@ -93,13 +93,14 @@ Aliro listener implements the **same protocol** as the NCS `aliro/` tree (Aliro 
 | Aspect | NCS `aliro/` tree | This protocol module |
 |--------|-------------------|---------------------|
 | Language | C++ | C (MISRA-compliant) |
-| Crypto | C++ PSA wrappers | Direct PSA Crypto API |
+| Crypto | C++ PSA wrappers | Direct PSA Crypto API (production); deterministic vectors when `CONFIG_NFC_ALIRO_PROTOCOL_VERIFIED=n` |
 | Key storage | kpersistent_manager | PSA persistent keys (`NFC_ALIRO_PSA_KEY_CREDENTIAL_PRIVATE`) |
 | Work queue | `aliro_work/` C++ | `nfc_stack_wq` (HAL-owned, C) |
 | Build gate | `DOOR_LOCK_ALIRO_*` | `NFC_PROTOCOL_ALIRO` |
 | License | GPL-derived reference | Clean-room reimplementation |
+| Golden sources | NCS integration captures | wave5 synthetic fixtures (`aliro_vectors.h`); not Flipper |
 
-**Intent parity:** Both implement the Aliro 0.9.4 NFC expedited AUTH flow (AUTH0 → AUTH1 → optional EXCHANGE). This module is **not a GPL port**—it is a behavioral reference implementation for the NFC stack's listener architecture.
+**NCS parity deltas (read-only audit):** AUTH0/AUTH1 deferred crypto timing matches NCS `aliro_work` pattern; expedited SELECT uses `00 00` prefix without `90 00` trailer (virtual loopback / PICC path). EXCHANGE (`0x82`) and step-up AID remain deferred.
 
 ## Shell
 
