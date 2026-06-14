@@ -351,6 +351,8 @@ P3 is a read-only audit phase. All findings confirm correct implementation per C
 |----------|---------|-------|--------|
 | NDEF | 3/3 | 87/87 | **PASS** |
 | Ultralight | 2/2 | 32/32 | **PASS** |
+
+**P1 Ultralight auth (done):** NTAG21x `PWD_AUTH` + partial read at AUTH0; `Ntag213_locked` golden `pages_read=4`; auth-aware fixture generator. **Remaining:** Ultralight C 3DES (`0x1A`/`0xAF`), native T2 RF harness (E+ stays T4).
 | Classic | 2/2 | 17/17 | **PASS** |
 | FeliCa | 2/2 | 13/13 | **PASS** |
 | SLIX | 2/2 | 18/18 | **PASS** |

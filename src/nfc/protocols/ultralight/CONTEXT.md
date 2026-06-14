@@ -37,8 +37,13 @@ MIFARE Ultralight / NTAG protocol: page-based data model (UID, pages, OTP, count
 
 ## Roles
 
-- **Poller:** `ultralight_poller.c` (Tier B) — reader NFC-A, READ/FAST_READ
+- **Poller:** `ultralight_poller.c` (Tier B) — reader NFC-A, READ; NTAG21x PWD_AUTH (`0x1B`) before protected pages; partial read stops at AUTH0 when auth fails (Flipper parity: `Ntag213_locked` → `pages_read=4`)
 - **Listener:** `ultralight_listener.c` (Tier C) — T4T NDEF adapter (not native T2)
+
+## Deferred
+
+- **Ultralight C 3DES** (`0x1A`/`0xAF`): not implemented; AUTH probe steps deferred
+- **Native T2 RF harness** (`nfc_t2t_lib`): E+ loopback remains NDEF T4 adapter
 
 ## Wire/spec
 

@@ -55,7 +55,7 @@ See `scripts/nfc/flipper_nfc_to_fixture.py --help`. After upstream Flipper updat
 | `Ultralight_11.nfc` | `tests/fixtures/ultralight/` | pending F1 | pending F1 | yes |
 | `Ultralight_21.nfc` | yes | pending F1 | pending F1 | yes |
 | `Ultralight_C.nfc` | yes | pending F1 | pending F1 | yes |
-| `Ntag213_locked.nfc` | yes | pending F1 | pending F1 | yes |
+| `Ntag213_locked.nfc` | yes | **Tier B auth partial** | pending F1 (E+ T4) | yes |
 | `Ntag215.nfc` | yes | pending F1 | pending F1 | yes |
 | `Ntag216.nfc` | yes | pending F1 | pending F1 | yes |
 | `Felica.nfc` | `tests/fixtures/felica/` | pending F4 | **SKIP** | yes |
