@@ -17,3 +17,7 @@ config ISO15693_BLOCK_SIZE_MAX
 config NFC_ISO15693_3_TEST_TIER_POLLER
 	bool "Build ISO15693-3 poller tier tests"
 	default n
+
+config NFC_ISO15693_3_TEST_TIER_LISTENER
+	bool "Build ISO15693-3 listener tier tests"
+	default n

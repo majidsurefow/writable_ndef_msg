@@ -41,6 +41,7 @@ uint8_t iso15693_3_persist_id(void);
 int iso15693_3_serialize(const iso15693_3_data_t *data, uint8_t *out, size_t out_max,
 			 size_t *out_len);
 int iso15693_3_deserialize(iso15693_3_data_t *data, const uint8_t *in, size_t in_len);
+int iso15693_3_compare(const iso15693_3_data_t *expected, const iso15693_3_data_t *actual);
 
 const nfc_service_t *iso15693_3_service_get(void);
 

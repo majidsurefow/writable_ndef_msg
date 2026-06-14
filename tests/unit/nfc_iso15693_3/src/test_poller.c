@@ -71,12 +71,21 @@ ZTEST(iso15693_poller, test_read_golden)
 			  (size_t)s_expected.block_count * (size_t)s_expected.block_size);
 	zassert_mem_equal(s_data.block_security, s_expected.block_security, s_expected.block_count);
 
+	zassert_equal(nfc_session_mock_tx_count(), 85U);
 	assert_tx_matches(0U, iso15693_Slix_cap_default_step0_tx,
 			  ISO15693_SLIX_CAP_DEFAULT_STEP0_TX_LEN);
 	assert_tx_matches(1U, iso15693_Slix_cap_default_step1_tx,
 			  ISO15693_SLIX_CAP_DEFAULT_STEP1_TX_LEN);
 	assert_tx_matches(2U, iso15693_Slix_cap_default_step2_tx,
 			  ISO15693_SLIX_CAP_DEFAULT_STEP2_TX_LEN);
+	assert_tx_matches(41U, iso15693_Slix_cap_default_step41_tx,
+			  ISO15693_SLIX_CAP_DEFAULT_STEP41_TX_LEN);
+	assert_tx_matches(82U, iso15693_Slix_cap_default_step82_tx,
+			  ISO15693_SLIX_CAP_DEFAULT_STEP82_TX_LEN);
+	assert_tx_matches(83U, iso15693_Slix_cap_default_step83_tx,
+			  ISO15693_SLIX_CAP_DEFAULT_STEP83_TX_LEN);
+	assert_tx_matches(84U, iso15693_Slix_cap_default_step84_tx,
+			  ISO15693_SLIX_CAP_DEFAULT_STEP84_TX_LEN);
 }
 
 ZTEST_SUITE(iso15693_poller, NULL, NULL, poller_before, NULL, NULL);

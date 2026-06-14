@@ -27,6 +27,8 @@ extern "C" {
 #define ISO15693_SYSINFO_FLAG_MEMORY   0x40U
 #define ISO15693_SYSINFO_FLAG_IC_REF   0x80U
 
+#define ISO15693_ADDR_FLAG_ADDRESSED   0x20U
+#define ISO15693_INV_FLAG_INVENTORY    0x04U
 #define ISO15693_RESP_FLAG_ERROR       0x01U
 
 uint16_t iso15693_3_crc16(const uint8_t *data, size_t len);

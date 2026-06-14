@@ -22,6 +22,15 @@ if(CONFIG_NFC_ISO15693_3_TEST_TIER_POLLER)
     ${REPO_NFC}/protocols/iso15693_3/iso15693_3_poller.c
     ${REPO_NFC}/protocols/iso15693_3/iso15693_3_poller_i.c
   )
+  target_compile_definitions(app PRIVATE NFC_SESSION_MOCK_MAX_TX=96)
+endif()
+
+if(CONFIG_NFC_ISO15693_3_TEST_TIER_LISTENER)
+  target_sources(app PRIVATE
+    src/test_listener.c
+    ${REPO_NFC}/protocols/iso15693_3/iso15693_3_poller_i.c
+    ${REPO_NFC}/protocols/iso15693_3/iso15693_3_listener.c
+  )
 endif()
 
 target_include_directories(app PRIVATE

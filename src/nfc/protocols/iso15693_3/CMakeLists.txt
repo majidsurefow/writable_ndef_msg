@@ -4,6 +4,7 @@
 zephyr_library_sources_ifdef(CONFIG_NFC_PROTOCOL_ISO15693_3 iso15693_3.c)
 zephyr_library_sources_ifdef(CONFIG_NFC_PROTOCOL_ISO15693_3 iso15693_3_poller.c)
 zephyr_library_sources_ifdef(CONFIG_NFC_PROTOCOL_ISO15693_3 iso15693_3_poller_i.c)
+zephyr_library_sources_ifdef(CONFIG_NFC_PROTOCOL_ISO15693_3 iso15693_3_listener.c)
 
 zephyr_library_include_directories_ifdef(CONFIG_NFC_PROTOCOL_ISO15693_3
   ${CMAKE_CURRENT_SOURCE_DIR}

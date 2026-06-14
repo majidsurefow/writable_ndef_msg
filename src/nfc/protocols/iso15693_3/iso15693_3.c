@@ -131,6 +131,44 @@ int iso15693_3_deserialize(iso15693_3_data_t *data, const uint8_t *in, size_t in
 	return 0;
 }
 
+int iso15693_3_compare(const iso15693_3_data_t *expected, const iso15693_3_data_t *actual)
+{
+	size_t data_len;
+
+	if ((expected == NULL) || (actual == NULL)) {
+		return -EINVAL;
+	}
+
+	if (memcmp(expected->uid, actual->uid, ISO15693_UID_SIZE) != 0) {
+		return -EBADMSG;
+	}
+	if (expected->dsfid != actual->dsfid) {
+		return -EBADMSG;
+	}
+	if (expected->afi != actual->afi) {
+		return -EBADMSG;
+	}
+	if (expected->ic_ref != actual->ic_ref) {
+		return -EBADMSG;
+	}
+	if (expected->block_count != actual->block_count) {
+		return -EBADMSG;
+	}
+	if (expected->block_size != actual->block_size) {
+		return -EBADMSG;
+	}
+
+	data_len = (size_t)expected->block_count * (size_t)expected->block_size;
+	if (memcmp(expected->block_data, actual->block_data, data_len) != 0) {
+		return -EBADMSG;
+	}
+	if (memcmp(expected->block_security, actual->block_security, expected->block_count) != 0) {
+		return -EBADMSG;
+	}
+
+	return 0;
+}
+
 const nfc_service_t *iso15693_3_service_get(void)
 {
 	return &s_iso15693_svc;
