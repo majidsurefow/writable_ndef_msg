@@ -17,6 +17,11 @@
 #include "protocols/ultralight/ultralight_poller.h"
 #endif
 
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_CLASSIC)
+#include "protocols/classic/classic.h"
+#include "protocols/classic/classic_poller.h"
+#endif
+
 #if IS_ENABLED(CONFIG_NFC_STORE)
 #include "store/nfc_store.h"
 #endif
@@ -75,6 +80,49 @@ static int ultralight_poller_detect_stub(const nfc_reader_session_t *session)
 }
 
 static int ultralight_poller_read_stub(const nfc_reader_session_t *session, void *out)
+{
+	ARG_UNUSED(session);
+	ARG_UNUSED(out);
+
+	return -ENOTSUP;
+}
+#endif
+
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_CLASSIC)
+static int classic_poller_read_wrap(const nfc_reader_session_t *session, void *out)
+{
+	return classic_poller_read(session, out);
+}
+
+static int classic_poller_clone(const nfc_reader_session_t *session, const char *tag)
+{
+	classic_data_t data;
+	const nfc_service_t *svcs[] = { classic_service_get() };
+	int ret;
+
+	classic_data_reset(&data);
+	ret = classic_poller_read(session, &data);
+	if (ret != 0) {
+		LOG_WRN("Classic poller read failed: %d", ret);
+		return ret;
+	}
+
+	ret = nfc_store_save(tag, svcs, ARRAY_SIZE(svcs));
+	if (ret != 0) {
+		LOG_ERR("nfc_store_save failed: %d", ret);
+	}
+
+	return ret;
+}
+#else
+static int classic_poller_detect_stub(const nfc_reader_session_t *session)
+{
+	ARG_UNUSED(session);
+
+	return -ENOTSUP;
+}
+
+static int classic_poller_read_stub(const nfc_reader_session_t *session, void *out)
 {
 	ARG_UNUSED(session);
 	ARG_UNUSED(out);
@@ -145,6 +193,27 @@ static const nfc_reader_poller_entry_t s_pollers[] = {
 		.clone_fn = NULL,
 #endif
 	},
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_CLASSIC)
+	{
+		.name = "classic",
+		.persist_id = NFC_PERSIST_ID_CLASSIC,
+		.tech_mask = NFC_TECH_ISO14443_3A_RAW,
+		.detect = classic_poller_detect,
+		.read = classic_poller_read_wrap,
+		.listener_get = NULL,
+		.clone_fn = classic_poller_clone,
+	},
+#else
+	{
+		.name = "classic",
+		.persist_id = NFC_PERSIST_ID_CLASSIC,
+		.tech_mask = NFC_TECH_ISO14443_3A_RAW,
+		.detect = classic_poller_detect_stub,
+		.read = classic_poller_read_stub,
+		.listener_get = NULL,
+		.clone_fn = NULL,
+	},
+#endif
 	{
 		.detect = NULL,
 	},

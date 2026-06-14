@@ -13,6 +13,16 @@ config NFC_PROTOCOL_ULTRALIGHT
 	default n
 	select NFC_PROTOCOL_NDEF
 
+config NFC_PROTOCOL_CLASSIC
+	bool "MIFARE Classic protocol model (clone-only)"
+	default n
+
+config NFC_CLASSIC_BLOCK_COUNT
+	int "Maximum Classic blocks in data model"
+	default 256
+	range 64 256
+	depends on NFC_PROTOCOL_CLASSIC
+
 config NFC_ULTRALIGHT_MAX_PAGES
 	int "Maximum Ultralight pages in data model"
 	default 256

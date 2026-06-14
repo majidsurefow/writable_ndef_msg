@@ -92,7 +92,7 @@ int nfc_virtual_loopback_init(void)
 	int ret;
 
 	ret = nfc_store_init(NULL);
-	if (ret != 0) {
+	if ((ret != 0) && (ret != -EALREADY)) {
 		return ret;
 	}
 

@@ -13,7 +13,9 @@ set(REPO_NFC ${CMAKE_CURRENT_SOURCE_DIR}/../../../src/nfc)
 target_sources(app PRIVATE
   src/test_model.c
   ${REPO_NFC}/protocols/classic/classic.c
+  ${REPO_NFC}/protocols/classic/classic_i.c
   ${REPO_NFC}/protocols/classic/crypto1.c
+  ${REPO_NFC}/protocols/classic/iso14443_crc.c
   ${NFC_TEST_COMMON_SOURCES}
 )
 

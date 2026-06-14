@@ -23,6 +23,7 @@ ZTEST(nfc_reader_registry, test_pollers_table_clone_hooks)
 	const nfc_reader_poller_entry_t *pollers = nfc_reader_pollers_get();
 	bool found_ndef = false;
 	bool found_ultralight = false;
+	bool found_classic = false;
 
 	for (const nfc_reader_poller_entry_t *e = pollers; e->detect != NULL; e++) {
 		if (strcmp(e->name, "ndef") == 0) {
@@ -33,10 +34,15 @@ ZTEST(nfc_reader_registry, test_pollers_table_clone_hooks)
 			found_ultralight = true;
 			zassert_not_null(e->clone_fn, "Ultralight poller needs clone_fn");
 		}
+		if (strcmp(e->name, "classic") == 0) {
+			found_classic = true;
+			zassert_not_null(e->clone_fn, "Classic poller needs clone_fn");
+		}
 	}
 
 	zassert_true(found_ndef, "NDEF poller registered");
 	zassert_true(found_ultralight, "Ultralight poller registered");
+	zassert_true(found_classic, "Classic poller registered");
 }
 
 ZTEST(nfc_reader_registry, test_pollers_run_no_session)
