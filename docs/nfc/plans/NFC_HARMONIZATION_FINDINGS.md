@@ -180,7 +180,89 @@ P2 is a read-only audit phase. All findings confirm correct implementation per C
 
 ## P3 — Reader + Stack + Run + Store CONTEXT.md
 
-**Status:** PENDING
+**Status:** DONE  
+**Date:** 2026-06-14  
+**Exit gate:**
+- `west twister -T tests/unit/nfc_reader -t ci_unit -p qemu_cortex_m3 --no-sysbuild` → **PASS** (2/2 configs, 97/97 cases)
+
+### Deliverables
+
+| Directory | CONTEXT.md | Lines |
+|-----------|------------|-------|
+| `src/nfc/reader/` | Created | ~55 |
+| `src/nfc/nfc_stack/` | Created | ~50 |
+| `src/nfc/run/` | Created | ~40 |
+| `src/nfc/store/` | Created | ~60 |
+
+### Audit Findings (D.4 Checklist)
+
+#### A. Buffer Bounds
+
+| Finding | File | Severity | Notes |
+|---------|------|----------|-------|
+| Tag name length validated | `nfc_reader_engine.c:273`, `nfc_store.c:120` | OK | `strlen(tag) >= sizeof(buffer)` → `-EINVAL` |
+| Staging buffer size checked | `nfc_store.c:475` | OK | Entry overflow → `-ENOMEM` with stats |
+| RAM slot blob size checked | `nfc_store_ram.c:82` | OK | `len > CONFIG_NFC_STORE_BLOB_SIZE` → `-ENOSPC` |
+
+#### B. Error Propagation
+
+| Finding | File | Severity | Notes |
+|---------|------|----------|-------|
+| errno returned consistently | all | OK | Functions return negative errno |
+| Stats track errors | `nfc_store.c`, `nfc_stack.c` | OK | `error_count`, `last_error_code` |
+| CRC mismatch → `-EBADMSG` | `nfc_store.c:217` | OK | `corrupt_blob_count` stat incremented |
+
+#### C. Session/State
+
+| Finding | File | Severity | Notes |
+|---------|------|----------|-------|
+| Reader scan/read/clone `-EBUSY` | `nfc_reader_engine.c:210,277,330` | OK | Atomics guard single-flight |
+| Stack state machine | `nfc_stack.c` | OK | `UNINITIALIZED→INITIALIZED→STARTED→STOPPED→ERROR` |
+| Store quiescent check | `nfc_store.c:101-108` | OK | `nfc_stack_get_state() == STARTED` → `-EBUSY` |
+| Stack load/save guards | `nfc_stack.c:381,415` | OK | `STARTED` → `-EBUSY` |
+
+#### D. Kconfig↔CMake Consistency
+
+| Finding | File | Severity | Notes |
+|---------|------|----------|-------|
+| Reader sources gated | `reader/CMakeLists.txt` | OK | `if(CONFIG_NFC_READER)` |
+| Shell gated separately | `reader/CMakeLists.txt:7` | OK | `if(CONFIG_NFC_READER_SHELL)` |
+| Stack sources gated | `nfc_stack/CMakeLists.txt` | OK | `zephyr_library_sources_ifdef(CONFIG_NFC_LISTEN_STACK ...)` |
+| Store RAM shell gated | `store/CMakeLists.txt:6` | OK | `zephyr_library_sources_ifdef(CONFIG_NFC_STORE_RAM_SHELL ...)` |
+| Run workq gated | `run/CMakeLists.txt` | OK | `if(CONFIG_NFC_STACK)` |
+
+#### E. Shell Leakage
+
+| Finding | File | Severity | Notes |
+|---------|------|----------|-------|
+| `nfc_store.c` no shell include | `nfc_store.c` | OK | Phase A made default save inert (`-ENODEV`) |
+| `nfc_store_ram.c` shell gated | `nfc_store_ram.c:183-264` | OK | `#if IS_ENABLED(CONFIG_NFC_STORE_RAM_SHELL)` around shell code |
+| `nfc_reader_engine.c` no shell | `nfc_reader_engine.c` | OK | No shell include |
+| `nfc_stack.c` no shell | `nfc_stack.c` | OK | No shell include |
+| Shell adapters isolated | `*_shell_cmds.c` | OK | All shell code in dedicated files under `*_SHELL` gates |
+
+#### F. Test Fidelity
+
+| Finding | Tier | Notes |
+|---------|------|-------|
+| `nfc_reader.store` Tier E | store roundtrip | 9-protocol serialize→save→load→deserialize |
+| `nfc_reader.store_ram` Tier E | RAM backend | Slot management + overlay-store-ram.conf |
+| `test_verify_diff.c` | E | Verify/check diff logic |
+| `test_poller_registry.c` | E | Poller detect dispatch |
+
+### Architecture Observations
+
+1. **Work queue centralization:** All blocking NFC operations funnel through `nfc_stack_wq_get()` in `run/`. This is the single-flight enforcement point for poll vs listen mutual exclusion (at engine level, not kernel level).
+
+2. **Buffer ownership path:** `reader_engine` → poller registry → protocol `_poller_read` → listener `_load` → `nfc_store_save` → `s_staging_buf`. Buffer is copied at each boundary; no pointer aliasing across work items.
+
+3. **Quiescent check pattern:** Both `nfc_store_save/load` and `nfc_stack_load/save` check `nfc_stack_get_state() == STARTED` → `-EBUSY`. This prevents serialize/deserialize during active card emulation.
+
+4. **Default save callback design:** `nfc_store_default_save()` returns `-ENODEV` (inert). Real backends (RAM) or shell adapters register their own callbacks. This is the Phase A shell leak fix.
+
+### No Code Changes Required
+
+P3 is a read-only audit phase. All findings confirm correct implementation per CONVENTIONS and Master Plan D.4 checklist.
 
 ---
 
@@ -221,7 +303,7 @@ P2 is a read-only audit phase. All findings confirm correct implementation per C
 | A | DONE | 97/97 baseline |
 | P1 | DONE | 97/97, imply chains verified |
 | P2 | DONE | pn7160_tml 9/9, nfc_apdu_asm 4/4; 4× CONTEXT.md |
-| P3 | PENDING | — |
+| P3 | DONE | 97/97 (verified); 4× CONTEXT.md |
 | P4 | PENDING | — |
 | P4b | PENDING | — |
 | P5 | PENDING | — |
