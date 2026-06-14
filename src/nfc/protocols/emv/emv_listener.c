@@ -103,8 +103,8 @@ static void emv_listener_on_select(const uint8_t *aid, size_t aid_len, void *use
 		return;
 	}
 
-	if ((aid_len == EMV_SERVICE_APP_AID_LEN) &&
-	    (memcmp(aid, emv_service_app_aid, EMV_SERVICE_APP_AID_LEN) == 0)) {
+	if ((aid_len == s_image.app_aid_len) &&
+	    (memcmp(aid, s_image.app_aid, aid_len) == 0)) {
 		s_session = EMV_SESSION_APP_SELECTED;
 		emv_listener_send(s_app_fci, s_app_fci_len, NFC_SW_OK);
 		return;
