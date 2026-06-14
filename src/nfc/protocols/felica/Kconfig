@@ -1,0 +1,18 @@
+# FeliCa protocol — cookbook §5.7 (F4, clone-only).
+
+config NFC_PROTOCOL_FELICA
+	bool "FeliCa protocol model"
+	default n
+	depends on NFC_STACK
+	help
+	  FeliCa Lite block dump model and poller (reader only).
+	  No listener — clone-only.
+
+if NFC_PROTOCOL_FELICA
+
+config FELICA_BLOCKS_MAX
+	int "Maximum FeliCa blocks in data model"
+	default 64
+	range 16 64
+
+endif

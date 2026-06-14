@@ -29,10 +29,11 @@ typedef uint32_t nfc_tech_t;
 #define NFC_TECH_ISO14443_3A_RAW BIT(1)
 #define NFC_TECH_ISO14443_3B_RAW BIT(2)
 #define NFC_TECH_TYPE2           BIT(3)
+#define NFC_TECH_TYPE3_FELICA    BIT(4)
 #define NFC_TECH_ISO15693        BIT(5)
 #define NFC_TECH_ALL_READER      (NFC_TECH_ISO_DEP_A | NFC_TECH_ISO14443_3A_RAW | \
 				  NFC_TECH_ISO14443_3B_RAW | NFC_TECH_TYPE2 | \
-				  NFC_TECH_ISO15693)
+				  NFC_TECH_TYPE3_FELICA | NFC_TECH_ISO15693)
 
 /** Listen response payload limit (PN7160 TML). NFCT backend BUILD_ASSERTs T4T equivalence. */
 #define NFC_TRANSPORT_MAX_RESPONSE_LEN 255U
