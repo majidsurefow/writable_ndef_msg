@@ -48,16 +48,47 @@ static const uint8_t ultralight_Ntag213_locked_step0_rx[] = {
 0x00U, 0x04U, 0x04U, 0x02U, 0x01U, 0x00U, 0x0FU, 0x03U,
 };
 
+static const uint8_t ultralight_Ntag213_locked_step0_tx[] = {
+0x60U,
+};
+
 static const uint8_t ultralight_Ntag213_locked_step1_rx[] = {
 0x04U, 0xACU, 0x6BU, 0x4BU, 0x72U, 0xBAU, 0x6CU, 0x80U,
 0x24U, 0x48U, 0x00U, 0x00U, 0xE1U, 0x10U, 0x12U, 0x00U,
 };
 
+static const uint8_t ultralight_Ntag213_locked_step1_tx[] = {
+0x30U, 0x00U,
+};
+
+static const uint8_t ultralight_Ntag213_locked_step2_rx[] = {
+0x00U,
+};
+
+static const uint8_t ultralight_Ntag213_locked_step2_tx[] = {
+0x30U, 0x04U,
+};
+
 static const nfc_session_mock_step_t ultralight_Ntag213_locked_read_steps[] = {
 	{ .rx = ultralight_Ntag213_locked_step0_rx, .rx_len = sizeof(ultralight_Ntag213_locked_step0_rx), .err = 0 },
 	{ .rx = ultralight_Ntag213_locked_step1_rx, .rx_len = sizeof(ultralight_Ntag213_locked_step1_rx), .err = 0 },
+	{ .rx = ultralight_Ntag213_locked_step2_rx, .rx_len = sizeof(ultralight_Ntag213_locked_step2_rx), .err = 0 },
 };
 
 #define ULTRALIGHT_NTAG213_LOCKED_READ_STEP_COUNT ARRAY_SIZE(ultralight_Ntag213_locked_read_steps)
+
+static const uint8_t *const ultralight_Ntag213_locked_read_tx_steps[] = {
+	ultralight_Ntag213_locked_step0_tx,
+	ultralight_Ntag213_locked_step1_tx,
+	ultralight_Ntag213_locked_step2_tx,
+};
+
+static const size_t ultralight_Ntag213_locked_read_tx_lens[] = {
+	sizeof(ultralight_Ntag213_locked_step0_tx),
+	sizeof(ultralight_Ntag213_locked_step1_tx),
+	sizeof(ultralight_Ntag213_locked_step2_tx),
+};
+
+#define ULTRALIGHT_NTAG213_LOCKED_READ_TX_STEP_COUNT ARRAY_SIZE(ultralight_Ntag213_locked_read_tx_steps)
 
 #endif

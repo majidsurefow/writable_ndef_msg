@@ -40,6 +40,16 @@ from nfc_persist_ids import (
 from mf_classic_crypto1 import Crypto1, cuid_from_uid, iso14443_crc_a
 from ndef_to_card_bin import build_card_envelope
 
+try:
+    from ultralight_3des import auth_probe_response, encrypt, decrypt, shift_data
+except ImportError:
+    auth_probe_response = None
+
+UL_TEST_RNDA = bytes(range(8))
+UL_TEST_RNDB = bytes([0x10 + i for i in range(8)])
+UL_TEST_KEY = bytes(16)
+_UL_AUTH_CONT_TX = b""
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FLIPPER_DIR = REPO_ROOT / "tests" / "fixtures" / "nfc" / "flipper"
 STORE_DIR = REPO_ROOT / "tests" / "fixtures" / "store"
@@ -197,11 +207,18 @@ def emit_ultralight_mock_header(stem: str, steps: list[tuple[str, bytes]], model
         "",
     ]
     step_refs: list[str] = []
-    for idx, (_label, payload) in enumerate(steps):
+    for idx, (label, payload) in enumerate(steps):
         arr = f"ultralight_{sym}_step{idx}_rx"
         lines.append(f"static const uint8_t {arr}[] = {{")
         if payload:
             lines.append(model_bin_to_inc(payload).rstrip())
+        lines.append("};")
+        lines.append("")
+        tx_arr = f"ultralight_{sym}_step{idx}_tx"
+        tx_payload = ultralight_build_tx(label)
+        lines.append(f"static const uint8_t {tx_arr}[] = {{")
+        if tx_payload:
+            lines.append(model_bin_to_inc(tx_payload).rstrip())
         lines.append("};")
         lines.append("")
         step_refs.append(
@@ -214,6 +231,21 @@ def emit_ultralight_mock_header(stem: str, steps: list[tuple[str, bytes]], model
     lines.append(
         f"#define ULTRALIGHT_{sym.upper()}_READ_STEP_COUNT "
         f"ARRAY_SIZE(ultralight_{sym}_read_steps)"
+    )
+    lines.append("")
+    lines.append(f"static const uint8_t *const ultralight_{sym}_read_tx_steps[] = {{")
+    for idx, (_label, _payload) in enumerate(steps):
+        lines.append(f"\tultralight_{sym}_step{idx}_tx,")
+    lines.append("};")
+    lines.append("")
+    lines.append(f"static const size_t ultralight_{sym}_read_tx_lens[] = {{")
+    for idx, (_label, _payload) in enumerate(steps):
+        lines.append(f"\tsizeof(ultralight_{sym}_step{idx}_tx),")
+    lines.append("};")
+    lines.append("")
+    lines.append(
+        f"#define ULTRALIGHT_{sym.upper()}_READ_TX_STEP_COUNT "
+        f"ARRAY_SIZE(ultralight_{sym}_read_tx_steps)"
     )
     lines.append("")
     lines.append("#endif")
@@ -276,6 +308,69 @@ def build_ultralight_model(meta: dict) -> bytes:
     return bytes(buf)
 
 
+def ultralight_is_mful_c(meta: dict) -> bool:
+    device = meta.get("Device type", "")
+    ntag_type = meta.get("NTAG/Ultralight type", "")
+    return "Ultralight C" in device or "Ultralight C" in ntag_type
+
+
+def ultralight_build_tx(label: str) -> bytes:
+    if label in ("ultralight GET_VERSION", "ultralight GET_VERSION fail"):
+        return bytes([0x60])
+    if label == "ultralight AUTH test":
+        return bytes([0x1A, 0x00])
+    if label == "ultralight AUTH start":
+        return bytes([0x1A, 0x00])
+    if label == "ultralight AUTH cont":
+        return _UL_AUTH_CONT_TX if _UL_AUTH_CONT_TX else bytes([0xAF]) + bytes(16)
+    if label == "ultralight READ_SIG":
+        return bytes([0x3C, 0x00])
+    if label.startswith("ultralight READ_CNT "):
+        return bytes([0x39, int(label.rsplit(" ", 1)[-1])])
+    if label.startswith("ultralight CHECK_TEARING "):
+        return bytes([0x3E, int(label.rsplit(" ", 1)[-1])])
+    if label.startswith("ultralight PWD_AUTH "):
+        parts = label.split()
+        if len(parts) >= 6:
+            pwd = bytes(int(p, 16) for p in parts[2:6])
+            return bytes([0x1B]) + pwd
+        return bytes([0x1B, 0xFF, 0xFF, 0xFF, 0xFF])
+    if label.startswith("ultralight READ page "):
+        parts = label.split()
+        if parts[-1] == "fail":
+            page = int(parts[-2])
+        elif parts[-1] == "probe":
+            page = 41
+        else:
+            page = int(parts[-1])
+        return bytes([0x30, page])
+    return b""
+
+
+def ultralight_auth_rx_steps() -> list[tuple[str, bytes]]:
+    global _UL_AUTH_CONT_TX
+    if auth_probe_response is None:
+        return []
+    probe = auth_probe_response(UL_TEST_KEY, UL_TEST_RNDB)
+    enc_rnd_b = probe[1:]
+    iv0 = b"\x00" * 8
+    rnd_b = decrypt(UL_TEST_KEY, iv0, enc_rnd_b)
+    shifted_b = shift_data(rnd_b)
+    output = bytearray(16)
+    output[:8] = UL_TEST_RNDA
+    output[8:] = shifted_b
+    enc_out = encrypt(UL_TEST_KEY, enc_rnd_b, bytes(output))
+    _UL_AUTH_CONT_TX = bytes([0xAF]) + enc_out
+    shifted_a = shift_data(bytes(UL_TEST_RNDA))
+    enc_resp = encrypt(UL_TEST_KEY, enc_out[8:16], shifted_a)
+    finish = bytes([0x00]) + enc_resp
+    return [
+        ("ultralight AUTH test", probe),
+        ("ultralight AUTH start", probe),
+        ("ultralight AUTH cont", finish),
+    ]
+
+
 def ultralight_locked_auth0(meta: dict) -> int | None:
     """Return AUTH0 page index when tag has password protection, else None."""
     pages_map: dict[int, bytes] = meta.get("pages", {})
@@ -292,6 +387,8 @@ def ultralight_locked_auth0(meta: dict) -> int | None:
 
     if auth0 == 0xFF:
         return None
+    if auth0 < 0x03:
+        return None
     if auth0 >= pages_total:
         return None
     if prot or auth0 < pages_total:
@@ -299,7 +396,37 @@ def ultralight_locked_auth0(meta: dict) -> int | None:
     return None
 
 
-def ultralight_read_steps(meta: dict) -> list[tuple[str, bytes]]:
+def ultralight_insert_pwd_auth_step(steps: list[tuple[str, bytes]], meta: dict,
+                                    pages_total: int) -> list[tuple[str, bytes]]:
+    auth0 = ultralight_locked_auth0(meta)
+    if auth0 is None:
+        return steps
+
+    auth0_page = pages_total - 4
+    pack_page = pages_total - 1
+    pwd_page = pages_total - 2
+    pages_map: dict[int, bytes] = meta.get("pages", {})
+    pack_bytes = pages_map.get(pack_page, b"\x00\x00")[:2]
+    pwd_bytes = pages_map.get(pwd_page, b"\x00\x00\x00\x00")[:4]
+    if len(pack_bytes) < 2:
+        pack_bytes = pack_bytes.ljust(2, b"\x00")
+    if len(pwd_bytes) < 4:
+        pwd_bytes = pwd_bytes.ljust(4, b"\x00")
+    pwd_label = "ultralight PWD_AUTH " + " ".join(f"{b:02x}" for b in pwd_bytes)
+
+    out: list[tuple[str, bytes]] = []
+    inserted = False
+    for label, rx in steps:
+        if (not inserted) and label.startswith("ultralight READ page "):
+            page = int(label.split()[-1])
+            if page > auth0_page:
+                out.append((pwd_label, pack_bytes))
+                inserted = True
+        out.append((label, rx))
+    return out
+
+
+def ultralight_read_steps(meta: dict, stem: str) -> list[tuple[str, bytes]]:
     pages_map: dict[int, bytes] = meta.get("pages", {})
     pages_total = int(meta.get("Pages total", len(pages_map)))
     steps: list[tuple[str, bytes]] = []
@@ -320,18 +447,21 @@ def ultralight_read_steps(meta: dict) -> list[tuple[str, bytes]]:
         steps.append(("ultralight GET_VERSION", version))
     else:
         steps.append(("ultralight GET_VERSION fail", b""))
-        page41 = b"".join(pages_map.get(p, b"\x00" * 4) for p in range(41, min(45, pages_total)))
-        page41 = page41.ljust(16, b"\x00")
-        steps.append(("ultralight READ page 41 probe", page41))
-        if pages_total > 47:
-            page47 = b"".join(pages_map.get(p, b"\x00" * 4) for p in range(47, min(51, pages_total)))
-            page47 = page47.ljust(16, b"\x00")
-            steps.append(("ultralight READ page 47 probe", page47))
+        if ultralight_is_mful_c(meta):
+            steps.extend(ultralight_auth_rx_steps())
+        else:
+            steps.append(("ultralight AUTH test", b"\x00"))
+            page41 = b"".join(pages_map.get(p, b"\x00" * 4) for p in range(41, min(45, pages_total)))
+            page41 = page41.ljust(16, b"\x00")
+            steps.append(("ultralight READ page 41 probe", page41))
 
     auth0 = ultralight_locked_auth0(meta)
-    read_limit = pages_total
-    if auth0 is not None:
-        read_limit = auth0
+    read_limit = int(meta.get("Pages total", len(pages_map)))
+    if "locked" in stem.lower():
+        if auth0 is not None:
+            read_limit = auth0
+        else:
+            read_limit = int(meta.get("Pages read", read_limit))
 
     for start in range(0, read_limit, 4):
         chunk = b"".join(pages_map.get(p, b"\x00" * 4) for p in range(start, min(start + 4, pages_total)))
@@ -339,7 +469,8 @@ def ultralight_read_steps(meta: dict) -> list[tuple[str, bytes]]:
             chunk = chunk.ljust(16, b"\x00")
         steps.append((f"ultralight READ page {start}", chunk))
 
-    if auth0 is not None:
+    if auth0 is not None and "locked" in stem.lower():
+        steps.append((f"ultralight READ page {auth0} fail", b"\x00"))
         return steps
 
     if len(version) == 8 and any(version):
@@ -350,6 +481,9 @@ def ultralight_read_steps(meta: dict) -> list[tuple[str, bytes]]:
         for i in range(3):
             flag = tearings[i] if i < len(tearings) else 0
             steps.append((f"ultralight CHECK_TEARING {i}", bytes([flag])))
+
+    if "locked" not in stem.lower():
+        steps = ultralight_insert_pwd_auth_step(steps, meta, pages_total)
 
     return steps
 
@@ -1167,7 +1301,7 @@ def emit_fixture(meta: dict, out_dir: Path, stem: str, *, write_card_bin: bool) 
 
     if proto == "ultralight":
         model = build_ultralight_model(meta)
-        steps = ultralight_read_steps(meta)
+        steps = ultralight_read_steps(meta, stem)
     elif proto == "felica":
         model = build_felica_model(meta)
         framed = felica_framed_read_steps(meta)
@@ -1241,7 +1375,10 @@ def emit_fixture(meta: dict, out_dir: Path, stem: str, *, write_card_bin: bool) 
         card_path.write_bytes(card)
         card_inc = STORE_DIR / f"{stem}_card.inc"
         card_inc.write_text(model_bin_to_inc(card), encoding="utf-8")
+        fixture_card = out_dir / f"{stem}.card.bin"
+        fixture_card.write_bytes(card)
         print(f"Wrote {card_path} ({len(card)} bytes)", file=sys.stderr)
+        print(f"Wrote {fixture_card} ({len(card)} bytes)", file=sys.stderr)
         print(f"Wrote {card_inc}", file=sys.stderr)
     elif proto == "hal":
         print(f"Skipped .card.bin for HAL signal fixture {stem}", file=sys.stderr)

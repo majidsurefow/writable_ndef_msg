@@ -44,34 +44,64 @@ static const uint8_t ultralight_Ultralight_C_model[] = {
 static const uint8_t ultralight_Ultralight_C_step0_rx[] = {
 };
 
+static const uint8_t ultralight_Ultralight_C_step0_tx[] = {
+0x60U,
+};
+
 static const uint8_t ultralight_Ultralight_C_step1_rx[] = {
-0x00U, 0x00U, 0x00U, 0x00U, 0x05U, 0x00U, 0x00U, 0x00U,
-0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+0xAFU, 0x3BU, 0x96U, 0x7DU, 0x9CU, 0xCCU, 0x84U, 0x42U,
+0x93U,
+};
+
+static const uint8_t ultralight_Ultralight_C_step1_tx[] = {
+0x1AU, 0x00U,
 };
 
 static const uint8_t ultralight_Ultralight_C_step2_rx[] = {
-0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
-0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+0xAFU, 0x3BU, 0x96U, 0x7DU, 0x9CU, 0xCCU, 0x84U, 0x42U,
+0x93U,
+};
+
+static const uint8_t ultralight_Ultralight_C_step2_tx[] = {
+0x1AU, 0x00U,
 };
 
 static const uint8_t ultralight_Ultralight_C_step3_rx[] = {
+0x00U, 0xB7U, 0x86U, 0x17U, 0x55U, 0xAAU, 0x23U, 0x7FU,
+0xE1U,
+};
+
+static const uint8_t ultralight_Ultralight_C_step3_tx[] = {
+0xAFU, 0x3DU, 0x8DU, 0x26U, 0x48U, 0xA6U, 0xF6U, 0x81U,
+0x6EU, 0xE1U, 0x6FU, 0x5EU, 0x05U, 0xC7U, 0x44U, 0x32U,
+0xA2U,
+};
+
+static const uint8_t ultralight_Ultralight_C_step4_rx[] = {
 0x04U, 0xBAU, 0xFFU, 0xC9U, 0xCAU, 0x4DU, 0x5DU, 0x80U,
 0x5AU, 0x48U, 0x00U, 0x00U, 0xE1U, 0x10U, 0x12U, 0x00U,
 };
 
-static const uint8_t ultralight_Ultralight_C_step4_rx[] = {
+static const uint8_t ultralight_Ultralight_C_step4_tx[] = {
+0x30U, 0x00U,
+};
+
+static const uint8_t ultralight_Ultralight_C_step5_rx[] = {
 0x01U, 0x03U, 0xA0U, 0x0CU, 0x34U, 0x03U, 0x00U, 0xFEU,
 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
 };
 
-static const uint8_t ultralight_Ultralight_C_step5_rx[] = {
-0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
-0x00U, 0x00U, 0xBEU, 0xAFU, 0x00U, 0x00U, 0x00U, 0x00U,
+static const uint8_t ultralight_Ultralight_C_step5_tx[] = {
+0x30U, 0x04U,
 };
 
 static const uint8_t ultralight_Ultralight_C_step6_rx[] = {
 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
-0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+0x00U, 0x00U, 0xBEU, 0xAFU, 0x00U, 0x00U, 0x00U, 0x00U,
+};
+
+static const uint8_t ultralight_Ultralight_C_step6_tx[] = {
+0x30U, 0x08U,
 };
 
 static const uint8_t ultralight_Ultralight_C_step7_rx[] = {
@@ -79,9 +109,17 @@ static const uint8_t ultralight_Ultralight_C_step7_rx[] = {
 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
 };
 
+static const uint8_t ultralight_Ultralight_C_step7_tx[] = {
+0x30U, 0x0CU,
+};
+
 static const uint8_t ultralight_Ultralight_C_step8_rx[] = {
 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+};
+
+static const uint8_t ultralight_Ultralight_C_step8_tx[] = {
+0x30U, 0x10U,
 };
 
 static const uint8_t ultralight_Ultralight_C_step9_rx[] = {
@@ -89,9 +127,17 @@ static const uint8_t ultralight_Ultralight_C_step9_rx[] = {
 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
 };
 
+static const uint8_t ultralight_Ultralight_C_step9_tx[] = {
+0x30U, 0x14U,
+};
+
 static const uint8_t ultralight_Ultralight_C_step10_rx[] = {
 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+};
+
+static const uint8_t ultralight_Ultralight_C_step10_tx[] = {
+0x30U, 0x18U,
 };
 
 static const uint8_t ultralight_Ultralight_C_step11_rx[] = {
@@ -99,19 +145,44 @@ static const uint8_t ultralight_Ultralight_C_step11_rx[] = {
 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
 };
 
+static const uint8_t ultralight_Ultralight_C_step11_tx[] = {
+0x30U, 0x1CU,
+};
+
 static const uint8_t ultralight_Ultralight_C_step12_rx[] = {
 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
 };
 
+static const uint8_t ultralight_Ultralight_C_step12_tx[] = {
+0x30U, 0x20U,
+};
+
 static const uint8_t ultralight_Ultralight_C_step13_rx[] = {
 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
-0x05U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+};
+
+static const uint8_t ultralight_Ultralight_C_step13_tx[] = {
+0x30U, 0x24U,
 };
 
 static const uint8_t ultralight_Ultralight_C_step14_rx[] = {
 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+0x05U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+};
+
+static const uint8_t ultralight_Ultralight_C_step14_tx[] = {
+0x30U, 0x28U,
+};
+
+static const uint8_t ultralight_Ultralight_C_step15_rx[] = {
 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
+};
+
+static const uint8_t ultralight_Ultralight_C_step15_tx[] = {
+0x30U, 0x2CU,
 };
 
 static const nfc_session_mock_step_t ultralight_Ultralight_C_read_steps[] = {
@@ -130,8 +201,49 @@ static const nfc_session_mock_step_t ultralight_Ultralight_C_read_steps[] = {
 	{ .rx = ultralight_Ultralight_C_step12_rx, .rx_len = sizeof(ultralight_Ultralight_C_step12_rx), .err = 0 },
 	{ .rx = ultralight_Ultralight_C_step13_rx, .rx_len = sizeof(ultralight_Ultralight_C_step13_rx), .err = 0 },
 	{ .rx = ultralight_Ultralight_C_step14_rx, .rx_len = sizeof(ultralight_Ultralight_C_step14_rx), .err = 0 },
+	{ .rx = ultralight_Ultralight_C_step15_rx, .rx_len = sizeof(ultralight_Ultralight_C_step15_rx), .err = 0 },
 };
 
 #define ULTRALIGHT_ULTRALIGHT_C_READ_STEP_COUNT ARRAY_SIZE(ultralight_Ultralight_C_read_steps)
+
+static const uint8_t *const ultralight_Ultralight_C_read_tx_steps[] = {
+	ultralight_Ultralight_C_step0_tx,
+	ultralight_Ultralight_C_step1_tx,
+	ultralight_Ultralight_C_step2_tx,
+	ultralight_Ultralight_C_step3_tx,
+	ultralight_Ultralight_C_step4_tx,
+	ultralight_Ultralight_C_step5_tx,
+	ultralight_Ultralight_C_step6_tx,
+	ultralight_Ultralight_C_step7_tx,
+	ultralight_Ultralight_C_step8_tx,
+	ultralight_Ultralight_C_step9_tx,
+	ultralight_Ultralight_C_step10_tx,
+	ultralight_Ultralight_C_step11_tx,
+	ultralight_Ultralight_C_step12_tx,
+	ultralight_Ultralight_C_step13_tx,
+	ultralight_Ultralight_C_step14_tx,
+	ultralight_Ultralight_C_step15_tx,
+};
+
+static const size_t ultralight_Ultralight_C_read_tx_lens[] = {
+	sizeof(ultralight_Ultralight_C_step0_tx),
+	sizeof(ultralight_Ultralight_C_step1_tx),
+	sizeof(ultralight_Ultralight_C_step2_tx),
+	sizeof(ultralight_Ultralight_C_step3_tx),
+	sizeof(ultralight_Ultralight_C_step4_tx),
+	sizeof(ultralight_Ultralight_C_step5_tx),
+	sizeof(ultralight_Ultralight_C_step6_tx),
+	sizeof(ultralight_Ultralight_C_step7_tx),
+	sizeof(ultralight_Ultralight_C_step8_tx),
+	sizeof(ultralight_Ultralight_C_step9_tx),
+	sizeof(ultralight_Ultralight_C_step10_tx),
+	sizeof(ultralight_Ultralight_C_step11_tx),
+	sizeof(ultralight_Ultralight_C_step12_tx),
+	sizeof(ultralight_Ultralight_C_step13_tx),
+	sizeof(ultralight_Ultralight_C_step14_tx),
+	sizeof(ultralight_Ultralight_C_step15_tx),
+};
+
+#define ULTRALIGHT_ULTRALIGHT_C_READ_TX_STEP_COUNT ARRAY_SIZE(ultralight_Ultralight_C_read_tx_steps)
 
 #endif

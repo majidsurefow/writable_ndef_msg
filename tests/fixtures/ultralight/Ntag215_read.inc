@@ -134,31 +134,34 @@
 /* ultralight READ page 128 */
 0x5EU, 0x48U, 0x95U, 0xDAU, 0x96U, 0x6AU, 0x26U, 0x85U,
 0x01U, 0x00U, 0x0FU, 0xBDU, 0x00U, 0x00U, 0x00U, 0x04U,
-/* STEP 34: ultralight READ page 132 */
+/* STEP 34: ultralight PWD_AUTH 00 00 00 00 */
+/* ultralight PWD_AUTH 00 00 00 00 */
+0x00U, 0x00U,
+/* STEP 35: ultralight READ page 132 */
 /* ultralight READ page 132 */
 0x5FU, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U, 0x00U,
-/* STEP 35: ultralight READ_SIG */
+/* STEP 36: ultralight READ_SIG */
 /* ultralight READ_SIG */
 0x42U, 0x21U, 0xE4U, 0x6CU, 0x79U, 0x6AU, 0x81U, 0x5EU,
 0xEAU, 0x0DU, 0x93U, 0x6DU, 0x85U, 0xEEU, 0x4BU, 0x0CU,
 0x2AU, 0x00U, 0xD5U, 0x77U, 0xF1U, 0xC5U, 0x67U, 0xF3U,
 0x63U, 0x75U, 0xF8U, 0xEBU, 0x86U, 0x48U, 0x5EU, 0x6BU,
-/* STEP 36: ultralight READ_CNT 0 */
+/* STEP 37: ultralight READ_CNT 0 */
 /* ultralight READ_CNT 0 */
 0x00U, 0x00U, 0x00U,
-/* STEP 37: ultralight READ_CNT 1 */
+/* STEP 38: ultralight READ_CNT 1 */
 /* ultralight READ_CNT 1 */
 0x00U, 0x00U, 0x00U,
-/* STEP 38: ultralight READ_CNT 2 */
+/* STEP 39: ultralight READ_CNT 2 */
 /* ultralight READ_CNT 2 */
 0x00U, 0x00U, 0x00U,
-/* STEP 39: ultralight CHECK_TEARING 0 */
+/* STEP 40: ultralight CHECK_TEARING 0 */
 /* ultralight CHECK_TEARING 0 */
 0x00U,
-/* STEP 40: ultralight CHECK_TEARING 1 */
+/* STEP 41: ultralight CHECK_TEARING 1 */
 /* ultralight CHECK_TEARING 1 */
 0x00U,
-/* STEP 41: ultralight CHECK_TEARING 2 */
+/* STEP 42: ultralight CHECK_TEARING 2 */
 /* ultralight CHECK_TEARING 2 */
 0x00U,
