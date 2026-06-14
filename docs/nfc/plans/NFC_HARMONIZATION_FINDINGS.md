@@ -599,7 +599,54 @@ Proves L1 applet code compiles and runs without shell. Exercises all store round
 
 ## P6 — Full QEMU Green + CI + Doc Drift
 
-**Status:** PENDING
+**Status:** DONE  
+**Date:** 2026-06-14  
+**Exit gate:** `west twister -T tests/unit -t ci_unit -p qemu_cortex_m3 --no-sysbuild` → **PASS** (24 configs, 392/392 cases)
+
+### Full Twister Results
+
+```
+INFO    - 24 test scenarios (24 configurations) selected
+INFO    - 24 of 24 executed test configurations passed (100.00%)
+INFO    - 392 of 392 executed test cases passed (100.00%)
+```
+
+| Suite | Configs | Cases |
+|-------|---------|-------|
+| nfc_ndef | 3 | 87 |
+| nfc_ultralight | 2 | 32 |
+| nfc_classic | 2 | 17 |
+| nfc_felica | 2 | 13 |
+| nfc_slix | 2 | 18 |
+| nfc_desfire | 3 | 30 |
+| nfc_emv | 3 | 17 |
+| nfc_aliro | 3 | 19 |
+| nfc_reader | 3 | 155 |
+| nfc_apdu_asm | 1 | 4 |
+| pn7160_tml | — | — |
+| **Total** | **24** | **392** |
+
+### CI Changes
+
+Added `tests/unit/nfc_apdu_asm` to `.github/workflows/twister.yaml` `UNIT_DIRS` array (line 160). CI matrix now has 11 unit test directories.
+
+### Doc Drift Fixes
+
+| Doc | Issue | Fix Applied |
+|-----|-------|-------------|
+| `CI_TESTING.md` | Said "Local only" for NFC stack tests | Updated to "Active in CI"; added CI unit matrix section listing all 11 dirs |
+| `NFC_HAL_GUIDE.md` | Gate 3 listen status said "drops only" | Updated to "implemented"; added overlay matrix table |
+| `NFC_APPLETS_AND_TESTING.md` | Outdated ztest counts (said "13 ztests") | Added actual counts (392 total); updated Tier E owner to 59 ztests |
+| `tests/unit/nfc_reader/README.md` | Said "13 ztests" | Updated to "59 ztests across 12 source files"; added full test inventory |
+| `tests/fixtures/nfc/flipper/README.md` | `nfc_nfca_signal_long.nfc` row malformed (2 cols) | Fixed to 5 columns matching table format |
+| `plans/2026-06-14-nfc-sequential-execution.md` | Stale shell names (`nfc verify`, `nfc reader clone`) | Updated to locked names (`nfc check`, `nfc scan start/stop`, dropped `reader clone`) |
+
+### Verification
+
+All doc fixes are consistent with:
+- Phase A locked applet names (`scan start/stop`, `read`, `emulate`, `loop`, `check`)
+- DROPPED commands: `nfc reader clone`, `nfc verify` (product), blocking `nfc scan`
+- Actual test counts from twister output
 
 ---
 
@@ -619,6 +666,6 @@ Proves L1 applet code compiles and runs without shell. Exercises all store round
 | P3 | DONE | 97/97 (verified); 4× CONTEXT.md |
 | P4 | DONE | 20 configs, 233 cases; 9× protocol CONTEXT.md; parity matrix |
 | P4b | DONE | 97/97; applets CONTEXT.md; grep audit + shell-off build PASS |
-| P5 | PENDING | — |
-| P6 | PENDING | — |
+| P5 | DONE | 155/156 cases (3 configs); CMake guards; headless tests |
+| P6 | DONE | **24 configs, 392/392 cases**; CI updated (nfc_apdu_asm); 6 doc drift fixes |
 | P7 | PENDING | — |

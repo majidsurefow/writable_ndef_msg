@@ -63,7 +63,7 @@ See `scripts/nfc/flipper_nfc_to_fixture.py --help`. After upstream Flipper updat
 | `Slix_cap_missed.nfc` | yes | pending F4 | **SKIP** | yes |
 | `Slix_cap_accept_all_pass.nfc` | yes | pending F4 | **SKIP** | yes |
 | `nfc_nfca_signal_short.nfc` | `tests/fixtures/hal/` | pending (HAL) | n/a | n/a |
-| `nfc_nfca_signal_long.nfc` | NFC-A signal capture (long) |
+| `nfc_nfca_signal_long.nfc` | `tests/fixtures/hal/` | pending (HAL) | n/a | n/a |
 | `MfClassic_1K_4b.nfc` | `tests/fixtures/classic/` | F2 Tier A/B | **SKIP** | yes |
 
 Full policy: [NFC_APPLETS_AND_TESTING.md](../../../docs/nfc/NFC_APPLETS_AND_TESTING.md) — per-card Flipper parity.

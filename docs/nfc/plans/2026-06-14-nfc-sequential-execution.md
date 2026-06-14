@@ -128,11 +128,11 @@ Expected: NFCT listen overlay builds (hardware optional for runtime).
 - `src/nfc/protocols/ndef/ndef.h`, `ndef.c`, `ndef_poller.c`, `CMakeLists.txt`, `Kconfig`
 - `src/nfc/store/nfc_store.h`, `nfc_store.c` (minimal envelope)
 - Modify: `src/nfc/reader/nfc_reader_engine.c` — poller walk after session active
-- Modify: `src/nfc/reader/nfc_reader_shell_cmds.c` — `nfc reader clone` (alias of `nfc read`)
+- Modify: `src/nfc/reader/nfc_reader_shell_cmds.c` — `nfc reader scan/detect` DK primitives
 
 **Exit tests:**
-- `nfc scan` / `nfc reader scan` → session active → `nfc_reader_session_transceive` works (tag present)
-- `nfc read tag1` / `nfc reader clone tag1` → valid `.card` hex blob
+- `nfc scan start` / `nfc reader scan` → session active → `nfc_reader_session_transceive` works (tag present)
+- `nfc read tag1` → valid `.card` hex blob
 - Unit: `ndef` serialize round-trip ztest
 - `west twister -T "$REPO/tests/unit/..." -t ci_unit`
 
@@ -166,22 +166,22 @@ Expected: NFCT listen overlay builds (hardware optional for runtime).
 
 | Applet | Behavior |
 |--------|----------|
-| `nfc scan` | Discover + print tag info (UID, tech, interface) |
-| `nfc read <slot>` | Scan + poller walk + `nfc_store_save` |
+| `nfc scan start/stop` | Start/stop continuous discovery + per-tag callback |
+| `nfc read <slot>` | One-shot detect + poller clone → store slot |
 | `nfc emulate <slot>` | Load `.card` + listen (PN7160 CE) |
-| `nfc verify <slot>` | Poll emulated tag + diff vs stored blob |
-| `nfc loop <slot>` | `read` → `emulate` → `verify` HIL sign-off |
+| `nfc check <slot>` | Poll emulated tag + diff vs stored blob (DK only, was `verify`) |
+| `nfc loop <slot>` | `read` → `emulate` → `check` HIL sign-off |
 
-**DK alias (LOCKED):** `nfc reader clone` = `nfc read` — both names registered; applets call `reader/` / `store/` / `nfc_stack/` primitives.
+**DROPPED (Phase A):** `nfc reader clone` (use `nfc read`), blocking `nfc scan` (replaced by `scan start/stop`), `nfc verify` as product (renamed to DK `nfc check`).
 
 **Files (create):**
 - `src/nfc/applets/nfc_applet_emulate.c`, `nfc_applet_verify.c`, `nfc_applet_loop.c`
 - Wire `nfc read <slot>` applet if not done in Gate 2
 
 **Exit tests:**
-- `nfc read tag1` (or `nfc reader clone tag1`) → valid `.card`
-- `nfc emulate tag1` → `nfc verify tag1` → **PASS** on PN7160 hardware
-- `nfc loop tag1` → read → emulate → verify **PASS** (HIL sign-off)
+- `nfc read tag1` → valid `.card`
+- `nfc emulate tag1` → `nfc check tag1` → **PASS** on PN7160 hardware
+- `nfc loop tag1` → read → emulate → check **PASS** (HIL sign-off)
 - Tier E: `tests/unit/nfc_reader/` verify-diff ztest green (store envelope from Gate 2)
 - QEMU/build-only acceptable for CI; HIL for sign-off
 
@@ -198,7 +198,7 @@ Expected: NFCT listen overlay builds (hardware optional for runtime).
 - Ensure `overlay-nfct-stack.conf` + `overlay-pn7160-stack.conf` documented in run path
 
 **Exit tests:**
-- Load `.card` → `nfc emulate tag1` on NFCT → `nfc verify tag1` on PN7160 **PASS**
+- Load `.card` → `nfc emulate tag1` on NFCT → `nfc check tag1` on PN7160 **PASS**
 - No concurrent poll+listen on same controller
 
 **Commit:** `nfc/run: NFCT emulate with PN7160 verify (Gate 5)`

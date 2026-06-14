@@ -101,6 +101,21 @@ Regen NDEF goldens: `python3 scripts/nfc/ndef_to_fixture.py --variant all`. Rege
 
 **CI fixture rule (LOCKED):** Twister links `tests/fixtures/<proto>/*.inc` and `*.bin` only — **no FlipperFormat parser in ztest**.
 
+**Ztest counts (QEMU, 2026-06-14):**
+- `nfc_ndef`: 87 cases (3 configs)
+- `nfc_ultralight`: 32 cases (2 configs)
+- `nfc_classic`: 17 cases (2 configs)
+- `nfc_felica`: 13 cases (2 configs)
+- `nfc_slix`: 18 cases (2 configs)
+- `nfc_desfire`: 30 cases (3 configs)
+- `nfc_emv`: 17 cases (3 configs)
+- `nfc_aliro`: 19 cases (3 configs)
+- `nfc_reader`: 59 ztests (3 scenarios: store, store_ram, shell_off)
+- `nfc_apdu_asm`: 4 cases (1 config)
+- `pn7160_tml`: 9 cases (1 config)
+
+**Total CI matrix:** 24 configs, 392 test cases.
+
 ---
 
 ## Fixture tree (LOCKED)
@@ -248,7 +263,7 @@ Before landing a new `protocols/<name>/` module, complete the checklist in cookb
 | `nfc read` | sole read/clone command; `nfc reader clone` **dropped** (Phase A) |
 | Scan model | continuous discovery (`scan start`/`scan stop`) + per-tag callback; blocking scan dropped |
 | Flipper in CI | `.nfc` offline only; `.inc`/`.bin` in Twister |
-| Tier E owner | `tests/unit/nfc_reader/` — 13 ztests (7 store + 3 verify-compare + 3 loopback); headless applet tier (`scan_get_result`/`get_card_meta`/`loop_run`, `log==NULL`) deferred to P5 |
+| Tier E owner | `tests/unit/nfc_reader/` — **59 ztests** (12 store + 23 protocol roundtrip + 3 verify + 12 loopback + 7 headless applet + 2 poller registry) across 3 scenarios (store, store_ram, shell_off) |
 | Ultralight listen | NDEF T4 adapter post–Gate 2; skip native T2 Tier C |
 | Classic | PN7160 poller only; clone-only; post–Gate 5 |
 | Aliro provision | protocol shell, not applet |

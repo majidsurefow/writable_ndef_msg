@@ -10,8 +10,28 @@ For west workspace layout, official doc links, and bootstrap commands, see
 | Layer | Location | CI job | Status |
 |-------|----------|--------|--------|
 | Integration (app) | Root `sample.yaml` | `twister.yaml` → `twister-build` | **Active** — build-only on nRF DK matrix + `pn7160.i2c` / `pn7160.spi` overlays (`pn7160` tag; also in `devicetree.yml`) |
-| Unit (module) | `modules/nfc_pn7160/tests/unit/pn7160_tml/` | `twister.yaml` → `twister-unit` | **Active in CI** — one ztest (`test_scaffold_passes`); Twister tag `ci_unit` |
-| Unit (NFC stack) | `tests/unit/nfc_ndef/`, `tests/unit/nfc_reader/`, `tests/unit/nfc_apdu_asm/` | — | **Local only** — run via `west twister -T "$REPO/tests/unit/nfc_*"`; not in merge-gate CI yet |
+| Unit (module) | `modules/nfc_pn7160/tests/unit/pn7160_tml/` | `twister.yaml` → `twister-unit` | **Active in CI** — 9 ztests; Twister tag `ci_unit` |
+| Unit (NFC stack) | `tests/unit/nfc_*/` (11 dirs) | `twister.yaml` → `twister-unit` | **Active in CI** — see unit matrix below |
+
+## CI unit test matrix
+
+The `twister-unit` job runs the following 11 directories on `qemu_cortex_m3` with `--no-sysbuild`:
+
+```
+modules/nfc_pn7160/tests/unit/pn7160_tml
+tests/unit/nfc_reader
+tests/unit/nfc_ultralight
+tests/unit/nfc_classic
+tests/unit/nfc_felica
+tests/unit/nfc_slix
+tests/unit/nfc_desfire
+tests/unit/nfc_emv
+tests/unit/nfc_aliro
+tests/unit/nfc_ndef
+tests/unit/nfc_apdu_asm
+```
+
+**Total coverage:** 24 configs, 392 test cases on QEMU.
 
 **Unit suite layout:** `CMakeLists.txt` (sets `ZEPHYR_EXTRA_MODULES` to the module), `prj.conf` (`CONFIG_ZTEST`, I2C/GPIO/EMUL, `CONFIG_PN7160`) + unit-test overlay, `testcase.yaml` (`modules.nfc_pn7160.unit.pn7160_tml`), `src/main.c`.
 

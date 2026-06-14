@@ -293,12 +293,22 @@ Pool exhaustion: increment **`dropped`** stat — never `__ASSERT`. Oversized AP
 - [ ] Shell: `nfc_transport` subcmds (driver debug stays under `pn7160`)
 - [ ] Stats/getters per conventions §2 + §6
 
-**PN7160 listen — incomplete (Gate 3)**
+**PN7160 listen — implemented (Gate 3)**
 
-- Recv loop does not yet deliver `on_apdu` via `nfc_apdu_pool` (drops only).
+- Recv loop delivers `on_apdu` via `nfc_apdu_pool` → fifo → WQ handler (landed `cfd30b0`).
 - `set_uid` live rotation returns `-EBUSY` during listen (NFCT has full impl).
 - Field on/off synthetic at `start`/`stop`.
 - Poll sub-API is complete for Gate 1/2.
+
+### Overlay matrix
+
+| Overlay | Roles | Backend | Gate | Use |
+|---------|-------|---------|------|-----|
+| `overlay-pn7160-stack.conf` | reader | PN7160 | 2 | `nfc scan`/`nfc read`/`nfc check` poll path |
+| `overlay-pn7160-listen.conf` | + listen | PN7160 | 3–4 | layered on stack; CE `nfc emulate` (RW+CE deferred) |
+| `overlay-nfct-stack.conf` | listen | NRFX `nfc_t4t_lib` | 5 | NFCT PICC emulate, multi-protocol |
+| `overlay-pn7160.conf` / `-hal.conf` / `-spi.conf` | reader | PN7160 | bring-up | driver/HAL smoke + SPI variant |
+| `boards/overlays/pn7160_unit_test.overlay` | — | emul | unit | QEMU DTS for `--no-sysbuild` builds |
 
 ### NFCT (nrfx) — nrfxlib choice (locked)
 
