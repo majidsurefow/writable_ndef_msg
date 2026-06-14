@@ -27,6 +27,7 @@
 #include "aliro_listener.h"
 #include "aliro_poller.h"
 #include "aliro.h"
+#include "aliro_vectors.h"
 
 #include "nfc_virtual_loopback.h"
 
@@ -784,15 +785,50 @@ static int aliro_compare(const void *expected, const void *actual, void *user_ct
 	return 0;
 }
 
+static int aliro_compare_auth_chain(const void *expected, const void *actual, void *user_ctx)
+{
+	const aliro_data_t *exp = expected;
+	const aliro_data_t *act = actual;
+	int ret;
+
+	ret = aliro_compare(expected, actual, user_ctx);
+	if (ret != 0) {
+		return ret;
+	}
+
+	if ((exp->protocol_major != act->protocol_major) ||
+	    (exp->protocol_minor != act->protocol_minor) || (exp->features != act->features)) {
+		return -EBADMSG;
+	}
+
+	if (memcmp(exp->credential_pubkey, act->credential_pubkey, ALIRO_P256_PUBLIC_KEY_SIZE) != 0) {
+		return -EBADMSG;
+	}
+
+	return 0;
+}
+
 static void build_aliro_poller_expected(aliro_data_t *expected)
 {
+	size_t chunk_len = 0U;
+	size_t offset = 0U;
+
 	aliro_data_reset(expected);
 	expected->protocol_major = 0U;
 	expected->protocol_minor = 9U;
-	expected->transcript[0] = 0x00U;
-	expected->transcript[1] = 0x00U;
-	(void)memset(&expected->transcript[2], 0x11U, ALIRO_NONCE_SIZE);
-	expected->transcript_len = (uint16_t)(2U + ALIRO_NONCE_SIZE);
+	aliro_vectors_build_select_rsp(&expected->transcript[offset], &chunk_len);
+	offset += chunk_len;
+	aliro_vectors_build_auth0_rsp(&expected->transcript[offset], &chunk_len);
+	offset += chunk_len;
+	aliro_vectors_build_auth1_rsp(&expected->transcript[offset], &chunk_len);
+	offset += chunk_len;
+	expected->transcript_len = (uint16_t)offset;
+}
+
+static void build_aliro_poller_expected_auth_chain(aliro_data_t *expected)
+{
+	build_aliro_poller_expected(expected);
+	expected->credential_pubkey[0] = 0x04U;
 }
 
 ZTEST(nfc_reader_loopback, test_virtual_loopback_aliro)
@@ -820,6 +856,36 @@ ZTEST(nfc_reader_loopback, test_virtual_loopback_aliro)
 		.copy_read_to_save = aliro_copy_read,
 		.expected = &expected,
 		.compare = aliro_compare,
+		.verify_envelope = true,
+	});
+	zassert_ok(ret);
+}
+
+ZTEST(nfc_reader_loopback, test_virtual_loopback_aliro_auth_chain)
+{
+	aliro_data_t read;
+	aliro_data_t expected;
+	int ret;
+
+	aliro_data_reset(&read);
+	build_aliro_poller_expected_auth_chain(&expected);
+
+	ret = nfc_virtual_loopback_run(&(nfc_virtual_loopback_params_t){
+		.listener_svc = aliro_listener_get(),
+		.save_svc = &s_aliro_clone_svc,
+		.golden_blob = store_fixture_aliro_card,
+		.golden_blob_len = STORE_FIXTURE_ALIRO_CARD_LEN,
+		.golden_slot = "golden_aliro_chain",
+		.output_slot = "cloned_aliro_chain",
+		.poller_detect = aliro_poller_detect_wrap,
+		.poller_read = aliro_poller_read_wrap,
+		.read_out = &read,
+		.listener_setup = aliro_listener_setup,
+		.listener_teardown = aliro_listener_teardown,
+		.save_model = &s_aliro_clone,
+		.copy_read_to_save = aliro_copy_read,
+		.expected = &expected,
+		.compare = aliro_compare_auth_chain,
 		.verify_envelope = true,
 	});
 	zassert_ok(ret);
