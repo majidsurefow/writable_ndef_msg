@@ -21,7 +21,9 @@ if(CONFIG_NFC_SLIX_TEST_TIER_POLLER)
   target_sources(app PRIVATE
     src/test_poller.c
     ${REPO_NFC}/protocols/iso15693_3/iso15693_3_poller.c
+    ${REPO_NFC}/protocols/iso15693_3/iso15693_3_poller_i.c
     ${REPO_NFC}/protocols/slix/slix_poller.c
+    ${REPO_NFC}/protocols/slix/slix_poller_i.c
   )
 endif()
 
