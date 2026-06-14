@@ -755,6 +755,63 @@ All doc fixes are consistent with:
 
 ---
 
+## P8 — Memory & Runtime Audit
+
+**Status:** DONE  
+**Date:** 2026-06-14  
+**Exit gate:** Memory profile documented; 4 preset configs created
+
+### Memory Baseline (nrf54l15dk/nrf54l15/cpuapp)
+
+| Profile | Overlay(s) | RAM | FLASH |
+|---------|-----------|-----|-------|
+| PN7160 HAL only | `overlay-pn7160-hal.conf` | 16 KB | 86 KB |
+| PN7160 reader | `overlay-pn7160-stack.conf` | **55 KB** | **119 KB** |
+| PN7160 reader + CE | + `overlay-pn7160-listen.conf` | 57 KB | 131 KB |
+| NFCT CE only | `overlay-nfct-stack.conf` | 54 KB | 102 KB |
+
+### Key Findings
+
+**Work queues:** 2 dedicated queues
+- `nfc_stack_wq`: 2 KB stack (HAL poll, reader scan, listen recv)
+- `pn7160_work_q`: 1 KB stack (driver events)
+
+**Largest RAM consumers:**
+| Component | Size | % | Notes |
+|-----------|------|---|-------|
+| Store slots | 16.5 KB | 30% | 4 slots × ~4 KB each |
+| Store buffers | 8 KB | 15% | staging + serialize |
+| DESFire model | 10 KB | 18% | Tune via MAX_APPS/FILES/SIZE |
+| Thread stacks | 9.5 KB | 17% | Fixed overhead |
+| Shell | 3.7 KB | 7% | Disable for headless |
+
+**Static buffers:** APDU pool (4 × 512 B) only allocated when `NFC_ROLE_LISTEN=y`.
+
+### Optimization Levers
+
+| Kconfig | Default | Tuned | Savings |
+|---------|---------|-------|---------|
+| `NFC_STORE_RAM_SLOT_COUNT` | 4 | 1 | ~12 KB |
+| `NFC_DESFIRE_MAX_APPS` | 4 | 1 | ~7 KB |
+| `NFC_STORE_BLOB_SIZE` | 4096 | 2048 | 4 KB |
+| `SHELL` | y | n | ~4 KB RAM, ~15 KB FLASH |
+
+### Deliverables
+
+| Item | File | Status |
+|------|------|--------|
+| Memory profile doc | `docs/nfc/NFC_MEMORY_PROFILE.md` | Created |
+| PN7160 reader preset | `confs/pn7160-reader.conf` | Created |
+| PN7160 CE preset | `confs/pn7160-ce.conf` | Created |
+| PN7160 reader+CE preset | `confs/pn7160-reader-ce.conf` | Created |
+| NFCT CE preset | `confs/nfct-ce.conf` | Created |
+
+### Assessment
+
+The stack is lean relative to feature set. 55 KB RAM for a full reader with 9 protocols, 4-slot store, and shell is reasonable. The "work queue or two" expectation is accurate (2 queues, ~3 KB stacks), but protocol data models (especially DESFire at 10 KB) and store slots (16.5 KB) dominate RAM. Production builds should tune these Kconfig options based on actual card complexity.
+
+---
+
 ## Summary
 
 | Phase | Status | Key metric |
@@ -768,12 +825,13 @@ All doc fixes are consistent with:
 | P5 | DONE | 155/156 cases (3 configs); CMake guards; headless tests |
 | P6 | DONE | **24 configs, 392/392 cases**; CI updated (nfc_apdu_asm); 6 doc drift fixes |
 | P7 | DONE | NFC_STACK_ARCHITECTURE.md (9 sections); cross-links verified |
+| P8 | DONE | Memory profile: 55 KB RAM, 119 KB FLASH (PN7160 reader); 4 presets |
 
 ---
 
 ## Program Completion Summary
 
-**Program:** NFC Harmonization (P1–P7)  
+**Program:** NFC Harmonization (P1–P8)  
 **Status:** COMPLETE  
 **Date:** 2026-06-14
 
@@ -787,6 +845,8 @@ All doc fixes are consistent with:
 | Architecture doc sections | 9 |
 | Protocols documented | 9 |
 | Profile overlays | 4 |
+| Memory profile | 55 KB RAM / 119 KB FLASH (PN7160 reader) |
+| Kconfig presets | 4 (pn7160-reader, pn7160-ce, pn7160-reader-ce, nfct-ce) |
 
 ### Open Items
 
@@ -802,8 +862,9 @@ All doc fixes are consistent with:
 
 | Category | Items |
 |----------|-------|
-| **Docs** | NFC_STACK_ARCHITECTURE.md, 18× CONTEXT.md, NFC_SHELL_APPLETS.md, NFC_HIL_PROTOCOL_GUIDE.md |
+| **Docs** | NFC_STACK_ARCHITECTURE.md, NFC_MEMORY_PROFILE.md, 18× CONTEXT.md, NFC_SHELL_APPLETS.md, NFC_HIL_PROTOCOL_GUIDE.md |
 | **Code** | L1/L2 deconvolution (Phase A), CMake protocol guards (P5), headless applet tests |
+| **Config** | `confs/` directory with 4 production presets (pn7160-reader, pn7160-ce, pn7160-reader-ce, nfct-ce) |
 | **CI** | 11 unit test directories in twister.yaml; 24 configs green |
 
 ### Authority Documents
