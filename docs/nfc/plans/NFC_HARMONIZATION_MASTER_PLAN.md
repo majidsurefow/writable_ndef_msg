@@ -5,6 +5,13 @@
 **Authority:** [`NFC_STACK_CONVENTIONS.md`](../NFC_STACK_CONVENTIONS.md) (LOCKED) · [`NFC_KCONFIG_ARCHITECTURE.md`](NFC_KCONFIG_ARCHITECTURE.md) (profiles, implemented) · [`NFC_PROTOCOLS_COOKBOOK.md`](../NFC_PROTOCOLS_COOKBOOK.md) §14 (test tiers, LOCKED)
 **Produces:** one `CONTEXT.md` per layer/protocol/applet + per-phase findings + rolled-up [`NFC_HARMONIZATION_FINDINGS.md`](NFC_HARMONIZATION_FINDINGS.md) + final [`../NFC_STACK_ARCHITECTURE.md`](../NFC_STACK_ARCHITECTURE.md).
 
+> **Execution pointer:** the **staged, cross-track operational plan of record** is now
+> [`NFC_CONSOLIDATED_EXECUTION.md`](NFC_CONSOLIDATED_EXECUTION.md), which merges this plan
+> with the HIL/polish, applet-layering, shell-audit, and Kconfig work into one ordered
+> phase sequence (P0→P7 + parallel HIL). **This file remains the authority** on layering,
+> the three truths, audit categories (D.4), and acceptance philosophy — the consolidated
+> doc schedules *when* each part lands; this doc defines *what correct looks like*.
+
 This is the **one** plan to agree on. It absorbs and supersedes:
 - [`NFC_APPLET_API_LAYERING.md`](NFC_APPLET_API_LAYERING.md) — applet/shell layering (now Part C + Phases 5 & 8 here).
 - [`NFC_SHELL_KCONFIG_AUDIT.md`](NFC_SHELL_KCONFIG_AUDIT.md) — shell-gating findings (now the Part C target + audit category E).
