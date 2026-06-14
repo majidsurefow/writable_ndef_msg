@@ -89,6 +89,9 @@ ZTEST(nfc_reader_desfire_store, test_store_load_roundtrip)
 	zassert_ok(ret);
 	zassert_mem_equal(loaded.uid, expected.uid, DESFIRE_UID_SIZE);
 	zassert_equal(loaded.app_count, expected.app_count);
+	zassert_equal(loaded.apps[0].file_count, expected.apps[0].file_count);
+	zassert_mem_equal(loaded.apps[0].file_data[0], expected.apps[0].file_data[0],
+			  expected.apps[0].file_data_len[0]);
 }
 
 ZTEST(nfc_reader_desfire_store, test_store_peek_emulate_allowed)

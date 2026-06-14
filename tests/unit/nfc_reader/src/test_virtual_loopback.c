@@ -525,6 +525,34 @@ static int desfire_compare(const void *expected, const void *actual, void *user_
 	if (exp->master_key_settings != act->master_key_settings) {
 		return -EBADMSG;
 	}
+	if (exp->app_count != act->app_count) {
+		return -EBADMSG;
+	}
+
+	for (uint8_t ai = 0U; ai < exp->app_count; ai++) {
+		const desfire_application_t *exp_app = &exp->apps[ai];
+		const desfire_application_t *act_app = &act->apps[ai];
+
+		if (memcmp(exp_app->app_id, act_app->app_id, DESFIRE_APP_ID_SIZE) != 0) {
+			return -EBADMSG;
+		}
+		if (exp_app->file_count != act_app->file_count) {
+			return -EBADMSG;
+		}
+
+		for (uint8_t fi = 0U; fi < exp_app->file_count; fi++) {
+			if (exp_app->file_ids[fi] != act_app->file_ids[fi]) {
+				return -EBADMSG;
+			}
+			if (exp_app->file_data_len[fi] != act_app->file_data_len[fi]) {
+				return -EBADMSG;
+			}
+			if (memcmp(exp_app->file_data[fi], act_app->file_data[fi],
+				   exp_app->file_data_len[fi]) != 0) {
+				return -EBADMSG;
+			}
+		}
+	}
 
 	return 0;
 }

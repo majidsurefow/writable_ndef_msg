@@ -111,6 +111,29 @@ ZTEST(desfire_listener, test_field_off_resets_auth)
 	zassert_equal(desfire_listener_auth_state(), DESFIRE_AUTH_STATE_IDLE);
 }
 
+ZTEST(desfire_listener, test_select_read_data_golden)
+{
+	static const uint8_t select_app[] = {DESFIRE_CLA_NATIVE, DESFIRE_CMD_SELECT_APPLICATION,
+					     0x00U, 0x00U, 0x03U, 0x01U, 0x02U, 0x03U};
+	static const uint8_t read_data[] = {DESFIRE_CLA_NATIVE, DESFIRE_CMD_READ_DATA, 0x00U, 0x00U,
+					    0x07U, 0x01U, 0x00U, 0x00U, 0x00U, 0x0FU, 0x00U, 0x00U};
+	const uint8_t *buf = NULL;
+	size_t len = 0U;
+
+	listener_reset(NULL);
+	listener_load_golden();
+
+	listener_send_native(select_app, sizeof(select_app));
+	listener_assert_status(DESFIRE_STATUS_OK);
+
+	listener_send_native(read_data, sizeof(read_data));
+	zassert_ok(nfc_response_spy_last(&buf, &len));
+	zassert_true(len >= 17U);
+	zassert_equal(buf[len - 2U], DESFIRE_SW1);
+	zassert_equal(buf[len - 1U], DESFIRE_STATUS_OK);
+	zassert_mem_equal(buf, "HELLO DESFIRE!!", 15U);
+}
+
 ZTEST(desfire_listener, test_illegal_ins_rejects)
 {
 	static const uint8_t bad[] = {DESFIRE_CLA_NATIVE, 0xFFU, 0x00U, 0x00U, 0x00U};

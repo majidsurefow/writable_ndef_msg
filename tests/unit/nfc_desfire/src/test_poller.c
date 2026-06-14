@@ -63,6 +63,11 @@ ZTEST(desfire_poller, test_read_golden)
 	zassert_mem_equal(s_data.uid, s_expected.uid, DESFIRE_UID_SIZE);
 	zassert_equal(s_data.free_memory, s_expected.free_memory);
 	zassert_equal(s_data.master_key_settings, s_expected.master_key_settings);
+	zassert_equal(s_data.app_count, s_expected.app_count);
+	zassert_mem_equal(s_data.apps[0].app_id, s_expected.apps[0].app_id, DESFIRE_APP_ID_SIZE);
+	zassert_equal(s_data.apps[0].file_count, s_expected.apps[0].file_count);
+	zassert_mem_equal(s_data.apps[0].file_data[0], s_expected.apps[0].file_data[0],
+			  s_expected.apps[0].file_data_len[0]);
 }
 
 ZTEST(desfire_poller, test_read_partial_without_keys)
@@ -70,7 +75,8 @@ ZTEST(desfire_poller, test_read_partial_without_keys)
 	poller_before(NULL);
 	nfc_session_mock_load(desfire_Desfire_read_steps, DESFIRE_DESFIRE_READ_STEP_COUNT);
 	zassert_ok(desfire_poller_read(&s_session, &s_data));
-	zassert_equal(s_data.app_count, 0U);
+	zassert_true(s_data.app_count >= 1U);
+	zassert_equal(s_data.apps[0].file_count, 1U);
 }
 
 ZTEST_SUITE(desfire_poller, NULL, NULL, poller_before, NULL, NULL);

@@ -99,6 +99,7 @@ if(CONFIG_NFC_PROTOCOL_DESFIRE)
     ${REPO_NFC}/protocols/desfire/desfire.c
     ${REPO_NFC}/protocols/desfire/desfire_listener.c
     ${REPO_NFC}/protocols/desfire/desfire_poller.c
+    ${REPO_NFC}/protocols/desfire/desfire_poller_i.c
   )
 endif()
 

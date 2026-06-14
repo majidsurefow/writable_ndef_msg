@@ -20,6 +20,7 @@ if(CONFIG_NFC_DESFIRE_TEST_TIER_POLLER)
   target_sources(app PRIVATE
     src/test_poller.c
     ${REPO_NFC}/protocols/desfire/desfire_poller.c
+    ${REPO_NFC}/protocols/desfire/desfire_poller_i.c
   )
 endif()
 
@@ -33,6 +34,7 @@ endif()
 target_include_directories(app PRIVATE
   ${REPO_NFC}
   ${REPO_NFC}/protocols/desfire
+  ${REPO_NFC}/protocols/aliro
   ${REPO_NFC}/reader
   ${CMAKE_CURRENT_SOURCE_DIR}/../../fixtures/desfire
   ${NFC_TEST_COMMON_INCLUDES}
