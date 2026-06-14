@@ -30,6 +30,12 @@
 #include "aliro_poller.h"
 #include "aliro.h"
 #include "aliro_vectors.h"
+#if defined(CONFIG_NFC_PROTOCOL_FELICA)
+#include "protocols/felica/felica.h"
+#include "protocols/felica/felica_listener.h"
+#include "protocols/felica/felica_poller.h"
+#include "felica_store_fixture.h"
+#endif /* CONFIG_NFC_PROTOCOL_FELICA */
 
 #include "nfc_virtual_loopback.h"
 
@@ -40,6 +46,9 @@
 #include "Ntag215_mock.h"
 #include "Ntag216_mock.h"
 #include "Desfire_mock.h"
+#if defined(CONFIG_NFC_PROTOCOL_FELICA)
+#include "Felica_mock.h"
+#endif
 
 #include <string.h>
 
@@ -408,6 +417,9 @@ static void loopback_before(void *fixture)
 	(void)desfire_listener_shutdown();
 	(void)emv_listener_shutdown();
 	(void)aliro_listener_shutdown();
+#if defined(CONFIG_NFC_PROTOCOL_FELICA)
+	(void)felica_listener_shutdown();
+#endif
 	ndef_data_reset(&s_read);
 	ndef_data_reset(&s_clone_model);
 	ndef_data_reset(&s_expected);
@@ -699,6 +711,10 @@ static aliro_data_t s_aliro_loopback_read;
 static aliro_data_t s_aliro_loopback_expected;
 static aliro_data_t s_aliro_auth_read;
 static aliro_data_t s_aliro_auth_expected;
+#if defined(CONFIG_NFC_PROTOCOL_FELICA)
+static felica_data_t s_felica_expected;
+static felica_data_t s_felica_work;
+#endif
 
 ZTEST(nfc_reader_loopback, test_virtual_loopback_desfire)
 {
@@ -1041,3 +1057,101 @@ ZTEST(nfc_reader_loopback, test_virtual_loopback_aliro_auth_chain)
 	});
 	zassert_ok(ret, "aliro auth chain ret=%d", ret);
 }
+
+#if defined(CONFIG_NFC_PROTOCOL_FELICA)
+static int felica_clone_serialize(uint8_t *out, size_t out_max, size_t *out_len, void *user_ctx)
+{
+	ARG_UNUSED(user_ctx);
+
+	return felica_serialize(&s_felica_work, out, out_max, out_len);
+}
+
+static int felica_clone_deserialize(const uint8_t *in, size_t in_len, void *user_ctx)
+{
+	ARG_UNUSED(user_ctx);
+
+	return felica_deserialize(&s_felica_work, in, in_len);
+}
+
+static nfc_service_t s_felica_clone_svc = {
+	.serialize = felica_clone_serialize,
+	.deserialize = felica_clone_deserialize,
+	.persist_id = NFC_PERSIST_ID_FELICA,
+};
+
+static int felica_listener_setup(void *user_ctx)
+{
+	const felica_data_t *golden = user_ctx;
+
+	(void)felica_listener_shutdown();
+	if (golden == NULL) {
+		return -EINVAL;
+	}
+
+	return felica_listener_init(golden);
+}
+
+static void felica_listener_teardown(void *user_ctx)
+{
+	ARG_UNUSED(user_ctx);
+
+	(void)felica_listener_shutdown();
+}
+
+static int felica_copy_read(void *save_model, const void *read_out, void *user_ctx)
+{
+	ARG_UNUSED(user_ctx);
+	ARG_UNUSED(save_model);
+	ARG_UNUSED(read_out);
+
+	return 0;
+}
+
+static int felica_compare_wrap(const void *expected, const void *actual, void *user_ctx)
+{
+	ARG_UNUSED(user_ctx);
+
+	return felica_compare(expected, actual);
+}
+
+static int felica_poller_detect_wrap(nfc_reader_session_t *session)
+{
+	return felica_poller_detect(session);
+}
+
+static int felica_poller_read_wrap(nfc_reader_session_t *session, void *read_out)
+{
+	return felica_poller_read(session, read_out);
+}
+
+ZTEST(nfc_reader_loopback, test_virtual_loopback_felica)
+{
+	int ret;
+
+	felica_data_reset(&s_felica_expected);
+	felica_data_reset(&s_felica_work);
+	ret = felica_deserialize(&s_felica_expected, felica_Felica_model, FELICA_FELICA_MODEL_LEN);
+	zassert_ok(ret, "felica_deserialize failed: %d", ret);
+
+	ret = nfc_virtual_loopback_run(&(nfc_virtual_loopback_params_t){
+		.listener_svc = felica_listener_get(),
+		.save_svc = &s_felica_clone_svc,
+		.golden_blob = store_fixture_felica_card,
+		.golden_blob_len = STORE_FIXTURE_FELICA_CARD_LEN,
+		.golden_slot = "golden_felica",
+		.output_slot = "cloned_felica",
+		.poller_detect = felica_poller_detect_wrap,
+		.poller_read = felica_poller_read_wrap,
+		.read_out = &s_felica_work,
+		.listener_setup = felica_listener_setup,
+		.listener_teardown = felica_listener_teardown,
+		.listener_user_ctx = &s_felica_expected,
+		.save_model = &s_felica_work,
+		.copy_read_to_save = felica_copy_read,
+		.expected = &s_felica_expected,
+		.compare = felica_compare_wrap,
+		.verify_envelope = true,
+	});
+	zassert_ok(ret, "nfc_virtual_loopback_run failed: %d", ret);
+}
+#endif /* CONFIG_NFC_PROTOCOL_FELICA */

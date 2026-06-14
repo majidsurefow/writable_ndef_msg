@@ -81,6 +81,7 @@ if(CONFIG_NFC_PROTOCOL_FELICA)
     ${REPO_NFC}/protocols/felica/felica.c
     ${REPO_NFC}/protocols/felica/felica_poller.c
     ${REPO_NFC}/protocols/felica/felica_poller_i.c
+    ${REPO_NFC}/protocols/felica/felica_listener.c
   )
 endif()
 

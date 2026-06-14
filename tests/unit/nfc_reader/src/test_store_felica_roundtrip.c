@@ -2,7 +2,7 @@
  * Copyright (c) 2026
  * SPDX-License-Identifier: Apache-2.0
  *
- * Tier E — FeliCa nfc_store envelope save/load (clone-only, no loopback).
+ * Tier E — FeliCa nfc_store envelope save/load + E+ virtual loopback.
  */
 
 #include "applets/nfc_applet_policy.h"
