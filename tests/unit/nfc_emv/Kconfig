@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: Apache-2.0
+mainmenu "EMV protocol unit tests"
+source "Kconfig.zephyr"
+config NFC_EMV_TEST_TIER_POLLER
+	bool "Build EMV poller tier tests"
+	default n
+config NFC_EMV_TEST_TIER_LISTENER
+	bool "Build EMV listener tier tests"
+	default n

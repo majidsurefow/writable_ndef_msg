@@ -32,6 +32,10 @@ if(CONFIG_NFC_STACK)
     add_subdirectory(protocols/desfire)
   endif()
 
+  if(CONFIG_NFC_PROTOCOL_EMV)
+    add_subdirectory(protocols/emv)
+  endif()
+
   if(CONFIG_NFC_STORE)
     add_subdirectory(store)
   endif()

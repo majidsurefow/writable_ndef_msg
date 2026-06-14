@@ -42,6 +42,11 @@
 #include "protocols/desfire/desfire_poller.h"
 #endif
 
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_EMV)
+#include "protocols/emv/emv_listener.h"
+#include "protocols/emv/emv_poller.h"
+#endif
+
 #if IS_ENABLED(CONFIG_NFC_STORE)
 #include "store/nfc_store.h"
 #endif
@@ -329,6 +334,55 @@ static int desfire_poller_read_stub(const nfc_reader_session_t *session, void *o
 }
 #endif
 
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_EMV)
+static int emv_poller_read_wrap(const nfc_reader_session_t *session, void *out)
+{
+	return emv_poller_read(session, out);
+}
+
+static int emv_poller_clone(const nfc_reader_session_t *session, const char *tag)
+{
+	emv_card_image_t data;
+	const nfc_service_t *svcs[] = { emv_listener_get() };
+	int ret;
+
+	emv_card_image_reset(&data);
+	ret = emv_poller_read(session, &data);
+	if (ret != 0) {
+		LOG_WRN("EMV poller read failed: %d", ret);
+		return ret;
+	}
+
+	ret = emv_listener_init(&data);
+	if (ret != 0 && ret != -EALREADY) {
+		LOG_ERR("emv_listener_init failed: %d", ret);
+		return ret;
+	}
+
+	ret = nfc_store_save(tag, svcs, ARRAY_SIZE(svcs));
+	if (ret != 0) {
+		LOG_ERR("nfc_store_save failed: %d", ret);
+	}
+
+	return ret;
+}
+#else
+static int emv_poller_detect_stub(const nfc_reader_session_t *session)
+{
+	ARG_UNUSED(session);
+
+	return -ENOTSUP;
+}
+
+static int emv_poller_read_stub(const nfc_reader_session_t *session, void *out)
+{
+	ARG_UNUSED(session);
+	ARG_UNUSED(out);
+
+	return -ENOTSUP;
+}
+#endif
+
 #if IS_ENABLED(CONFIG_NFC_PROTOCOL_NDEF)
 static int nfc_reader_poller_ndef_read(const nfc_reader_session_t *session, void *out)
 {
@@ -492,6 +546,27 @@ static const nfc_reader_poller_entry_t s_pollers[] = {
 		.tech_mask = NFC_TECH_ISO_DEP_A,
 		.detect = desfire_poller_detect_stub,
 		.read = desfire_poller_read_stub,
+		.listener_get = NULL,
+		.clone_fn = NULL,
+	},
+#endif
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_EMV)
+	{
+		.name = "emv",
+		.persist_id = NFC_PERSIST_ID_EMV,
+		.tech_mask = NFC_TECH_ISO_DEP_A,
+		.detect = emv_poller_detect,
+		.read = emv_poller_read_wrap,
+		.listener_get = emv_listener_get,
+		.clone_fn = emv_poller_clone,
+	},
+#else
+	{
+		.name = "emv",
+		.persist_id = NFC_PERSIST_ID_EMV,
+		.tech_mask = NFC_TECH_ISO_DEP_A,
+		.detect = emv_poller_detect_stub,
+		.read = emv_poller_read_stub,
 		.listener_get = NULL,
 		.clone_fn = NULL,
 	},

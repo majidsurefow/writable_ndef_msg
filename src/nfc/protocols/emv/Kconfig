@@ -1,0 +1,22 @@
+# EMV contactless protocol — cookbook §5.5 (F3, partial emulatable).
+
+config NFC_PROTOCOL_EMV
+	bool "EMV contactless protocol"
+	default n
+	depends on NFC_STACK
+	help
+	  EMV PPSE/GPO/READ RECORD model, poller, and ISO-DEP listener.
+
+if NFC_PROTOCOL_EMV
+
+config NFC_EMV_MAX_RECORDS
+	int "Maximum READ RECORD blobs"
+	default 2
+	range 1 4
+
+config NFC_EMV_RECORD_SIZE
+	int "Maximum tag-70 record size"
+	default 64
+	range 32 128
+
+endif
