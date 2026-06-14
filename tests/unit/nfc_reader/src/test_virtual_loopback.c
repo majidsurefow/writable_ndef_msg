@@ -629,8 +629,40 @@ static int emv_compare(const void *expected, const void *actual, void *user_ctx)
 		return -EINVAL;
 	}
 
+	if ((exp->app_aid_len != act->app_aid_len) ||
+	    (memcmp(exp->app_aid, act->app_aid, exp->app_aid_len) != 0)) {
+		return -EBADMSG;
+	}
+
+	if (exp->pan_len != act->pan_len) {
+		return -EBADMSG;
+	}
+	if (exp->pan_len > 0U) {
+		if (memcmp(exp->pan, act->pan, EMV_PAN_BYTES) != 0) {
+			return -EBADMSG;
+		}
+	}
+
+	if ((exp->track2_len != act->track2_len) ||
+	    (memcmp(exp->track2, act->track2, exp->track2_len) != 0)) {
+		return -EBADMSG;
+	}
+
+	if (memcmp(exp->afl, act->afl, EMV_AFL_BYTES) != 0) {
+		return -EBADMSG;
+	}
+
 	if (exp->record_count != act->record_count) {
 		return -EBADMSG;
+	}
+
+	for (uint8_t i = 0U; i < exp->record_count; i++) {
+		if (exp->record_len[i] != act->record_len[i]) {
+			return -EBADMSG;
+		}
+		if (memcmp(exp->record_data[i], act->record_data[i], exp->record_len[i]) != 0) {
+			return -EBADMSG;
+		}
 	}
 
 	return 0;
@@ -663,8 +695,7 @@ ZTEST(nfc_reader_loopback, test_virtual_loopback_emv)
 	int ret;
 
 	emv_card_image_reset(&read);
-	emv_card_image_reset(&expected);
-	expected.record_count = 1U;
+	emv_card_image_load_default(&expected);
 
 	ret = nfc_virtual_loopback_run(&(nfc_virtual_loopback_params_t){
 		.listener_svc = emv_listener_get(),
