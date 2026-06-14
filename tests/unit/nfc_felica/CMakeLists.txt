@@ -19,7 +19,9 @@ target_sources(app PRIVATE
 if(CONFIG_NFC_FELICA_TEST_TIER_POLLER)
   target_sources(app PRIVATE
     src/test_poller.c
+    ${REPO_NFC}/helpers/felica_crc.c
     ${REPO_NFC}/protocols/felica/felica_poller.c
+    ${REPO_NFC}/protocols/felica/felica_poller_i.c
   )
 endif()
 
