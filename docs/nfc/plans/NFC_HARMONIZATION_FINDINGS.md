@@ -874,10 +874,10 @@ The stack is lean relative to feature set. 55 KB RAM for a full reader with 9 pr
 - Gaps: Full 98-TX blocked by `NFC_SESSION_MOCK_MAX_TX=32` (spot-check by design); no dict attack.
 - Follow-up: Optional full 98-TX if mock cap raised.
 
-**DESFire** (`desfire_poller.c` vs `mf_desfire_poller*.c`) — **good** (uncommitted)
-- Matches: PICC→app→file SM, `0x91AF` chunking (`desfire_poller_i.c:50–97`); APDU+`91 xx` framing (intentional vs Flipper native cmd bytes).
-- Gaps: Auth-gated directory skips silently; `MfDesfire_EV1_sample.nfc` untracked; shallow compare still on HEAD (`desfire_compare` UID+free_memory only).
-- Follow-up: Commit P5; deepen compare on branch; Flipper `.nfc` generator path.
+**DESFire** (`desfire_poller.c` vs `mf_desfire_poller*.c`) — **good**
+- Matches: PICC→app→file SM, `0x91AF` chunking (`desfire_poller_i.c`); APDU+`91 xx` framing; deep loopback compare (app/file payloads); `MfDesfire_EV1_sample.nfc` hand golden.
+- Gaps: Auth-gated directory skips silently (by design); Flipper `.nfc` converter deferred.
+- Follow-up: Flipper `.nfc` generator path; HIL DESFire tag.
 
 **Skipped (documented):** EMV — EMVCo spec, no Flipper poller. Aliro — proprietary, no Flipper. NDEF T4 — NXP `RW_NDEF_T4T` / cookbook §5.1; Flipper T2 parse-only.
 

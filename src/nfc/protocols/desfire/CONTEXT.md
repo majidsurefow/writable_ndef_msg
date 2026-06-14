@@ -12,7 +12,7 @@ MIFARE DESFire protocol: application/file-based data model (PICC info, applicati
 |------|------|
 | `desfire.c` | Data model: `desfire_t` struct, PICC info, app/file trees, serialize/deserialize |
 | `desfire.h` | Public types, model API, capacity symbols |
-| `desfire_poller.c` | Reader poller: GetVersion, GetApplicationIDs, SelectApplication, GetFileIDs, ReadData |
+| `desfire_poller.c` | Reader poller: GetVersion, GetApplicationIDs, SelectApplication, GetFileIDs, GetFileSettings, ReadData (keyless partial) |
 | `desfire_poller.h` | Poller API: `desfire_poller_read` |
 | `desfire_listener.c` | ISO-DEP listener: responds to DESFire APDU commands |
 | `desfire_listener.h` | Listener API: `desfire_listener_load`, `desfire_listener_on_apdu` |
@@ -57,8 +57,8 @@ MIFARE DESFire protocol: application/file-based data model (PICC info, applicati
 
 ## Fixtures ↔ goldens
 
-- **Flipper:** No dedicated Flipper fixture (reader-captured `.card`)
-- **Generated:** Reader-captured card via `nfc read`
+- **Flipper:** `tests/fixtures/nfc/flipper/MfDesfire_EV1_sample.nfc` (hand golden; converter deferred)
+- **Generated:** Reader-captured card via `nfc read` (PICC + apps/files when access allows)
 - **Loopback:** `tests/common/nfc_virtual_loopback` (poller↔listener)
 
 ## Profile membership
