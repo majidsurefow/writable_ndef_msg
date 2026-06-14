@@ -124,6 +124,68 @@ def read_inc_steps(steps: list[tuple[str, bytes]]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def model_bin_to_inc(data: bytes) -> str:
+    row: list[str] = []
+    lines: list[str] = []
+    for b in data:
+        row.append(f"0x{b:02X}U")
+        if len(row) == 8:
+            lines.append(", ".join(row) + ",")
+            row = []
+    if row:
+        lines.append(", ".join(row) + ",")
+    return "\n".join(lines) + "\n"
+
+
+def emit_ultralight_mock_header(stem: str, steps: list[tuple[str, bytes]], model: bytes,
+                                 out_dir: Path) -> None:
+    sym = stem.replace("-", "_")
+    lines = [
+        f"/* Auto-generated from Flipper {stem}.nfc — do not edit. */",
+        "#ifndef ULTRALIGHT_FIXTURE_" + sym.upper() + "_H_",
+        "#define ULTRALIGHT_FIXTURE_" + sym.upper() + "_H_",
+        "",
+        "#include \"nfc_session_mock.h\"",
+        "",
+        "#include <stddef.h>",
+        "#include <stdint.h>",
+        "",
+        "#include <zephyr/sys/util.h>",
+        "",
+        f"static const uint8_t ultralight_{sym}_model[] = {{",
+        model_bin_to_inc(model).rstrip(),
+        "};",
+        "",
+        f"#define ULTRALIGHT_{sym.upper()}_MODEL_LEN sizeof(ultralight_{sym}_model)",
+        "",
+    ]
+    step_refs: list[str] = []
+    for idx, (_label, payload) in enumerate(steps):
+        arr = f"ultralight_{sym}_step{idx}_rx"
+        lines.append(f"static const uint8_t {arr}[] = {{")
+        if payload:
+            lines.append(model_bin_to_inc(payload).rstrip())
+        lines.append("};")
+        lines.append("")
+        step_refs.append(
+            f"\t{{ .rx = {arr}, .rx_len = sizeof({arr}), .err = 0 }},"
+        )
+    lines.append(f"static const nfc_session_mock_step_t ultralight_{sym}_read_steps[] = {{")
+    lines.extend(step_refs)
+    lines.append("};")
+    lines.append("")
+    lines.append(
+        f"#define ULTRALIGHT_{sym.upper()}_READ_STEP_COUNT "
+        f"ARRAY_SIZE(ultralight_{sym}_read_steps)"
+    )
+    lines.append("")
+    lines.append("#endif")
+    lines.append("")
+    out_path = out_dir / f"{stem}_mock.h"
+    out_path.write_text("\n".join(lines), encoding="utf-8")
+    print(f"Wrote {out_path}", file=sys.stderr)
+
+
 def ultralight_variant(meta: dict) -> int:
     device = meta.get("Device type", "")
     if "Ultralight 11" in device:
@@ -181,11 +243,46 @@ def ultralight_read_steps(meta: dict) -> list[tuple[str, bytes]]:
     pages_map: dict[int, bytes] = meta.get("pages", {})
     pages_total = int(meta.get("Pages total", len(pages_map)))
     steps: list[tuple[str, bytes]] = []
+
+    version = parse_hex_bytes(meta.get("Mifare version", "")) if "Mifare version" in meta else b""
+    signature = parse_hex_bytes(meta.get("Signature", "")) if "Signature" in meta else b""
+    counters: list[int] = []
+    tearings: list[int] = []
+    for i in range(3):
+        ck = f"Counter {i}"
+        tk = f"Tearing {i}"
+        if ck in meta:
+            counters.append(int(meta[ck]))
+        if tk in meta:
+            tearings.append(int(meta[tk], 16))
+
+    if len(version) == 8 and any(version):
+        steps.append(("ultralight GET_VERSION", version))
+    else:
+        steps.append(("ultralight GET_VERSION fail", b""))
+        page41 = b"".join(pages_map.get(p, b"\x00" * 4) for p in range(41, min(45, pages_total)))
+        page41 = page41.ljust(16, b"\x00")
+        steps.append(("ultralight READ page 41 probe", page41))
+        if pages_total > 47:
+            page47 = b"".join(pages_map.get(p, b"\x00" * 4) for p in range(47, min(51, pages_total)))
+            page47 = page47.ljust(16, b"\x00")
+            steps.append(("ultralight READ page 47 probe", page47))
+
     for start in range(0, pages_total, 4):
         chunk = b"".join(pages_map.get(p, b"\x00" * 4) for p in range(start, min(start + 4, pages_total)))
         if len(chunk) < 16:
             chunk = chunk.ljust(16, b"\x00")
         steps.append((f"ultralight READ page {start}", chunk))
+
+    if len(version) == 8 and any(version):
+        steps.append(("ultralight READ_SIG", signature.ljust(32, b"\x00")[:32]))
+        for i in range(3):
+            counter = counters[i] if i < len(counters) else 0
+            steps.append((f"ultralight READ_CNT {i}", struct.pack("<I", counter)[:3]))
+        for i in range(3):
+            flag = tearings[i] if i < len(tearings) else 0
+            steps.append((f"ultralight CHECK_TEARING {i}", bytes([flag])))
+
     return steps
 
 
@@ -398,6 +495,8 @@ def emit_fixture(meta: dict, out_dir: Path, stem: str, *, write_card_bin: bool) 
     read_path = out_dir / f"{stem}_read.inc"
     model_path.write_bytes(model)
     read_path.write_text(read_inc_steps(steps), encoding="utf-8")
+    if proto == "ultralight":
+        emit_ultralight_mock_header(stem, steps, model, out_dir)
     print(f"Wrote {model_path} ({len(model)} bytes)", file=sys.stderr)
     print(f"Wrote {read_path} ({len(steps)} steps)", file=sys.stderr)
 
@@ -410,7 +509,10 @@ def emit_fixture(meta: dict, out_dir: Path, stem: str, *, write_card_bin: bool) 
         card_path = STORE_DIR / f"{stem}.card.bin"
         card_path.parent.mkdir(parents=True, exist_ok=True)
         card_path.write_bytes(card)
+        card_inc = STORE_DIR / f"{stem}_card.inc"
+        card_inc.write_text(model_bin_to_inc(card), encoding="utf-8")
         print(f"Wrote {card_path} ({len(card)} bytes)", file=sys.stderr)
+        print(f"Wrote {card_inc}", file=sys.stderr)
     elif proto == "hal":
         print(f"Skipped .card.bin for HAL signal fixture {stem}", file=sys.stderr)
 
