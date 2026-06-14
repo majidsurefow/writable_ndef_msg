@@ -34,27 +34,32 @@ ordered sequence with hard entry/exit gates.
 Kconfig profile `imply` chains (reader / CE / lab) are landed; overlays are
 already reduced to one profile line each.
 
-### 1.1 Current applet inventory (top-level `nfc` commands)
+### 1.1 Current applet inventory (top-level `nfc` commands) — LOCKED 2026-06-14, landed Phase A
 
 | Command | Action | Profile / overlay | Kconfig gate |
 |---------|--------|-------------------|--------------|
-| `nfc scan [t]` | Discover tag; print UID/protocol/tech; hold session | Reader (`overlay-pn7160-stack.conf`), CE | `NFC_APPLETS_SHELL` |
+| `nfc scan start` | Start continuous discovery; print each detected tag (UID/protocol/tech) | Reader (`overlay-pn7160-stack.conf`), CE | `NFC_APPLETS_SHELL` |
+| `nfc scan stop` | Stop continuous discovery | Reader, CE | `NFC_APPLETS_SHELL` |
 | `nfc read <slot> [t]` | One-shot scan + clone to slot | Reader, CE | `NFC_APPLETS_SHELL` + `NFC_STORE` |
-| `nfc reader clone <slot>` | Alias of `nfc read` (LOCKED) | Reader, CE | `NFC_READER_SHELL` |
-| `nfc verify <slot> [t]` | Poll tag + diff vs stored slot → PASS/FAIL | Reader, CE | `NFC_APPLETS_SHELL` |
 | `nfc emulate <slot> [ndef]` | Load slot + start listen (clone-only refused) | CE / reader+`overlay-pn7160-listen.conf` | `NFC_APPLETS_SHELL` + `NFC_LISTEN_STACK` |
 | `nfc emulate golden <name>` | Import compiled-in golden + emulate | CE | + `NFC_STORE_RAM` + `NFC_STORE_GOLDENS` |
-| `nfc loop <slot> [t]` | Orchestrated read→emulate→verify | CE / reader+listen | `NFC_APPLETS_SHELL` + `NFC_LISTEN_STACK` |
+| `nfc loop <slot> [t]` | Orchestrated read→emulate→check | CE / reader+listen | `NFC_APPLETS_SHELL` + `NFC_LISTEN_STACK` |
+| `nfc check <slot> [t]` *(DK)* | Poll tag + diff vs stored slot → PASS/FAIL (was `nfc verify`) | Reader, CE | `NFC_APPLETS_SHELL` |
 
-Debug primitives (`nfc reader`, `nfc stack`, `nfc store`, `nfc_transport`,
-`pn7160`) are inventoried in full in [`../NFC_SHELL_APPLETS.md`](../NFC_SHELL_APPLETS.md).
+**DROPPED (Phase A):** `nfc reader clone` (use `nfc read`); `nfc verify` as a
+product command (renamed DK `nfc check`); blocking `nfc scan` (replaced by
+`scan start`/`scan stop`).
+
+Debug primitives (`nfc reader scan/detect`, `nfc stack`, `nfc store`,
+`nfc_transport`, `pn7160`) are inventoried in full in
+[`../NFC_SHELL_APPLETS.md`](../NFC_SHELL_APPLETS.md).
 
 ### 1.2 Program tracks → where they land
 
 | Track | Theme | Lands in phases |
 |-------|-------|-----------------|
 | 1 | Kconfig truth audit (imply ↔ overlay ↔ test gating) | P1, P5 |
-| 2 | Shell/applet decoupling (master plan Part C) | C1 (scan/read/store), C2 (loop/adapters) |
+| 2 | Shell/applet decoupling (master plan Part C) | **Phase A (LANDED)** — absorbed C1 (scan/read/store) + C2 (loop/adapters) |
 | 3 | Per-subdir docs (`CONTEXT.md` decision §3.1) | P2–P4 (audit phases) |
 | 4 | Protocol parity audit (Aliro vs NCS access-control; Flipper matrix) | P4 |
 | 5 | HIL protocol guide (NEW doc) | P0 (done) + bench track |
@@ -72,9 +77,10 @@ Debug primitives (`nfc reader`, `nfc stack`, `nfc store`, `nfc_transport`,
 - [ ] **Test truth:** every twister scenario = profile + overlay + explicit tier
   allowlist; a reader scenario never runs a native-listener tier; headless
   applet tier (`log==NULL`) exists; a `CONFIG_SHELL=n` reader build links.
-- [ ] **Shell truth:** no `shell.h` / `shell_*` below Layer 2; the four leaks
-  (`nfc_store.c`, `nfc_store_ram.c`, `nfc_applet_scan.c`, `nfc_applet_loop.c`)
-  are closed; `nfc_applet_service.h` is the headless API.
+- [x] **Shell truth:** **DONE in Phase A** — no `shell.h` / `shell_*` below
+  Layer 2; the four leaks (`nfc_store.c`, `nfc_store_ram.c`,
+  `nfc_applet_scan.c`, `nfc_applet_loop.c`) are closed; `nfc_applet_service.h`
+  is the headless API.
 - [ ] **Docs:** every `src/nfc/**` dir has a `CONTEXT.md` (§3.1 decision); the two
   new guides exist and match the code; doc-drift fixes (HIL plan §3) applied;
   CI doc = `twister.yaml`.
@@ -84,7 +90,7 @@ Debug primitives (`nfc reader`, `nfc stack`, `nfc store`, `nfc_transport`,
 **Product ship-ready (adds hardware):**
 - [ ] HIL Gates 2–5 PASS on silicon per [`../NFC_HIL_PROTOCOL_GUIDE.md`](../NFC_HIL_PROTOCOL_GUIDE.md),
   with captured logs + `nfc_transport stats` (`apdu_assembled > 0`,
-  `apdu_drop_cons == 0`, `nfc verify` PASS, `nfc loop` PASS, cross-backend Gate 5).
+  `apdu_drop_cons == 0`, `nfc check` PASS, `nfc loop` PASS, cross-backend Gate 5).
 
 ---
 
@@ -114,14 +120,15 @@ the human-onboarding role. So: **production source dirs → `CONTEXT.md`**;
 | Phase | Track(s) | Entry gate | Work | Deliverables | Exit gate (verify) | Model |
 |-------|----------|-----------|------|--------------|--------------------|-------|
 | **P0** | 5,6 | — | This plan + two end-user guides (HIL, shell) + master-plan pointer | `NFC_CONSOLIDATED_EXECUTION.md`, `NFC_HIL_PROTOCOL_GUIDE.md`, `NFC_SHELL_APPLETS.md` | Approval (§6); baseline twister green (done) | (done) |
+| **A** | 2 | P0 | **Applet foundation (LANDED 2026-06-14):** lock the L0/L1/L2/L3 layer model; land the full shell→service deconvolution **ahead of the audit** — `nfc_applet_service.h`, continuous-discovery scan (`nfc scan start/stop`), `nfc_applet_loop_run` + thin `cmd_nfc_loop`, store default-save inert + RAM include gated, `nfc reader clone` dropped, `nfc verify`→`nfc check`. **This is C1+C2 below, done early.** | headless `nfc_applet_service.h`; scoped commits; updated docs | `nfc_reader` twister 2/2·97/97; reader / reader+listen / `SHELL=n` builds link; no shell below L2 | **Opus** (done) |
 | **P1** | 1 | P0 approved | Kconfig truth audit: verify each `NFC_PROFILE_*` imply chain matches its overlay; confirm tests gated on the Kconfig the profile compiles; document the `nfc_reader` unconditional-compile divergence; record pass/fail baseline | `KCONFIG_TRUTH_FINDINGS` (append to harmonization findings); confirmed profile→compiles→may-test table | `west twister -T tests/unit/nfc_reader -t ci_unit -p qemu_cortex_m3 --no-sysbuild` green; findings written | Opus |
 | **P2** | 3 | P1 | Bottom-up `CONTEXT.md` for HAL + module + framing + router (gold-standard template) | `modules/nfc_pn7160/CONTEXT.md`, `src/nfc/hal/CONTEXT.md`, `framing/`, `router/` | `nfc_apdu_asm` + `pn7160_tml` twister green; docs lint | Opus |
 | **P3** | 3 | P2 | `CONTEXT.md` for reader engine, nfc_stack, run | `src/nfc/reader/`, `nfc_stack/`, `run/CONTEXT.md` | reader twister green; listen+nfct overlay **builds** | Composer/Opus |
 | **P4** | 3,4 | P3 | `CONTEXT.md` per protocol (9) + **protocol parity audit**: Aliro listener vs NCS door-lock/access-control patterns (local `aliro/`, `wave5-aliro.md`); Flipper `.nfc` fixture↔golden↔loopback coverage matrix; per-protocol "QEMU proves vs HIL must prove" | 9× `protocols/*/CONTEXT.md`; `NFC_PROTOCOL_PARITY_MATRIX` (folded into HIL guide §4) | per-protocol twister (all tiers) green | Opus orch + Composer |
-| **C1** | 2 | P3 (store touched) | **Deconvolution part 1** (master plan Part C.4 steps 1–3): add `nfc_applet_service.h`; `scan_get_result` + `get_card_meta`, move `nfc_applet_scan_print` body to adapter; fix `nfc_store_default_save` (no-shell stub) + move `nfc_store_ram.c` shell include under `NFC_STORE_RAM_SHELL`; clean `nfc_applet.h` | service header + scoped code commits | `nfc_reader` store+store_ram green **+** reader `CONFIG_SHELL=n` compile | **Opus** |
-| **C2** | 2 | C1 landed, no HIL `loop` sign-off in flight | **Deconvolution part 2** (Part C.4 step 4): `nfc_applet_loop_run` headless + log cb; reduce `cmd_nfc_loop` to thin adapter; finalize all `*_shell_cmds.c` as the only L2 | scoped code commits | reader + CE builds with `SHELL=y` **and** `SHELL=n` | **Opus** |
-| **P5** | 1,7 | P4, C1 | **Test gating fix** (master plan B.5/E): wrap each protocol block in `nfc_reader/CMakeLists.txt` under `if(CONFIG_NFC_PROTOCOL_X)`; split `prj.conf` into profile-scoped fragments; add headless applet tier (`scan_get_result`/`get_card_meta`/`loop_run`, `log==NULL`) + `nfc_reader.shell_off` scenario | gated CMake + new scenarios | per-protocol + `nfc_reader` twister green; `SHELL=n` scenario builds | **Opus** |
-| **P6** | 7 | P5, C2 | **QEMU green + CI alignment:** full twister matrix; add `tests/unit/nfc_apdu_asm` to `twister.yaml` `UNIT_DIRS`; apply doc-drift fixes (HIL plan §3 D1–D7); reconcile `CI_TESTING.md` ↔ `twister.yaml` | green report; CI + doc fixes | `west twister -T tests/unit -t ci_unit -p qemu_cortex_m3` **all green**; `nfc_apdu_asm` in CI | Opus |
+| ~~**C1**~~ | 2 | — | **LANDED in Phase A** (was: deconvolution part 1 — service.h, scan/read extract, store default-save fix, RAM include move). | — | done | **Opus** ✅ |
+| ~~**C2**~~ | 2 | — | **LANDED in Phase A** (was: deconvolution part 2 — `loop_run`, thin `cmd_nfc_loop`, finalize adapters). | — | done | **Opus** ✅ |
+| **P5** | 1,7 | P4 (C1 landed in Phase A) | **Test gating fix** (master plan B.5/E): wrap each protocol block in `nfc_reader/CMakeLists.txt` under `if(CONFIG_NFC_PROTOCOL_X)`; split `prj.conf` into profile-scoped fragments; add headless applet tier (`scan_get_result`/`get_card_meta`/`loop_run`, `log==NULL`) + `nfc_reader.shell_off` scenario | gated CMake + new scenarios | per-protocol + `nfc_reader` twister green; `SHELL=n` scenario builds | **Opus** |
+| **P6** | 7 | P5 (C2 landed in Phase A) | **QEMU green + CI alignment:** full twister matrix; add `tests/unit/nfc_apdu_asm` to `twister.yaml` `UNIT_DIRS`; apply doc-drift fixes (HIL plan §3 D1–D7); reconcile `CI_TESTING.md` ↔ `twister.yaml` | green report; CI + doc fixes | `west twister -T tests/unit -t ci_unit -p qemu_cortex_m3` **all green**; `nfc_apdu_asm` in CI | Opus |
 | **P7** | — | P6 | Assemble `NFC_STACK_ARCHITECTURE.md` + roll up `NFC_HARMONIZATION_FINDINGS.md` | architecture doc + findings rollup | cross-link lint; diagrams render | Opus |
 | **HIL** | 5 | image builds (any time after C-phases stable) | Bench Gates 2→3→4→5 per HIL guide | captured logs + stats per gate | Gate PASS recorded in sequential plan | human |
 
@@ -150,19 +157,18 @@ Effort: S < ½ day, M ≈ 1 day, L ≈ 2 days agent time. P4/C1/C2/P5 are L; oth
 ## 5. Sequencing & HIL parallelism
 
 ```
-P0 ─approve─▶ P1 ─▶ P2 ─▶ P3 ─▶ P4 ─▶ P5 ─▶ P6 ─▶ P7
-                         └▶ C1 ─▶ C2 ─┘
+P0 ─approve─▶ A ─▶ P1 ─▶ P2 ─▶ P3 ─▶ P4 ─▶ P5 ─▶ P6 ─▶ P7
+            (✅ LANDED: C1+C2 deconvolution pulled ahead of the audit)
 HIL Gates 2→3→4→5 ───── parallel bench track (no agent gate) ─────▶
 ```
 
+- **Phase A (applet foundation)** LANDED before P1; it absorbed C1+C2. The audit
+  phases now start from a headless, gated baseline and only *verify* it.
 - **Read-only audit phases (P1–P4)** and **both new guides** are parallel-safe
   with HIL — they touch no shipping code path.
-- **C1 store default-save fix** touches the reader-only `nfc read` path → land
-  **between HIL cycles** (no `read` sign-off in flight).
-- **C2 loop deconvolution** restructures `nfc loop` → **not** during a HIL `loop`
-  sign-off.
-- **scan/read extract (C1 first half)** is parallel-safe — externally observable
-  output is identical (strings just relocate to the adapter).
+- **Phase A note vs HIL:** the deconvolution preserved externally observable
+  output except the LOCKED command renames (`scan`→`scan start/stop`,
+  `verify`→`check`, `reader clone` dropped) — update bench scripts accordingly.
 - **HIL Gates 2–5** run on the **current** overlays at any time; this program
   does not gate hardware validation, and hardware validation does not gate the
   software phases except the two "caution" items above.
@@ -182,9 +188,11 @@ HIL Gates 2→3→4→5 ───── parallel bench track (no agent gate) ─
 - [ ] **Test gating policy** accepted: every twister scenario = profile + overlay
   + explicit tier allowlist; `nfc_reader` per-protocol CMake gating fixed;
   headless applet tier + `SHELL=n` scenario added.
-- [ ] **Shell decoupling lands as code** at C1/C2 (not a deferred orphan).
-- [ ] **HIL stays a parallel bench track**; only C1 store-fix and C2 loop-rework
-  serialize against HIL `read`/`loop` sign-offs.
+- [x] **Shell decoupling lands as code** — **DONE in Phase A** (absorbed C1/C2),
+  not a deferred orphan.
+- [ ] **HIL stays a parallel bench track**; Phase A preserved observable output
+  except the LOCKED command renames (`scan start/stop`, `check`, no `reader
+  clone`) — bench scripts updated in `NFC_HIL_PROTOCOL_GUIDE.md`.
 - [ ] **Baseline accepted:** `nfc_reader` 2/2 configs, 97/97 cases green (QEMU).
 
 ---

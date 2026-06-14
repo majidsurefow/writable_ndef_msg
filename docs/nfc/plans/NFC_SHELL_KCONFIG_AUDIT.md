@@ -4,7 +4,15 @@
 **Scope:** All NFC code under `src/nfc/` and `modules/nfc_pn7160/` that references Zephyr shell APIs.  
 **Question:** Is every shell user gated by a `*_SHELL` Kconfig (with `depends on SHELL`) such that a build with `CONFIG_SHELL=n` does not compile shell code?
 
-**Verdict:** **Partially gated.** Dedicated shell command files are correct. Four core module files still include or call shell APIs when only feature Kconfig (store, applets, listen stack) is enabled.
+**Verdict (original):** **Partially gated.** Dedicated shell command files are correct. Four core module files still include or call shell APIs when only feature Kconfig (store, applets, listen stack) is enabled.
+
+> **UPDATE — REMEDIATION LANDED 2026-06-14 (Phase A).** All four leaks below and
+> the `nfc_applet.h` header leakage are **closed**. Layer-0/Layer-1 source now
+> carries no `shell.h` include or `shell_*` symbol; the only `struct shell *`
+> sites are the `*_shell_cmds.c` adapters gated by `*_SHELL`. Verified: reader
+> profile `CONFIG_SHELL=n` build links; `nfc_reader` twister 2/2·97/97 green.
+> See [`NFC_HARMONIZATION_MASTER_PLAN.md`](NFC_HARMONIZATION_MASTER_PLAN.md)
+> Phase A. The "Remediation options" at the bottom record what was done.
 
 ---
 
@@ -42,11 +50,14 @@ Header: `src/nfc/store/nfc_store_ram.h` exposes shell prototypes and `nfc_store_
 
 ---
 
-## Not gated (fail)
+## Not gated (fail) — ALL FIXED in Phase A
 
-These files compile under **feature** Kconfig, not shell Kconfig, and still `#include <zephyr/shell/shell.h>` and/or call shell APIs.
+These files compiled under **feature** Kconfig, not shell Kconfig, and still
+`#include <zephyr/shell/shell.h>` and/or called shell APIs. **All four are now
+fixed (LANDED 2026-06-14).** The descriptions below are the original findings;
+each is annotated with its fix.
 
-### 1. `src/nfc/store/nfc_store.c`
+### 1. `src/nfc/store/nfc_store.c` — **FIXED**
 
 | | |
 |---|---|
@@ -55,7 +66,12 @@ These files compile under **feature** Kconfig, not shell Kconfig, and still `#in
 | **Issue** | Unconditional `#include <zephyr/shell/shell.h>`. `nfc_store_default_save()` calls `shell_print` / `shell_fprintf`. Registered as the default save callback in `nfc_store_init()`. |
 | **Runtime note** | Returns `-ENODEV` when `user_ctx` is NULL, but shell symbols are still compiled into the store module. |
 
-### 2. `src/nfc/store/nfc_store_ram.c`
+**Fix:** default save callback replaced with an inert `-ENODEV` no-shell stub;
+`<zephyr/shell/shell.h>` include removed. The `@@NFCDUMP@@` hex dump is now a
+shell-registered cb (`nfc_applet_shell_save_cb` in the adapter), never the
+store default.
+
+### 2. `src/nfc/store/nfc_store_ram.c` — **FIXED**
 
 | | |
 |---|---|
@@ -63,7 +79,10 @@ These files compile under **feature** Kconfig, not shell Kconfig, and still `#in
 | **Shell Kconfig required** | None (include); handlers need `CONFIG_NFC_STORE_RAM_SHELL` |
 | **Issue** | `#include <zephyr/shell/shell.h>` is inside the `CONFIG_NFC_STORE_RAM` block but **outside** `CONFIG_NFC_STORE_RAM_SHELL`. `cmd_nfc_store_ram_list` / `cmd_nfc_store_ram_dump` are correctly inside the shell block. |
 
-### 3. `src/nfc/applets/nfc_applet_scan.c`
+**Fix:** `#include <zephyr/shell/shell.h>` moved inside the
+`CONFIG_NFC_STORE_RAM_SHELL` block (next to the `cmd_*` handlers).
+
+### 3. `src/nfc/applets/nfc_applet_scan.c` — **FIXED**
 
 | | |
 |---|---|
@@ -71,7 +90,12 @@ These files compile under **feature** Kconfig, not shell Kconfig, and still `#in
 | **Shell Kconfig required** | None |
 | **Issue** | `nfc_applet_scan_print()` is entirely shell output (`shell_print`, `shell_fprintf`). Only caller is `nfc_applet_shell_cmds.c` (shell-gated), but the implementation file is always built with applets. |
 
-### 4. `src/nfc/applets/nfc_applet_loop.c`
+**Fix:** `nfc_applet_scan_print()` deleted; its body moved verbatim into the
+adapter as the registered tag callback. `nfc_applet_scan.c` is now headless
+(continuous discovery `discover_start/stop/active` + `scan_get_result`) and
+includes no shell header.
+
+### 4. `src/nfc/applets/nfc_applet_loop.c` — **FIXED**
 
 | | |
 |---|---|
@@ -81,14 +105,20 @@ These files compile under **feature** Kconfig, not shell Kconfig, and still `#in
 
 ---
 
-## Header leakage (minor)
+**Fix:** `nfc_applet_loop()` replaced by headless `nfc_applet_loop_run(slot,
+timeout, log_cb, ctx, &result)`; `cmd_nfc_loop` is a thin adapter that supplies
+a printing log callback. No shell header in `nfc_applet_loop.c`.
 
-`src/nfc/applets/nfc_applet.h` always declares:
+## Header leakage (minor) — **FIXED**
+
+`src/nfc/applets/nfc_applet.h` used to declare unconditionally:
 
 - `void nfc_applet_scan_print(const struct shell *sh);`
 - `int nfc_applet_loop(const struct shell *sh, const char *slot, k_timeout_t timeout);`
 
-No `#if IS_ENABLED(CONFIG_NFC_APPLETS_SHELL)` guard. Forward `struct shell;` keeps the header compilable without `shell.h`, but the public applet API still mentions shell in no-shell builds.
+**Fix:** both shell-typed prototypes removed. The headless API moved to
+`nfc_applet_service.h`; `nfc_applet.h` is now a thin `#include` shim. No
+`struct shell` appears in any Layer-0/Layer-1 header.
 
 ---
 
@@ -119,10 +149,22 @@ Typical overlays (`overlay-pn7160-stack.conf`, etc.) set `CONFIG_SHELL=y` and `*
 
 ---
 
-## Remediation options (not implemented)
+## Remediation (LANDED 2026-06-14, Phase A)
 
-1. **`nfc_store.c`** — Replace default save stub with a no-shell stub (`-ENODEV` or log-only); move `@@NFCDUMP@@` shell dump behind `CONFIG_NFC_STORE_RAM_SHELL` or shell cmd layer only.
-2. **`nfc_store_ram.c`** — Move `#include <zephyr/shell/shell.h>` inside `CONFIG_NFC_STORE_RAM_SHELL`.
-3. **`nfc_applet_scan.c`** — Move `nfc_applet_scan_print()` into `nfc_applet_shell_cmds.c`, or compile `nfc_applet_scan.c` only when `CONFIG_NFC_APPLETS_SHELL`.
-4. **`nfc_applet_loop.c`** — Same: shell-only file or `CONFIG_NFC_APPLETS_SHELL` in CMake.
-5. **`nfc_applet.h`** — Wrap shell prototypes in `#if IS_ENABLED(CONFIG_NFC_APPLETS_SHELL)`.
+1. **`nfc_store.c`** — ✅ default save replaced with an inert `-ENODEV`
+   no-shell stub; shell include removed; `@@NFCDUMP@@` dump is a
+   shell-registered cb only.
+2. **`nfc_store_ram.c`** — ✅ `#include <zephyr/shell/shell.h>` moved inside
+   `CONFIG_NFC_STORE_RAM_SHELL`.
+3. **`nfc_applet_scan.c`** — ✅ `nfc_applet_scan_print()` body moved into the
+   adapter as the registered tag callback; the file is headless (continuous
+   discovery) under `NFC_APPLETS`.
+4. **`nfc_applet_loop.c`** — ✅ headless `nfc_applet_loop_run()` with an
+   optional log callback; `cmd_nfc_loop` is a thin adapter.
+5. **`nfc_applet.h`** — ✅ shell-typed prototypes removed; headless API lives in
+   `nfc_applet_service.h` and `nfc_applet.h` is a thin include shim.
+
+**Note (chosen approach):** rather than gate the headless `.c` files under
+`*_SHELL`, the rendering was *extracted* into the adapter so the applet service
+files compile under `NFC_APPLETS` with no shell symbols — this is what makes the
+files reusable by L3 (SMF/BLE/HIL) consumers, not just compilable without shell.

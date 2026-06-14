@@ -20,6 +20,55 @@ Those two stay as **reference detail**; the *plan of record* is here.
 
 ---
 
+# Phase A — Applet foundation (LANDED 2026-06-14, prerequisite to Phase 1)
+
+> **Status: LANDED.** Phase A is a **prerequisite that runs before** the
+> bottom-up harmonization audit (Phases 1–9 / P1–P7). It locks the applet/shell
+> layer model and lands the deconvolution code that the rest of the program
+> assumed would happen "during the audit" — pulled forward so the audit phases
+> start from a headless, gated baseline.
+
+**What Phase A locked (authoritative applet model):**
+
+| Layer | Owns | Shell? |
+|-------|------|--------|
+| L0 engines | reader engine, nfc_stack, store, HAL | no |
+| L1 applets | scan / read / emulate / loop / check business logic — errno + result structs + optional log cb | **no** |
+| L2 shell | `*_shell_cmds.c` adapters — argv parse + human print | the **only** `struct shell *` site |
+| L3 app/SMF | future consumer of L1 | n/a |
+
+**L1 product applets (4 + helpers):** Scan (`nfc_applet_scan`), Read
+(`nfc_applet_read`), Emulate (`nfc_applet_emulate`), Loop (`nfc_applet_loop`),
+with Check (`nfc_applet_verify`, internal to Loop / DK shell only) and Policy
+(`nfc_applet_policy`, internal). **Not applets:** store, reader engine, stack,
+HAL, golden import.
+
+**L2 shell mapping (LOCKED):** `nfc scan start` / `nfc scan stop` → Scan
+(continuous discovery + per-tag callback); `nfc read <slot>` → Read;
+`nfc emulate <slot>` / `nfc emulate golden <name>` → Emulate;
+`nfc loop <slot>` → Loop; `nfc check <slot>` → Check (**DK only**, was
+`nfc verify`).
+
+**DROPPED in Phase A:** `nfc reader clone` (use `nfc read`); `nfc verify` as a
+product command (renamed to DK `nfc check`); blocking `nfc scan` (replaced by
+`nfc scan start`/`stop` continuous discovery + callback).
+
+**What landed (code):** `nfc_applet_service.h` (headless L1 API),
+`nfc_applet_service.c` (card-meta helper), continuous-discovery scan,
+`nfc_applet_loop_run` + thin `cmd_nfc_loop`, store default-save made inert
+(no shell), `nfc_store_ram.c` shell include gated, `nfc reader clone` removed,
+`nfc verify`→`nfc check`. All four shell leaks (Part C.1) are **closed**.
+
+**Verification:** `nfc_reader` twister 2/2 configs, 97/97 cases green; reader,
+reader+listen, and reader `CONFIG_SHELL=n` images build/link; no `shell.h` /
+`shell_*` below L2.
+
+**Phase A blocks nothing in the audit** — harmonization P1+ runs after Phase A
+green (Part H). The Part C deconvolution work below is therefore **already
+done**; the audit phases consume it rather than producing it.
+
+---
+
 # Part A — Vision & principles
 
 ## A.1 Layer stack
@@ -131,7 +180,13 @@ Each phase ends with a **profile-scoped** twister rerun, not a blanket "all test
 
 This is the [`NFC_APPLET_API_LAYERING.md`](NFC_APPLET_API_LAYERING.md) work, folded into the bottom-up phases at the **store** and **applet** layers so headless tests (Part E) become possible. It **lands as code** (scoped commits), unlike the read-only audit of other layers.
 
-## C.1 The four leaks (from the shell audit)
+> **LANDED in Phase A (2026-06-14).** All of Part C below is **done** — pulled
+> ahead of the audit. The four leaks (C.1) are closed, the new Layer-1 API (C.2)
+> exists as `nfc_applet_service.h`, and the Kconfig/CMake gating (C.3) is
+> enforced. The audit phases (5 & 7) now *verify* this state instead of
+> producing it; their "Part C" code columns are marked LANDED in Part D.
+
+## C.1 The four leaks (from the shell audit) — ALL CLOSED in Phase A
 
 | File | Leak | Fix |
 |------|------|-----|
@@ -170,13 +225,13 @@ int nfc_applet_loop_run(const char *slot, k_timeout_t,
 
 ## C.4 Deconvolution sequencing (mapped to phases)
 
-| Step | Lands in | Risk | HIL timing |
-|------|----------|------|-----------|
-| `nfc_applet_service.h` skeleton (structs/signatures) | Phase 5 | trivial | parallel |
-| scan+read: `scan_get_result` + `get_card_meta`, move print to adapter, clean `nfc_applet.h` | Phase 5 | low | parallel (output identical) |
-| **store default-save fix** + `nfc_store_ram.c` include move | Phase 5 (store phase) | medium | between HIL cycles — touches reader-only `nfc read` path |
-| loop: `nfc_applet_loop_run` + thin `cmd_nfc_loop` | Phase 7 (shell phase) | medium | **not** during a HIL `loop` sign-off |
-| headless Layer-1 tests + `SHELL=n` CI build | Phase 8 | low | parallel |
+| Step | Lands in | Risk | Status |
+|------|----------|------|--------|
+| `nfc_applet_service.h` skeleton (structs/signatures) | ~~Phase 5~~ → **Phase A** | trivial | **LANDED** |
+| scan+read: `scan_get_result` + `get_card_meta`, move print to adapter, clean `nfc_applet.h` | ~~Phase 5~~ → **Phase A** | low | **LANDED** (scan also became continuous discovery start/stop) |
+| **store default-save fix** + `nfc_store_ram.c` include move | ~~Phase 5~~ → **Phase A** | medium | **LANDED** |
+| loop: `nfc_applet_loop_run` + thin `cmd_nfc_loop` | ~~Phase 7~~ → **Phase A** | medium | **LANDED** |
+| headless Layer-1 tests + `SHELL=n` CI build | Phase 8 / P5 | low | **deferred** (Phase A proved the `SHELL=n` build manually; the Ztest tier + CI scenario remain for the test-harmonization phase) |
 
 ---
 
@@ -187,13 +242,14 @@ Each phase = one agent work package. Inputs read-first. Outputs = `CONTEXT.md` +
 | Phase | Layer dir(s) | Audit + CONTEXT.md | Code changes (Part C) | Verify (Part B.6) | Model |
 |-------|--------------|---------------------|------------------------|-------------------|-------|
 | **0** | this plan | this file + arch stub | — | user sign-off (Part G) | (done) |
+| **A** | `src/nfc/applets`, `src/nfc/store`, `src/nfc/reader` (shell) | Phase-A banner (above) | **Part C.4 steps 1–4 ALL LANDED** — service.h, scan→continuous discovery, store default-save inert, RAM include gate, loop_run + thin adapter, drop `nfc reader clone`, `verify`→`check` | `nfc_reader` twister 2/2·97/97; reader/reader+listen/`SHELL=n` builds | **Opus** (done) |
 | **1** | `modules/nfc_pn7160`, `src/nfc/hal` | 2 `CONTEXT.md` — **sets the gold standard** | — | module twister | **Opus** |
 | **2** | `src/nfc/framing`, `src/nfc/router` | 2 `CONTEXT.md` | — | `nfc_apdu_asm` twister | Opus |
 | **3** | `src/nfc/reader` | 1 `CONTEXT.md` | — | `nfc_reader` twister | Composer |
 | **4** | `src/nfc/nfc_stack`, `src/nfc/run` | 2 `CONTEXT.md` | — | listen + nfct overlay build | **Opus** |
-| **5** | `src/nfc/store` **+ applet scan/read + store default-save** | 1 store `CONTEXT.md` + applet service header | **Part C.4 steps 1–3** (service.h, scan/read extract, store default-save fix, RAM include move) | `nfc_reader` store+store_ram **+** reader `SHELL=n` compile | **Opus** (boundary-sensitive) |
+| **5** | `src/nfc/store` **+ applet scan/read** | 1 store `CONTEXT.md` + applet service header | ~~Part C.4 steps 1–3~~ **LANDED in Phase A** — Phase 5 now only *verifies* the headless store/scan baseline and adds the headless Tier-E tests + `SHELL=n` CI scenario (Part E) | `nfc_reader` store+store_ram **+** reader `SHELL=n` compile | **Opus** (boundary-sensitive) |
 | **6** | `src/nfc/protocols/*` (9) **+ test gating fix** | 9 `CONTEXT.md` | **Part B.5**: wrap protocol blocks in `nfc_reader/CMakeLists.txt` under `if(CONFIG_NFC_PROTOCOL_X)`; split `nfc_reader/prj.conf` into profile-scoped fragments | per-protocol twister, all tiers | Opus orch + **Composer** per-protocol |
-| **7** | `src/nfc/applets` **+ loop deconvolution + shell adapters** | 5 applet `CONTEXT.md` | **Part C.4 step 4** (`loop_run`, thin `cmd_nfc_loop`); finalize all `*_shell_cmds.c` as the only L2 | reader + CE builds, `SHELL=y`/`n` | **Opus** |
+| **7** | `src/nfc/applets` **+ shell adapters** | 5 applet `CONTEXT.md` | ~~Part C.4 step 4~~ **LANDED in Phase A** (`loop_run`, thin `cmd_nfc_loop`, all `*_shell_cmds.c` are the only L2). Phase 7 now only documents/verifies the adapter layer | reader + CE builds, `SHELL=y`/`n` | **Opus** |
 | **8** | `tests/common`, `tests/unit/*` | `tests/common/CONTEXT.md` + fidelity findings | **Part E**: profile-scoped scenarios, headless applet Tier-E, `SHELL=n` CI build, anti-pattern remediation | **full** `tests/unit` twister + headless tier | **Opus** |
 | **9** | assemble | `NFC_STACK_ARCHITECTURE.md` + `NFC_HARMONIZATION_FINDINGS.md` | — | cross-link lint; diagrams render | Opus |
 
@@ -354,7 +410,8 @@ One file aggregating per-phase findings, grouped by category (A–G of D.4), eac
 
 | Track | When | Blocks HIL? | Interaction |
 |-------|------|-------------|-------------|
-| Phases 1–4 (audit, read-only) | anytime, parallel | No | findings may inform HIL |
+| **Phase A (applet foundation)** | **LANDED — before P1** | No | **Blocks nothing**; harmonization P1+ runs after Phase A green. Pulled the Part C deconvolution ahead of the audit so all audit phases start headless+gated. Externally observable applet output is preserved except the LOCKED command renames (`scan`→`scan start/stop`, `verify`→`check`, `reader clone` dropped). |
+| Phases 1–4 (audit, read-only) | anytime, parallel (after Phase A) | No | findings may inform HIL |
 | **Phase 5 store default-save fix (C.1)** | between HIL cycles | **Caution** | touches reader-only `nfc read` path; land when no HIL `read` sign-off in flight |
 | Phase 5 scan/read extract | parallel | No | externally observable output identical |
 | Phase 6 test-gating (B.5) | parallel | No | test-only |

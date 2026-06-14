@@ -1,6 +1,27 @@
 # NFC Applet API Layering Plan
 
-> **DEPRECATED as plan of record.** This work is now integrated into [`NFC_HARMONIZATION_MASTER_PLAN.md`](NFC_HARMONIZATION_MASTER_PLAN.md) **Part C** (deconvolution, lands at Phases 5 & 7) and **Part E** (headless tests). This file remains as reference detail for the result structs and per-applet mapping.
+> **✅ IMPLEMENTED — LANDED 2026-06-14 (Phase A).** This plan's deconvolution is
+> **done**. The headless API lives in `src/nfc/applets/nfc_applet_service.h`
+> (+ `nfc_applet_service.c`); the four shell leaks are closed; `nfc_applet.h` is
+> a thin shim. Below is preserved as the design reference. **Deltas the locked
+> Phase A model applied on top of this plan:**
+>
+> - **Scan is now continuous discovery, not one-shot.** Instead of
+>   `scan_start`/`scan_wait`/`scan_get_result` driving a single blocking scan,
+>   the locked model is `nfc_applet_discover_start(cb, ctx)` /
+>   `nfc_applet_discover_stop()` / `nfc_applet_discover_active()` — a
+>   self-rescheduling discovery loop that fires a per-tag callback. The shell
+>   command became `nfc scan start` / `nfc scan stop`; blocking `nfc scan` was
+>   dropped. `nfc_applet_scan_get_result()` is retained as a session snapshot.
+> - **`verify` → `check`.** The product `nfc verify` command was renamed to the
+>   **DK-only** `nfc check`; the headless core keeps the
+>   `nfc_applet_verify_*` names and is used internally by `loop`.
+> - **`nfc reader clone` DROPPED.** No alias; use `nfc read`.
+>
+> Everything else (result structs, `loop_run`, `get_card_meta`, the no-shell
+> rule, the Kconfig/CMake gating) landed as written below.
+
+> **DEPRECATED as plan of record.** This work is now integrated into [`NFC_HARMONIZATION_MASTER_PLAN.md`](NFC_HARMONIZATION_MASTER_PLAN.md) **Part C** (deconvolution, LANDED in Phase A) and **Part E** (headless tests, deferred to P5). This file remains as reference detail for the result structs and per-applet mapping.
 
 **Date:** 2026-06-14
 **Branch:** `nfc-stack`
