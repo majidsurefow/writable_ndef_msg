@@ -20,6 +20,22 @@
 #include "router/aid_router.h"
 #include "router/service.h"
 #include "store/nfc_store.h"
+#if IS_ENABLED(CONFIG_NFC_STORE_RAM)
+#include "store/nfc_store_ram.h"
+#endif
+
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_DESFIRE)
+#include "protocols/desfire/desfire.h"
+#include "protocols/desfire/desfire_listener.h"
+#endif
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_EMV)
+#include "protocols/emv/emv.h"
+#include "protocols/emv/emv_listener.h"
+#endif
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_ALIRO)
+#include "protocols/aliro/aliro.h"
+#include "protocols/aliro/aliro_listener.h"
+#endif
 
 LOG_MODULE_REGISTER(nfc_stack, CONFIG_LOG_DEFAULT_LEVEL);
 
@@ -42,13 +58,126 @@ static nfc_transport_ops_t s_transport_ops = {
 	.on_apdu = nfc_stack_on_apdu,
 };
 
-static int stack_register_ndef_profile(void)
+static size_t nfc_stack_listen_services(const nfc_service_t **svcs, size_t max)
 {
-	const nfc_service_t *svc = ndef_listener_get();
+	size_t n = 0U;
+
+	if ((svcs == NULL) || (max == 0U)) {
+		return 0U;
+	}
+
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_NDEF)
+	if (n < max) {
+		svcs[n++] = ndef_listener_get();
+	}
+#endif
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_DESFIRE)
+	if (n < max) {
+		svcs[n++] = desfire_listener_get();
+	}
+#endif
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_EMV)
+	if (n < max) {
+		svcs[n++] = emv_listener_get();
+	}
+#endif
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_ALIRO)
+	if (n < max) {
+		svcs[n++] = aliro_listener_get();
+	}
+#endif
+
+	return n;
+}
+
+static int stack_register_listen_profiles(void)
+{
 	int ret;
 
-	ret = aid_router_register(NDEF_AID, sizeof(NDEF_AID), svc);
-	return ret;
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_NDEF)
+	ret = aid_router_register(NDEF_AID, sizeof(NDEF_AID), ndef_listener_get());
+	if (ret != 0) {
+		return ret;
+	}
+#endif
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_EMV)
+	ret = aid_router_register(emv_ppse_aid, EMV_PPSE_AID_LEN, emv_listener_get());
+	if (ret != 0) {
+		return ret;
+	}
+
+	ret = aid_router_register(emv_service_app_aid, EMV_SERVICE_APP_AID_LEN, emv_listener_get());
+	if (ret != 0) {
+		return ret;
+	}
+#endif
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_DESFIRE)
+	ret = aid_router_register(desfire_aid, DESFIRE_AID_LEN, desfire_listener_get());
+	if (ret != 0) {
+		return ret;
+	}
+#endif
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_ALIRO)
+	ret = aid_router_register(aliro_expedited_aid, ALIRO_AID_LEN, aliro_listener_get());
+	if (ret != 0) {
+		return ret;
+	}
+
+	ret = aid_router_register(aliro_stepup_aid, ALIRO_AID_LEN, aliro_listener_get());
+	if (ret != 0) {
+		return ret;
+	}
+#endif
+
+	return 0;
+}
+
+static int stack_init_protocol_listeners(void)
+{
+	int ret;
+
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_NDEF)
+	ret = ndef_listener_init(NULL, NULL);
+	if (ret != 0 && ret != -EALREADY) {
+		return ret;
+	}
+#endif
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_DESFIRE)
+	ret = desfire_listener_init(NULL);
+	if (ret != 0 && ret != -EALREADY) {
+		return ret;
+	}
+#endif
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_EMV)
+	ret = emv_listener_init(NULL);
+	if (ret != 0 && ret != -EALREADY) {
+		return ret;
+	}
+#endif
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_ALIRO)
+	ret = aliro_listener_init(NULL);
+	if (ret != 0 && ret != -EALREADY) {
+		return ret;
+	}
+#endif
+
+	return 0;
+}
+
+static void stack_shutdown_protocol_listeners(void)
+{
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_ALIRO)
+	(void)aliro_listener_shutdown();
+#endif
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_EMV)
+	(void)emv_listener_shutdown();
+#endif
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_DESFIRE)
+	(void)desfire_listener_shutdown();
+#endif
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_NDEF)
+	(void)ndef_listener_shutdown();
+#endif
 }
 
 static void nfc_stack_on_field_on(void *user_ctx)
@@ -118,30 +247,37 @@ int nfc_stack_init(const nfc_stack_config_t *cfg)
 		goto fail_router;
 	}
 
+#if IS_ENABLED(CONFIG_NFC_STORE_RAM)
+	ret = nfc_store_ram_init();
+	if (ret != 0) {
+		goto fail_store;
+	}
+#endif
+
 	ret = nfc_transport_init();
 	if (ret != 0 && ret != -EALREADY) {
 		goto fail_store;
 	}
 
-	ret = ndef_listener_init(NULL, NULL);
-	if (ret != 0 && ret != -EALREADY) {
+	ret = stack_init_protocol_listeners();
+	if (ret != 0) {
 		goto fail_transport;
 	}
 
 	ret = nfc_transport_register_callbacks(&s_transport_ops, NULL);
 	if (ret != 0) {
-		goto fail_ndef;
+		goto fail_listeners;
 	}
 
-	ret = stack_register_ndef_profile();
+	ret = stack_register_listen_profiles();
 	if (ret != 0) {
-		goto fail_ndef;
+		goto fail_listeners;
 	}
 
 	return 0;
 
-fail_ndef:
-	(void)ndef_listener_shutdown();
+fail_listeners:
+	stack_shutdown_protocol_listeners();
 fail_transport:
 	(void)nfc_transport_shutdown();
 fail_store:
@@ -222,7 +358,7 @@ int nfc_stack_shutdown(void)
 	}
 
 	(void)nfc_transport_shutdown();
-	(void)ndef_listener_shutdown();
+	stack_shutdown_protocol_listeners();
 	(void)nfc_store_shutdown();
 	(void)aid_router_shutdown();
 	(void)apdu_assembler_shutdown();
@@ -233,7 +369,8 @@ int nfc_stack_shutdown(void)
 
 int nfc_stack_load(const char *tag)
 {
-	const nfc_service_t *svcs[] = { ndef_listener_get() };
+	const nfc_service_t *svcs[6];
+	size_t n;
 	int ret;
 
 	if (s_state == NFC_STACK_STATE_STARTED) {
@@ -248,7 +385,12 @@ int nfc_stack_load(const char *tag)
 		return -EINVAL;
 	}
 
-	ret = nfc_store_load(tag, svcs, ARRAY_SIZE(svcs));
+	n = nfc_stack_listen_services(svcs, ARRAY_SIZE(svcs));
+	if (n == 0U) {
+		return -ENODEV;
+	}
+
+	ret = nfc_store_load(tag, svcs, n);
 	if (ret != 0) {
 		return ret;
 	}
