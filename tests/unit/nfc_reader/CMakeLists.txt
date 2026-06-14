@@ -15,7 +15,8 @@ project(nfc_reader_unit)
 set(REPO_NFC ${CMAKE_CURRENT_SOURCE_DIR}/../../../src/nfc)
 set(REPO_SRC ${CMAKE_CURRENT_SOURCE_DIR}/../../../src)
 
-# Core test sources (always built)
+# Core test sources (always built unless Classic 4K-only isolation build)
+if(NOT CONFIG_NFC_READER_CLASSIC_4K_ONLY)
 target_sources(app PRIVATE
   src/test_store_roundtrip.c
   src/test_store_import.c
@@ -31,6 +32,16 @@ target_sources(app PRIVATE
   ${NFC_TEST_COMMON_SOURCES}
   ${NFC_TEST_LOOPBACK_SOURCES}
 )
+else()
+target_sources(app PRIVATE
+  src/test_classic_4k_reader.c
+  src/nfc_reader_session_mock.c
+  ${REPO_NFC}/store/nfc_store.c
+  ${REPO_NFC}/store/nfc_persist_name.c
+  ${REPO_NFC}/applets/nfc_applet_policy.c
+  ${NFC_TEST_COMMON_SOURCES}
+)
+endif()
 
 # Headless applet tests (L1 API) — requires applet service sources
 # Only enabled when NFC_APPLETS=y (not in store_ram which is at memory limit)
@@ -64,9 +75,20 @@ if(CONFIG_NFC_PROTOCOL_ULTRALIGHT)
   )
 endif()
 
-if(CONFIG_NFC_PROTOCOL_CLASSIC)
+if(CONFIG_NFC_PROTOCOL_CLASSIC AND NOT CONFIG_NFC_READER_CLASSIC_4K_ONLY)
   target_sources(app PRIVATE
     src/test_store_classic_roundtrip.c
+    ${REPO_NFC}/protocols/classic/classic.c
+    ${REPO_NFC}/protocols/classic/classic_i.c
+    ${REPO_NFC}/protocols/classic/classic_poller.c
+    ${REPO_NFC}/protocols/classic/classic_listener.c
+    ${REPO_NFC}/protocols/classic/crypto1.c
+    ${REPO_NFC}/protocols/classic/iso14443_crc.c
+  )
+endif()
+
+if(CONFIG_NFC_READER_CLASSIC_4K_ONLY)
+  target_sources(app PRIVATE
     ${REPO_NFC}/protocols/classic/classic.c
     ${REPO_NFC}/protocols/classic/classic_i.c
     ${REPO_NFC}/protocols/classic/classic_poller.c

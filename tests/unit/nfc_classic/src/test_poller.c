@@ -171,8 +171,15 @@ ZTEST(classic_poller, test_crypto_decrypt_block4_golden)
 	zassert_true(iso14443_crc_check_a(rx_plain, sizeof(classic_MfClassic_1K_4b_step10_rx)));
 }
 
-ZTEST(classic_poller, test_read_1k_golden)
+ZTEST(classic_poller, test_read_1k_4b_golden)
 {
+	uint8_t exp_block0[CLASSIC_BLOCK_SIZE];
+
+	classic_data_reset(&s_data);
+	zassert_ok(classic_deserialize(&s_data, classic_MfClassic_1K_4b_model,
+				       CLASSIC_MFCLASSIC_1K_4B_MODEL_LEN));
+	(void)memcpy(exp_block0, s_data.blocks[0], sizeof(exp_block0));
+
 	poller_before(NULL);
 	nfc_session_mock_load(classic_MfClassic_1K_4b_read_steps,
 			      CLASSIC_MFCLASSIC_1K_4B_READ_STEP_COUNT);
@@ -181,11 +188,10 @@ ZTEST(classic_poller, test_read_1k_golden)
 	zassert_equal(s_data.uid_len, 4U);
 	zassert_mem_equal(s_data.uid, s_session.tag.uid.bytes, 4U);
 	zassert_true(classic_is_block_read(&s_data, 0U));
-	zassert_mem_equal(s_data.blocks[0], classic_MfClassic_1K_4b_model + 58U,
-			  CLASSIC_BLOCK_SIZE);
+	zassert_mem_equal(s_data.blocks[0], exp_block0, sizeof(exp_block0));
 }
 
-ZTEST(classic_poller, test_read_tx_sequence)
+ZTEST(classic_poller, test_read_1k_4b_tx_sequence)
 {
 	poller_before(NULL);
 	nfc_session_mock_load(classic_MfClassic_1K_4b_read_steps,

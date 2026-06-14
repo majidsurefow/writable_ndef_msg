@@ -47,6 +47,7 @@
 #include "protocols/classic/classic_listener.h"
 #include "protocols/classic/classic_poller.h"
 #include "classic_store_fixture.h"
+#include "classic_fixture_reader.h"
 #endif /* CONFIG_NFC_PROTOCOL_CLASSIC */
 
 #include "nfc_virtual_loopback.h"
@@ -64,10 +65,8 @@
 #if defined(CONFIG_NFC_PROTOCOL_SLIX)
 #include "Slix_cap_default_mock.h"
 #endif
-#if defined(CONFIG_NFC_PROTOCOL_CLASSIC)
-#include "MfClassic_1K_4b_mock.h"
-#endif
 
+#include <stdio.h>
 #include <string.h>
 
 #include <zephyr/ztest.h>
@@ -1362,23 +1361,29 @@ static int classic_poller_read_wrap(nfc_reader_session_t *session, void *read_ou
 	return classic_poller_read(session, read_out);
 }
 
-ZTEST(nfc_reader_loopback, test_virtual_loopback_classic)
+static void classic_loopback_run(const uint8_t *model, size_t model_len,
+				 const uint8_t *golden_blob, size_t golden_blob_len,
+				 const char *slot_suffix)
 {
+	char golden_slot[24];
+	char output_slot[24];
 	int ret;
 
 	classic_data_reset(&s_classic_expected);
 	classic_data_reset(&s_classic_work);
-	ret = classic_deserialize(&s_classic_expected, classic_MfClassic_1K_4b_model,
-				  CLASSIC_MFCLASSIC_1K_4B_MODEL_LEN);
+	ret = classic_deserialize(&s_classic_expected, model, model_len);
 	zassert_ok(ret, "classic_deserialize failed: %d", ret);
+
+	(void)snprintf(golden_slot, sizeof(golden_slot), "golden_classic_%s", slot_suffix);
+	(void)snprintf(output_slot, sizeof(output_slot), "cloned_classic_%s", slot_suffix);
 
 	ret = nfc_virtual_loopback_run(&(nfc_virtual_loopback_params_t){
 		.listener_svc = classic_listener_get(),
 		.save_svc = &s_classic_clone_svc,
-		.golden_blob = store_fixture_mfclassic_1k_4b_card,
-		.golden_blob_len = STORE_FIXTURE_MFCLASSIC_1K_4B_CARD_LEN,
-		.golden_slot = "golden_classic",
-		.output_slot = "cloned_classic",
+		.golden_blob = golden_blob,
+		.golden_blob_len = golden_blob_len,
+		.golden_slot = golden_slot,
+		.output_slot = output_slot,
 		.poller_detect = classic_poller_detect_wrap,
 		.poller_read = classic_poller_read_wrap,
 		.read_out = &s_classic_work,
@@ -1392,5 +1397,35 @@ ZTEST(nfc_reader_loopback, test_virtual_loopback_classic)
 		.verify_envelope = true,
 	});
 	zassert_ok(ret, "nfc_virtual_loopback_run failed: %d", ret);
+}
+
+ZTEST(nfc_reader_loopback, test_virtual_loopback_classic_1k_4b)
+{
+	classic_loopback_run(classic_MfClassic_1K_4b_model, CLASSIC_MFCLASSIC_1K_4B_MODEL_LEN,
+			     store_fixture_mfclassic_1k_4b_card,
+			     STORE_FIXTURE_MFCLASSIC_1K_4B_CARD_LEN, "1k_4b");
+}
+
+ZTEST(nfc_reader_loopback, test_virtual_loopback_classic_1k_7b)
+{
+	classic_loopback_run(classic_MfClassic_1K_7b_model, CLASSIC_MFCLASSIC_1K_7B_MODEL_LEN,
+			     store_fixture_mfclassic_1k_7b_card,
+			     STORE_FIXTURE_MFCLASSIC_1K_7B_CARD_LEN, "1k_7b");
+}
+
+#if CONFIG_NFC_CLASSIC_BLOCK_COUNT >= 256
+ZTEST(nfc_reader_loopback, test_virtual_loopback_classic_4k_4b)
+{
+	classic_loopback_run(classic_MfClassic_4K_4b_model, CLASSIC_MFCLASSIC_4K_4B_MODEL_LEN,
+			     store_fixture_mfclassic_4k_4b_card,
+			     STORE_FIXTURE_MFCLASSIC_4K_4B_CARD_LEN, "4k_4b");
+}
+#endif
+
+ZTEST(nfc_reader_loopback, test_virtual_loopback_classic_mini_4b)
+{
+	classic_loopback_run(classic_MfClassic_Mini_4b_model, CLASSIC_MFCLASSIC_MINI_4B_MODEL_LEN,
+			     store_fixture_mfclassic_mini_4b_card,
+			     STORE_FIXTURE_MFCLASSIC_MINI_4B_CARD_LEN, "mini_4b");
 }
 #endif /* CONFIG_NFC_PROTOCOL_CLASSIC */

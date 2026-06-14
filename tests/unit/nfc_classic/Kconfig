@@ -17,6 +17,21 @@ config NFC_CLASSIC_TEST_TIER_LISTENER
 	bool "Build Classic listener tier tests"
 	default n
 
+config NFC_CLASSIC_TEST_VARIANT_1K_7B
+	bool "Build Classic 1K 7b UID poller variant tests"
+	default n
+	depends on NFC_CLASSIC_TEST_TIER_POLLER
+
+config NFC_CLASSIC_TEST_VARIANT_MINI_4B
+	bool "Build Classic Mini poller variant tests"
+	default n
+	depends on NFC_CLASSIC_TEST_TIER_POLLER
+
+config NFC_CLASSIC_TEST_VARIANT_4K_4B
+	bool "Build Classic 4K poller variant tests"
+	default n
+	depends on NFC_CLASSIC_TEST_TIER_POLLER
+
 config NFC_CLASSIC_TEST_DETERMINISTIC_NR
 	bool "Use fixed NR bytes in poller unit tests"
 	default n

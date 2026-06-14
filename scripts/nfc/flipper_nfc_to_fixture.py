@@ -1141,10 +1141,16 @@ def classic_framed_steps(meta: dict) -> list[tuple[str, bytes, bytes]]:
         if raw is not None:
             blocks_map[block_num] = raw[:16].ljust(16, b"\x00")
 
-    if type_id == CLASSIC_TYPE_1K:
+    if type_id == CLASSIC_TYPE_4K:
+        framed.append(("classic detect 4k probe nt", bytes([0x60, 254]),
+                        struct.pack(">I", 0x200000FE)))
+    elif type_id == CLASSIC_TYPE_1K:
         framed.append(("classic detect 4k probe fail", bytes([0x60, 254]), b""))
         framed.append(("classic detect 1k probe nt", bytes([0x60, 62]),
                         struct.pack(">I", 0x2000003E)))
+    elif type_id == CLASSIC_TYPE_MINI:
+        framed.append(("classic detect 4k probe fail", bytes([0x60, 254]), b""))
+        framed.append(("classic detect 1k probe fail", bytes([0x60, 62]), b""))
 
     for sector in range(sectors):
         first = classic_first_block_of_sector(sector)

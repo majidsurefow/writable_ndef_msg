@@ -258,15 +258,22 @@ int classic_poller_read(const nfc_reader_session_t *session, classic_data_t *out
 
 			classic_set_block_read(out, block_num, block_buf);
 
-			if ((block_num == 0U) && (block_buf[0] != 0U)) {
-				out->uid_len = (block_buf[0] == 0x88U) ? 7U : 4U;
-				if (out->uid_len > sizeof(out->uid)) {
+			if (block_num == 0U) {
+				if (block_buf[0] == 0x88U) {
+					out->uid_len = 7U;
+					(void)memcpy(out->uid, &block_buf[1], 4U);
+					out->sak = block_buf[6];
+					out->atqa[0] = block_buf[7];
+					out->atqa[1] = block_buf[8];
+				} else if (block_buf[0] != 0U) {
 					out->uid_len = 4U;
+					(void)memcpy(out->uid, block_buf, 4U);
+					out->sak = block_buf[5];
+					out->atqa[0] = block_buf[6];
+					out->atqa[1] = block_buf[7];
 				}
-				(void)memcpy(out->uid, block_buf, out->uid_len);
-				out->sak = block_buf[out->uid_len + 1U];
-				out->atqa[0] = block_buf[out->uid_len + 2U];
-				out->atqa[1] = block_buf[out->uid_len + 3U];
+			} else if ((block_num == 1U) && (out->uid_len == 7U)) {
+				(void)memcpy(&out->uid[4], block_buf, 3U);
 			}
 
 			if (classic_is_sector_trailer(block_num)) {

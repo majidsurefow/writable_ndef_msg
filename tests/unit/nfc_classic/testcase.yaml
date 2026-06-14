@@ -25,6 +25,45 @@ tests:
       - qemu_cortex_m3
     extra_args: CONF_FILE=prj_poller.conf
 
+  sample.nfc.unit.nfc_classic.poller_1k_7b:
+    tags:
+      - ci_unit
+      - nfc
+      - writable_ndef.nfc.classic
+    platform_allow:
+      - qemu_cortex_m3
+      - native_sim
+      - native_sim/native
+    integration_platforms:
+      - qemu_cortex_m3
+    extra_args: CONF_FILE=prj_poller_1k_7b.conf
+
+  sample.nfc.unit.nfc_classic.poller_mini:
+    tags:
+      - ci_unit
+      - nfc
+      - writable_ndef.nfc.classic
+    platform_allow:
+      - qemu_cortex_m3
+      - native_sim
+      - native_sim/native
+    integration_platforms:
+      - qemu_cortex_m3
+    extra_args: CONF_FILE=prj_poller_mini.conf
+
+  sample.nfc.unit.nfc_classic.poller_4k:
+    tags:
+      - ci_unit
+      - nfc
+      - writable_ndef.nfc.classic
+    platform_allow:
+      - qemu_cortex_m3
+      - native_sim
+      - native_sim/native
+    integration_platforms:
+      - qemu_cortex_m3
+    extra_args: CONF_FILE=prj_poller_4k.conf
+
   sample.nfc.unit.nfc_classic.listener:
     tags:
       - ci_unit

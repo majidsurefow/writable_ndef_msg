@@ -9,7 +9,7 @@
 #include "protocols/classic/classic.h"
 #include "store/nfc_store.h"
 
-#include "MfClassic_1K_4b_mock.h"
+#include "classic_fixture_reader.h"
 #include "classic_store_fixture.h"
 
 #include <errno.h>
@@ -86,14 +86,37 @@ static void load_golden_blob(const uint8_t *blob, size_t len)
 	s_saved_len = len;
 }
 
-static void load_golden_model(classic_data_t *data)
+static void load_golden_model_from(const uint8_t *model, size_t model_len, classic_data_t *data)
 {
 	int ret;
 
 	classic_data_reset(data);
-	ret = classic_deserialize(data, classic_MfClassic_1K_4b_model,
-				  CLASSIC_MFCLASSIC_1K_4B_MODEL_LEN);
+	ret = classic_deserialize(data, model, model_len);
 	zassert_ok(ret);
+}
+
+static void load_golden_model(classic_data_t *data)
+{
+	load_golden_model_from(classic_MfClassic_1K_4b_model, CLASSIC_MFCLASSIC_1K_4B_MODEL_LEN, data);
+}
+
+static void store_load_golden_case(const uint8_t *card, size_t card_len, const uint8_t *model,
+				   size_t model_len)
+{
+	const nfc_service_t *svcs[] = { &s_svc };
+	classic_data_t expected;
+	int ret;
+
+	load_golden_model_from(model, model_len, &expected);
+	load_golden_blob(card, card_len);
+
+	classic_data_reset(&s_model);
+	ret = nfc_store_load("golden", svcs, ARRAY_SIZE(svcs));
+	zassert_ok(ret);
+	zassert_equal(s_model.type, expected.type);
+	zassert_equal(s_model.uid_len, expected.uid_len);
+	zassert_mem_equal(s_model.uid, expected.uid, expected.uid_len);
+	zassert_mem_equal(s_model.blocks[0], expected.blocks[0], CLASSIC_BLOCK_SIZE);
 }
 
 static void *suite_setup(void)
@@ -109,21 +132,36 @@ ZTEST_SUITE(nfc_reader_classic_store, NULL, suite_setup, NULL, NULL, NULL);
 
 ZTEST(nfc_reader_classic_store, test_store_load_golden_mfclassic_1k_4b)
 {
-	const nfc_service_t *svcs[] = { &s_svc };
-	classic_data_t expected;
-	int ret;
+	store_load_golden_case(store_fixture_mfclassic_1k_4b_card,
+			       STORE_FIXTURE_MFCLASSIC_1K_4B_CARD_LEN,
+			       classic_MfClassic_1K_4b_model,
+			       CLASSIC_MFCLASSIC_1K_4B_MODEL_LEN);
+}
 
-	load_golden_model(&expected);
-	load_golden_blob(store_fixture_mfclassic_1k_4b_card,
-			 STORE_FIXTURE_MFCLASSIC_1K_4B_CARD_LEN);
+ZTEST(nfc_reader_classic_store, test_store_load_golden_mfclassic_1k_7b)
+{
+	store_load_golden_case(store_fixture_mfclassic_1k_7b_card,
+			       STORE_FIXTURE_MFCLASSIC_1K_7B_CARD_LEN,
+			       classic_MfClassic_1K_7b_model,
+			       CLASSIC_MFCLASSIC_1K_7B_MODEL_LEN);
+}
 
-	classic_data_reset(&s_model);
-	ret = nfc_store_load("golden", svcs, ARRAY_SIZE(svcs));
-	zassert_ok(ret);
-	zassert_equal(s_model.type, expected.type);
-	zassert_equal(s_model.uid_len, expected.uid_len);
-	zassert_mem_equal(s_model.uid, expected.uid, expected.uid_len);
-	zassert_mem_equal(s_model.blocks[0], expected.blocks[0], CLASSIC_BLOCK_SIZE);
+#if CONFIG_NFC_CLASSIC_BLOCK_COUNT >= 256
+ZTEST(nfc_reader_classic_store, test_store_load_golden_mfclassic_4k_4b)
+{
+	store_load_golden_case(store_fixture_mfclassic_4k_4b_card,
+			       STORE_FIXTURE_MFCLASSIC_4K_4B_CARD_LEN,
+			       classic_MfClassic_4K_4b_model,
+			       CLASSIC_MFCLASSIC_4K_4B_MODEL_LEN);
+}
+#endif
+
+ZTEST(nfc_reader_classic_store, test_store_load_golden_mfclassic_mini_4b)
+{
+	store_load_golden_case(store_fixture_mfclassic_mini_4b_card,
+			       STORE_FIXTURE_MFCLASSIC_MINI_4B_CARD_LEN,
+			       classic_MfClassic_Mini_4b_model,
+			       CLASSIC_MFCLASSIC_MINI_4B_MODEL_LEN);
 }
 
 ZTEST(nfc_reader_classic_store, test_store_load_roundtrip_mfclassic_1k_4b)

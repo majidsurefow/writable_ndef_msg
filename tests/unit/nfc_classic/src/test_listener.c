@@ -8,7 +8,7 @@
 #include "protocols/classic/classic_listener.h"
 #include "protocols/classic/classic_poller.h"
 
-#include "MfClassic_1K_4b_mock.h"
+#include "classic_fixture.h"
 #include "classic_store_fixture.h"
 #include "nfc_response_spy.h"
 #include "nfc_virtual_rf.h"
@@ -30,12 +30,39 @@ static void listener_reset(void *fixture)
 	zassert_ok(classic_listener_init(NULL));
 }
 
-static void listener_load_golden(void)
+static void listener_load_model(const uint8_t *model, size_t model_len)
 {
 	classic_data_reset(&s_listener_model);
-	zassert_ok(classic_deserialize(&s_listener_model, classic_MfClassic_1K_4b_model,
-				       CLASSIC_MFCLASSIC_1K_4B_MODEL_LEN));
+	zassert_ok(classic_deserialize(&s_listener_model, model, model_len));
 	zassert_ok(classic_listener_init(&s_listener_model));
+}
+
+static void listener_load_golden(void)
+{
+	listener_load_model(classic_MfClassic_1K_4b_model, CLASSIC_MFCLASSIC_1K_4B_MODEL_LEN);
+}
+
+static void listener_poller_read_virtual_rf(const uint8_t *model, size_t model_len,
+					    const uint8_t *uid, uint8_t uid_len)
+{
+	nfc_reader_session_t session = {
+		.active = true,
+		.tag.valid = true,
+		.tag.uid.len = uid_len,
+	};
+
+	(void)memcpy(session.tag.uid.bytes, uid, uid_len);
+
+	listener_reset(NULL);
+	listener_load_model(model, model_len);
+	classic_data_reset(&s_listener_expected);
+	zassert_ok(classic_deserialize(&s_listener_expected, model, model_len));
+
+	zassert_ok(nfc_virtual_rf_enable(classic_listener_get()));
+	classic_data_reset(&s_listener_read);
+	zassert_ok(classic_poller_read(&session, &s_listener_read));
+	zassert_ok(classic_compare(&s_listener_expected, &s_listener_read));
+	nfc_virtual_rf_disable();
 }
 
 static void listener_send_tag_cmd(const uint8_t *tx, size_t tx_len)
@@ -87,30 +114,40 @@ ZTEST(classic_listener, test_load_store_envelope_body)
 				  sizeof(classic_MfClassic_1K_4b_step2_rx));
 }
 
-ZTEST(classic_listener, test_poller_read_virtual_rf)
+ZTEST(classic_listener, test_poller_read_virtual_rf_1k_4b)
 {
-	nfc_reader_session_t session = {
-		.active = true,
-		.tag.valid = true,
-		.tag.uid.len = 4U,
-	};
+	static const uint8_t uid[] = {0x04U, 0xDEU, 0xADU, 0xBEU};
 
-	session.tag.uid.bytes[0] = 0x04U;
-	session.tag.uid.bytes[1] = 0xDEU;
-	session.tag.uid.bytes[2] = 0xADU;
-	session.tag.uid.bytes[3] = 0xBEU;
+	listener_poller_read_virtual_rf(classic_MfClassic_1K_4b_model,
+					CLASSIC_MFCLASSIC_1K_4B_MODEL_LEN, uid,
+					sizeof(uid));
+}
 
-	listener_reset(NULL);
-	listener_load_golden();
-	classic_data_reset(&s_listener_expected);
-	zassert_ok(classic_deserialize(&s_listener_expected, classic_MfClassic_1K_4b_model,
-				       CLASSIC_MFCLASSIC_1K_4B_MODEL_LEN));
+ZTEST(classic_listener, test_poller_read_virtual_rf_1k_7b)
+{
+	static const uint8_t uid[] = {0x04U, 0xDEU, 0xADU, 0xBEU, 0xEFU, 0xCAU, 0xFEU};
 
-	zassert_ok(nfc_virtual_rf_enable(classic_listener_get()));
-	classic_data_reset(&s_listener_read);
-	zassert_ok(classic_poller_read(&session, &s_listener_read));
-	zassert_ok(classic_compare(&s_listener_expected, &s_listener_read));
-	nfc_virtual_rf_disable();
+	listener_poller_read_virtual_rf(classic_MfClassic_1K_7b_model,
+					CLASSIC_MFCLASSIC_1K_7B_MODEL_LEN, uid,
+					sizeof(uid));
+}
+
+ZTEST(classic_listener, test_poller_read_virtual_rf_mini_4b)
+{
+	static const uint8_t uid[] = {0x04U, 0xDEU, 0xADU, 0xCAU};
+
+	listener_poller_read_virtual_rf(classic_MfClassic_Mini_4b_model,
+					CLASSIC_MFCLASSIC_MINI_4B_MODEL_LEN, uid,
+					sizeof(uid));
+}
+
+ZTEST(classic_listener, test_poller_read_virtual_rf_4k_4b)
+{
+	static const uint8_t uid[] = {0x04U, 0x4BU, 0x4BU, 0x4BU};
+
+	listener_poller_read_virtual_rf(classic_MfClassic_4K_4b_model,
+					CLASSIC_MFCLASSIC_4K_4B_MODEL_LEN, uid,
+					sizeof(uid));
 }
 
 ZTEST_SUITE(classic_listener, NULL, NULL, listener_reset, NULL, NULL);

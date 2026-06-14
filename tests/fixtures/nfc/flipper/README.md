@@ -2,11 +2,14 @@
 
 Golden tag dumps copied from Flipper Zero’s NFC unit-test resources. They are **reference inputs only** — CI and ztest use derived `.inc` / `.bin` artifacts, not FlipperFormat parsing at runtime.
 
-## Manifest (14 files)
+## Manifest (17 files)
 
 | File | Device / role |
 |------|----------------|
 | `MfClassic_1K_4b.nfc` | MIFARE Classic 1K (4-byte UID) — **generator golden** |
+| `MfClassic_1K_7b.nfc` | MIFARE Classic 1K (7-byte UID) — **generator golden** |
+| `MfClassic_4K_4b.nfc` | MIFARE Classic 4K (4-byte UID) — **generator golden** |
+| `MfClassic_Mini_4b.nfc` | MIFARE Classic Mini (4-byte UID) — **generator golden** |
 | `MfDesfire_EV1_sample.nfc` | MIFARE DESFire EV1 — hand golden (P5) |
 | `Ultralight_11.nfc` | MIFARE Ultralight EV1 (11 pages) |
 | `Ultralight_21.nfc` | MIFARE Ultralight EV1 (21 pages) |
@@ -27,6 +30,14 @@ Golden tag dumps copied from Flipper Zero’s NFC unit-test resources. They are 
 - **License:** Flipper Zero firmware is **GPL-3.0**. These files are kept in-tree as behavioral references; product protocol code is **reimplemented** under our license (see [NFC_PROTOCOLS_COOKBOOK.md](../../../docs/nfc/NFC_PROTOCOLS_COOKBOOK.md) §13).
 
 ## Regenerating derived fixtures
+
+Regenerate Classic generator goldens:
+
+```bash
+python3 scripts/nfc/mf_classic_generate_nfc.py --variant all
+python3 scripts/nfc/flipper_nfc_to_fixture.py --input tests/fixtures/nfc/flipper/MfClassic_<variant>.nfc \
+  --out-dir tests/fixtures/classic/ --card-bin
+```
 
 Convert all Flipper inputs (Tier A/B + store `.card.bin` where applicable):
 
@@ -66,6 +77,9 @@ See `scripts/nfc/flipper_nfc_to_fixture.py --help`. After upstream Flipper updat
 | `nfc_nfca_signal_short.nfc` | `tests/fixtures/hal/` | pending (HAL) | n/a | n/a |
 | `nfc_nfca_signal_long.nfc` | `tests/fixtures/hal/` | pending (HAL) | n/a | n/a |
 | `MfClassic_1K_4b.nfc` | `tests/fixtures/classic/` | **SHIPPED** (Tier A/B/C) | **SHIPPED** (virtual listener) | yes |
+| `MfClassic_1K_7b.nfc` | yes | **SHIPPED** | **SHIPPED** | yes |
+| `MfClassic_4K_4b.nfc` | yes | **SHIPPED** (337-TX full assert) | **SHIPPED** | yes |
+| `MfClassic_Mini_4b.nfc` | yes | **SHIPPED** | **SHIPPED** | yes |
 | `MfDesfire_EV1_sample.nfc` | `tests/fixtures/desfire/` | **SHIPPED** (13-TX keyless) | **SHIPPED** (virtual listener) | yes |
 
 Full policy: [NFC_APPLETS_AND_TESTING.md](../../../docs/nfc/NFC_APPLETS_AND_TESTING.md) — per-card Flipper parity.

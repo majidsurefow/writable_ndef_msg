@@ -27,6 +27,22 @@ if(CONFIG_NFC_CLASSIC_TEST_TIER_POLLER)
   target_compile_definitions(app PRIVATE NFC_SESSION_MOCK_MAX_TX=128)
 endif()
 
+if(CONFIG_NFC_CLASSIC_TEST_VARIANT_1K_7B OR CONFIG_NFC_CLASSIC_TEST_VARIANT_MINI_4B)
+  target_sources(app PRIVATE
+    src/test_poller_variants_small.c
+    ${REPO_NFC}/protocols/classic/classic_poller.c
+  )
+  target_compile_definitions(app PRIVATE NFC_SESSION_MOCK_MAX_TX=128)
+endif()
+
+if(CONFIG_NFC_CLASSIC_TEST_VARIANT_4K_4B)
+  target_sources(app PRIVATE
+    src/test_poller_4k.c
+    ${REPO_NFC}/protocols/classic/classic_poller.c
+  )
+  target_compile_definitions(app PRIVATE NFC_SESSION_MOCK_MAX_TX=384)
+endif()
+
 if(CONFIG_NFC_CLASSIC_TEST_TIER_LISTENER)
   target_sources(app PRIVATE
     src/test_listener.c

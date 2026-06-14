@@ -29,6 +29,19 @@ tests:
       - qemu_cortex_m3
       - native_sim
     extra_args: OVERLAY_CONFIG=overlay-store-ram.conf
+  sample.nfc.unit.nfc_reader.classic_4k:
+    tags:
+      - ci_unit
+      - nfc
+      - writable_ndef.nfc.reader
+      - writable_ndef.nfc.classic
+    platform_allow:
+      - qemu_cortex_m3
+      - native_sim
+      - native_sim/native
+    integration_platforms:
+      - qemu_cortex_m3
+    extra_args: CONF_FILE=prj_classic_4k.conf
   sample.nfc.unit.nfc_reader.shell_off:
     tags:
       - ci_unit

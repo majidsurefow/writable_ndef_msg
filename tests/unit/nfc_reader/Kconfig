@@ -107,6 +107,16 @@ config NFC_CLASSIC_TEST_DETERMINISTIC_NR
 	default n
 	depends on NFC_PROTOCOL_CLASSIC
 
+config NFC_READER_CLASSIC_4K_ONLY
+	bool "Build only Classic 4K reader aggregate tests (QEMU RAM isolation)"
+	default n
+	depends on NFC_PROTOCOL_CLASSIC
+
+config NFC_VIRTUAL_LOOPBACK_MAX_BLOB
+	int "Virtual loopback staging blob size (bytes)"
+	default 2048
+	range 2048 8192
+
 config NFC_ULTRALIGHT_MAX_PAGES
 	int "Maximum Ultralight pages in data model"
 	default 256

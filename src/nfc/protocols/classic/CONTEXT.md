@@ -60,9 +60,9 @@ MIFARE Classic protocol: block-based data model (UID, sectors/blocks, access bit
 
 ## Fixtures ↔ goldens
 
-- **Flipper:** `tests/fixtures/nfc/flipper/MfClassic_1K_4b.nfc` — generator golden
-- **Generated:** `flipper_nfc_to_fixture.py` → `tests/fixtures/classic/` + `tests/fixtures/store/MfClassic_1K_4b.card.bin`
-- **Loopback:** E+ `test_virtual_loopback_classic` with `classic_compare` deep compare
+- **Flipper:** `tests/fixtures/nfc/flipper/MfClassic_{1K_4b,1K_7b,4K_4b,Mini_4b}.nfc` — generator goldens
+- **Generated:** `flipper_nfc_to_fixture.py` → `tests/fixtures/classic/` + `tests/fixtures/store/MfClassic_*.card.bin`
+- **Loopback:** E+ `test_virtual_loopback_classic_{1k_4b,1k_7b,4k_4b,mini_4b}` with `classic_compare` deep compare
 
 ## Profile membership
 
@@ -73,18 +73,18 @@ MIFARE Classic protocol: block-based data model (UID, sectors/blocks, access bit
 
 | Test | Tier | Profile gate | Proves |
 |------|------|--------------|--------|
-| `sample.nfc.unit.nfc_classic.model` | A (model) | `NFC_PROTOCOL_CLASSIC` | Serialize/deserialize, sector mapping, access bits |
-| `sample.nfc.unit.nfc_classic.poller` | B (poller) | `+NFC_CLASSIC_TEST_TIER_POLLER` | 98-TX full assert, Crypto1 auth, block read |
-| `sample.nfc.unit.nfc_classic.listener` | C (listener) | `+NFC_CLASSIC_TEST_TIER_LISTENER` | Crypto1 auth NT/NR|AR, virtual RF poller read |
-| `nfc_reader_classic_store.*` | E (store) | `CONFIG_NFC_PROTOCOL_CLASSIC` | `.card.bin` envelope load/save |
-| `nfc_reader_loopback.test_virtual_loopback_classic` | E+ | same | Full poller→listener→compare |
+| `sample.nfc.unit.nfc_classic.model` | A (model) | `NFC_PROTOCOL_CLASSIC` | Serialize/deserialize all 4 variants |
+| `sample.nfc.unit.nfc_classic.poller` | B (poller) | `+NFC_CLASSIC_TEST_TIER_POLLER` | Full TX assert per variant (98/337/32 steps) |
+| `sample.nfc.unit.nfc_classic.listener` | C (listener) | `+NFC_CLASSIC_TEST_TIER_LISTENER` | Virtual RF poller read per variant |
+| `nfc_reader_classic_store.*` | E (store) | `CONFIG_NFC_PROTOCOL_CLASSIC` | `.card.bin` envelope load/save (4 variants) |
+| `nfc_reader_loopback.test_virtual_loopback_classic_*` | E+ | same | Full poller→listener→compare (4 variants) |
 
-**Tier counts:** 3 configs (model + poller + listener), 22+ cases.
+**Tier counts:** 3 configs (model + poller + listener), 35+ cases.
 **Twister dir:** `tests/unit/nfc_classic`, `tests/unit/nfc_reader`
 
 ### Cookbook §14.3 poller cases
 
-`test_detect_auth_probe`, `test_detect_enotsup_short_rx`, `test_detect_eio`, `test_detect_timeout`, `test_detect_inactive_session`, `test_crypto_decrypt_block0_golden`, `test_crypto_decrypt_block4_golden`, `test_read_1k_golden`, `test_read_tx_sequence` (98 TX), `test_read_truncated`, `test_read_eio`, `test_read_timeout`, `test_read_no_session_end`, `test_read_inactive_session`
+`test_detect_auth_probe`, …, `test_read_{1k_4b,1k_7b,4k_4b,mini_4b}_{golden,tx_sequence}` (full TX per variant), `test_read_truncated`, …
 
 ## Live HIL
 
