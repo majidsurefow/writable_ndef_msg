@@ -7,15 +7,14 @@
 
 #include "protocols/felica/felica_poller.h"
 
+#include "protocols/felica/felica_poller_i.h"
+
 #include <errno.h>
 #include <string.h>
 
 #include <zephyr/kernel.h>
 
 #define FELICA_POLLER_TIMEOUT K_MSEC(5000)
-#define FELICA_CMD_POLL       0x00U
-#define FELICA_CMD_READ       0x06U
-#define FELICA_BLOCKS_PROBE   FELICA_BLOCKS_MAX
 
 static int felica_poller_session_valid(const nfc_reader_session_t *session)
 {
@@ -26,65 +25,66 @@ static int felica_poller_session_valid(const nfc_reader_session_t *session)
 	return 0;
 }
 
-static int felica_poller_transceive(nfc_reader_session_t *session, const uint8_t *tx,
-				    size_t tx_len, uint8_t *rx, size_t *rx_len)
-{
-	return nfc_reader_session_transceive(session, tx, tx_len, rx,
-					     NFC_TRANSPORT_MAX_RESPONSE_LEN, rx_len,
-					     FELICA_POLLER_TIMEOUT);
-}
-
 static int felica_poller_poll(nfc_reader_session_t *session, felica_data_t *data)
 {
-	uint8_t tx[] = {FELICA_CMD_POLL, 0xFFU, 0xFFU, 0x00U, 0x00U};
-	uint8_t rx[NFC_TRANSPORT_MAX_RESPONSE_LEN];
-	size_t rx_len = 0U;
+	const felica_poller_polling_command_t cmd = {
+		.system_code = FELICA_SYSTEM_CODE_ANY,
+		.request_code = 0U,
+		.time_slot = FELICA_TIME_SLOT_1,
+	};
+	felica_poller_polling_response_t resp;
 	int ret;
 
-	ret = felica_poller_transceive(session, tx, sizeof(tx), rx, &rx_len);
+	ret = felica_poller_polling(session, &cmd, &resp, FELICA_POLLER_TIMEOUT);
 	if (ret != 0) {
 		return ret;
 	}
 
-	if (rx_len < FELICA_IDM_SIZE) {
-		return -ENOTSUP;
-	}
-
-	(void)memcpy(data->idm, rx, FELICA_IDM_SIZE);
-	if (rx_len >= (FELICA_IDM_SIZE + FELICA_PMM_SIZE)) {
-		(void)memcpy(data->pmm, &rx[FELICA_IDM_SIZE], FELICA_PMM_SIZE);
-	}
-
+	(void)memcpy(data->idm, resp.idm, FELICA_IDM_SIZE);
+	(void)memcpy(data->pmm, resp.pmm, FELICA_PMM_SIZE);
 	return 0;
 }
 
-static int felica_poller_read_block(nfc_reader_session_t *session, uint8_t block_num,
-				    uint8_t out[FELICA_BLOCK_DATA_SIZE])
+static int felica_poller_read_lite_blocks(nfc_reader_session_t *session, felica_data_t *data)
 {
-	uint8_t tx[] = {FELICA_CMD_READ, block_num};
-	uint8_t rx[NFC_TRANSPORT_MAX_RESPONSE_LEN];
-	size_t rx_len = 0U;
+	uint8_t block_index = 0U;
+	uint8_t block_list[1];
 	int ret;
 
-	ret = felica_poller_transceive(session, tx, sizeof(tx), rx, &rx_len);
-	if (ret != 0) {
-		return ret;
+	while (data->blocks_total < FELICA_BLOCKS_LITE_TOTAL) {
+		felica_poller_read_response_t response;
+
+		block_list[0] = block_index;
+		block_index = felica_poller_lite_next_block_index(block_index);
+
+		ret = felica_poller_read_blocks(session, data->idm, 1U, block_list,
+						FELICA_SERVICE_RO_ACCESS, &response,
+						FELICA_POLLER_TIMEOUT);
+		if (ret != 0) {
+			return ret;
+		}
+
+		data->blocks[data->blocks_total].sf1 = response.sf1;
+		data->blocks[data->blocks_total].sf2 = response.sf2;
+		if (response.sf1 == 0U) {
+			(void)memcpy(data->blocks[data->blocks_total].data, response.data,
+				     FELICA_BLOCK_DATA_SIZE);
+			data->blocks_read++;
+		} else {
+			(void)memset(data->blocks[data->blocks_total].data, 0,
+				     FELICA_BLOCK_DATA_SIZE);
+		}
+
+		data->blocks_total++;
 	}
 
-	if (rx_len < FELICA_BLOCK_DATA_SIZE) {
-		return -EIO;
-	}
-
-	(void)memcpy(out, rx, FELICA_BLOCK_DATA_SIZE);
 	return 0;
 }
 
 int felica_poller_detect(const nfc_reader_session_t *session)
 {
 	nfc_reader_session_t *mut = (nfc_reader_session_t *)session;
-	uint8_t tx[] = {FELICA_CMD_POLL, 0xFFU, 0xFFU, 0x00U, 0x00U};
-	uint8_t rx[NFC_TRANSPORT_MAX_RESPONSE_LEN];
-	size_t rx_len = 0U;
+	felica_data_t scratch;
 	int ret;
 
 	ret = felica_poller_session_valid(session);
@@ -92,12 +92,9 @@ int felica_poller_detect(const nfc_reader_session_t *session)
 		return ret;
 	}
 
-	ret = felica_poller_transceive(mut, tx, sizeof(tx), rx, &rx_len);
+	felica_data_reset(&scratch);
+	ret = felica_poller_poll(mut, &scratch);
 	if (ret != 0) {
-		return -ENOTSUP;
-	}
-
-	if (rx_len < FELICA_IDM_SIZE) {
 		return -ENOTSUP;
 	}
 
@@ -107,7 +104,6 @@ int felica_poller_detect(const nfc_reader_session_t *session)
 int felica_poller_read(const nfc_reader_session_t *session, felica_data_t *out)
 {
 	nfc_reader_session_t *mut = (nfc_reader_session_t *)session;
-	uint16_t block;
 	int ret;
 
 	ret = felica_poller_session_valid(session);
@@ -124,16 +120,13 @@ int felica_poller_read(const nfc_reader_session_t *session, felica_data_t *out)
 		return ret;
 	}
 
-	for (block = 0U; block < FELICA_BLOCKS_PROBE; block++) {
-		ret = felica_poller_read_block(mut, (uint8_t)block, out->blocks[block].data);
-		if (ret != 0) {
-			break;
-		}
+	if (felica_get_workflow_type(out->pmm) != FELICA_WORKFLOW_LITE) {
+		return -ENOTSUP;
+	}
 
-		out->blocks[block].sf1 = 0U;
-		out->blocks[block].sf2 = 0U;
-		out->blocks_total = (uint16_t)(block + 1U);
-		out->blocks_read = out->blocks_total;
+	ret = felica_poller_read_lite_blocks(mut, out);
+	if (ret != 0) {
+		return ret;
 	}
 
 	if (out->blocks_total == 0U) {

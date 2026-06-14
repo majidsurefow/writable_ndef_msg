@@ -33,6 +33,27 @@ void felica_data_reset(felica_data_t *data)
 	(void)memset(data, 0, sizeof(*data));
 }
 
+felica_workflow_type_t felica_get_workflow_type(const uint8_t pmm[FELICA_PMM_SIZE])
+{
+	if (pmm == NULL) {
+		return FELICA_WORKFLOW_UNKNOWN;
+	}
+
+	switch (pmm[1]) {
+	case 0xF0U:
+	case 0xF1U:
+	case 0xF2U:
+		return FELICA_WORKFLOW_LITE;
+	case 0xA2U:
+		return FELICA_WORKFLOW_STANDARD;
+	default:
+		if (pmm[1] <= 0x48U) {
+			return FELICA_WORKFLOW_STANDARD;
+		}
+		return FELICA_WORKFLOW_UNKNOWN;
+	}
+}
+
 uint8_t felica_persist_id(void)
 {
 	return NFC_PERSIST_ID_FELICA;

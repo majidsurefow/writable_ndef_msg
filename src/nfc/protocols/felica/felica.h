@@ -23,6 +23,12 @@ extern "C" {
 #define FELICA_BLOCK_DATA_SIZE  16U
 #define FELICA_BLOCKS_MAX       64U
 
+typedef enum {
+	FELICA_WORKFLOW_UNKNOWN = 0,
+	FELICA_WORKFLOW_STANDARD,
+	FELICA_WORKFLOW_LITE,
+} felica_workflow_type_t;
+
 typedef struct {
 	uint8_t idm[FELICA_IDM_SIZE];
 	uint8_t pmm[FELICA_PMM_SIZE];
@@ -36,6 +42,7 @@ typedef struct {
 } felica_data_t;
 
 void felica_data_reset(felica_data_t *data);
+felica_workflow_type_t felica_get_workflow_type(const uint8_t pmm[FELICA_PMM_SIZE]);
 uint8_t felica_persist_id(void);
 
 int felica_serialize(const felica_data_t *data, uint8_t *out, size_t out_max, size_t *out_len);
