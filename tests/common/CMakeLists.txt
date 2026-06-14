@@ -12,6 +12,7 @@ set(NFC_TEST_COMMON_SOURCES
   ${NFC_TEST_COMMON_DIR}/src/nfc_test_apdu.c
   ${NFC_TEST_COMMON_DIR}/src/nfc_virtual_rf.c
   ${NFC_TEST_COMMON_DIR}/src/nfc_work_spy.c
+  ${NFC_TEST_COMMON_DIR}/src/nfc_aliro_crypto_shim.c
 )
 
 set(NFC_TEST_LOOPBACK_SOURCES

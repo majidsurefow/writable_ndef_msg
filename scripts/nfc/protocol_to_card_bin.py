@@ -35,6 +35,7 @@ DESFIRE_MODEL = bytes([
 ])
 
 EMV_SERVICE_APP_AID = bytes([0xA0, 0x00, 0x00, 0x00, 0x03, 0x10, 0x10])
+EMV_MASTERCARD_AID = bytes([0xA0, 0x00, 0x00, 0x00, 0x04, 0x10, 0x10])
 EMV_PAN = bytes([0x99] * 8)
 EMV_EXPIRY = bytes([0x99, 0x12, 0x31])
 EMV_NAME = b"TEST/CARD" + (b" " * 17)
@@ -57,10 +58,14 @@ def model_bin_to_inc(data: bytes, comment: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-def emv_build_record0(track2_len: int, track2: bytes) -> bytes:
+def emv_build_record0(track2_len: int, track2: bytes, pan: bytes | None = None) -> bytes:
     """Mirror emv_build_record0() + emv_tlv_close() in emv.c."""
     record = bytearray([0x70, 0x00])
     start = len(record)
+    if pan:
+        record.append(0x5A)
+        record.append(len(pan))
+        record.extend(pan)
     record.append(0x57)
     record.append(track2_len)
     record.extend(track2[:track2_len])
@@ -68,11 +73,12 @@ def emv_build_record0(track2_len: int, track2: bytes) -> bytes:
     return bytes(record)
 
 
-def build_emv_default_model() -> bytes:
+def build_emv_model(app_aid: bytes) -> bytes:
     track2_len = len(EMV_TRACK2)
-    record0 = emv_build_record0(track2_len, EMV_TRACK2)
+    pan_bytes = EMV_PAN[: len(EMV_PAN)]
+    record0 = emv_build_record0(track2_len, EMV_TRACK2, pan_bytes)
     track2_padded = EMV_TRACK2 + bytes(19 - len(EMV_TRACK2))
-    app_aid = EMV_SERVICE_APP_AID + bytes(16 - len(EMV_SERVICE_APP_AID))
+    app_aid_padded = app_aid + bytes(16 - len(app_aid))
     body = bytearray()
     body.append(0x01)
     body.append(16)
@@ -83,12 +89,20 @@ def build_emv_default_model() -> bytes:
     body.extend(track2_padded)
     body.extend(bytes([0x00, 0x00]))
     body.extend(bytes([0x08, 0x01, 0x01, 0x00]))
-    body.append(len(EMV_SERVICE_APP_AID))
-    body.extend(app_aid)
+    body.append(len(app_aid))
+    body.extend(app_aid_padded)
     body.append(1)
     body.append(len(record0))
     body.extend(record0)
     return bytes(body)
+
+
+def build_emv_default_model() -> bytes:
+    return build_emv_model(EMV_SERVICE_APP_AID)
+
+
+def build_emv_mastercard_model() -> bytes:
+    return build_emv_model(EMV_MASTERCARD_AID)
 
 
 def build_aliro_default_model() -> bytes:
@@ -121,10 +135,11 @@ def main() -> int:
     parser.add_argument("--all", action="store_true", help="Emit all protocol card goldens")
     parser.add_argument("--desfire", action="store_true")
     parser.add_argument("--emv", action="store_true")
+    parser.add_argument("--emv-mc", action="store_true")
     parser.add_argument("--aliro", action="store_true")
     args = parser.parse_args()
 
-    if not (args.all or args.desfire or args.emv or args.aliro):
+    if not (args.all or args.desfire or args.emv or args.emv_mc or args.aliro):
         args.all = True
 
     STORE_DIR.mkdir(parents=True, exist_ok=True)
@@ -135,6 +150,9 @@ def main() -> int:
     if args.all or args.emv:
         emit_fixture("Emv", build_emv_default_model(), NFC_PERSIST_ID_EMV,
                      "Tier E golden: nfc_store envelope for EMV default card.")
+    if args.all or args.emv_mc:
+        emit_fixture("Emv_mc", build_emv_mastercard_model(), NFC_PERSIST_ID_EMV,
+                     "Tier E golden: nfc_store envelope for EMV Mastercard synthetic card.")
     if args.all or args.aliro:
         emit_fixture("Aliro", build_aliro_default_model(), NFC_PERSIST_ID_ALIRO,
                      "Tier E golden: nfc_store envelope for Aliro mock.")

@@ -153,8 +153,7 @@ int emv_rebuild_caches(const emv_card_image_t *image)
 		return -EINVAL;
 	}
 
-	if ((image->app_aid_len != EMV_SERVICE_APP_AID_LEN) ||
-	    (memcmp(image->app_aid, emv_service_app_aid, EMV_SERVICE_APP_AID_LEN) != 0)) {
+	if ((image->app_aid_len == 0U) || (image->app_aid_len > EMV_APP_AID_MAX_BYTES)) {
 		return -EBADMSG;
 	}
 
@@ -236,8 +235,7 @@ int emv_deserialize(emv_card_image_t *image, const uint8_t *in, size_t in_len)
 	image->app_aid_len = in[offset++];
 	(void)memcpy(image->app_aid, &in[offset], EMV_APP_AID_MAX_BYTES);
 	offset += EMV_APP_AID_MAX_BYTES;
-	if ((image->app_aid_len != EMV_SERVICE_APP_AID_LEN) ||
-	    (memcmp(image->app_aid, emv_service_app_aid, EMV_SERVICE_APP_AID_LEN) != 0)) {
+	if (image->app_aid_len > EMV_APP_AID_MAX_BYTES) {
 		return -EBADMSG;
 	}
 

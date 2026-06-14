@@ -5,6 +5,7 @@
 
 #include "aliro_listener.h"
 
+#include "aliro_vectors.h"
 #include "framing/apdu_types.h"
 #include "hal/nfc_transport.h"
 
@@ -19,6 +20,7 @@ static aliro_state_t s_state;
 static atomic_t s_crypto_inflight;
 static struct k_work s_crypto_work;
 static uint8_t s_resp[NFC_TRANSPORT_MAX_RESPONSE_LEN];
+static uint8_t s_auth1_sig[ALIRO_P256_SIGNATURE_SIZE];
 
 static void aliro_listener_send_sw(uint16_t sw)
 {
@@ -31,26 +33,56 @@ static void aliro_listener_reset(void)
 {
 	s_state = ALIRO_STATE_IDLE;
 	(void)atomic_set(&s_crypto_inflight, 0);
+	(void)memset(s_auth1_sig, 0, sizeof(s_auth1_sig));
 }
 
 static void aliro_listener_crypto_handler(struct k_work *work)
 {
+	size_t resp_len = 0U;
+
 	ARG_UNUSED(work);
 
-	if (s_state != ALIRO_STATE_AWAIT_AUTH0) {
+	if (s_state == ALIRO_STATE_AWAIT_AUTH0) {
+#if !IS_ENABLED(CONFIG_NFC_ALIRO_PROTOCOL_VERIFIED)
+		aliro_vectors_build_auth0_rsp(s_resp, &resp_len);
+#else
 		s_state = ALIRO_STATE_ERROR;
 		aliro_listener_send_sw(NFC_SW_CONDITIONS_NOT_SAT);
 		(void)atomic_set(&s_crypto_inflight, 0);
 		return;
+#endif
+		(void)nfc_transport_send_response(s_resp, resp_len);
+		s_state = ALIRO_STATE_AWAIT_AUTH1;
+		(void)atomic_set(&s_crypto_inflight, 0);
+		return;
 	}
 
-	s_resp[0] = 0x00U;
-	s_resp[1] = 0x00U;
-	(void)memset(&s_resp[2], 0xAAU, 16U);
-	s_resp[18] = 0x04U;
-	(void)memset(&s_resp[19], 0xBBU, ALIRO_P256_PUBLIC_KEY_SIZE);
-	(void)nfc_transport_send_response(s_resp, 19U + ALIRO_P256_PUBLIC_KEY_SIZE);
-	s_state = ALIRO_STATE_AWAIT_AUTH1;
+	if (s_state == ALIRO_STATE_AWAIT_AUTH1) {
+#if !IS_ENABLED(CONFIG_NFC_ALIRO_PROTOCOL_VERIFIED)
+		uint8_t expected[ALIRO_AUTH1_DATA_SIZE];
+
+		aliro_vectors_fill(expected, ALIRO_AUTH1_DATA_SIZE, ALIRO_TEST_READER_SIG_FILL);
+		if (memcmp(s_auth1_sig, expected, ALIRO_AUTH1_DATA_SIZE) != 0) {
+			s_state = ALIRO_STATE_ERROR;
+			aliro_listener_send_sw(0x6982U);
+			(void)atomic_set(&s_crypto_inflight, 0);
+			return;
+		}
+		aliro_vectors_build_auth1_rsp(s_resp, &resp_len);
+#else
+		s_state = ALIRO_STATE_ERROR;
+		aliro_listener_send_sw(NFC_SW_CONDITIONS_NOT_SAT);
+		(void)atomic_set(&s_crypto_inflight, 0);
+		return;
+#endif
+		(void)nfc_transport_send_response(s_resp, resp_len);
+		s_state = ALIRO_STATE_AWAIT_EXCHANGE;
+		(void)atomic_set(&s_crypto_inflight, 0);
+		return;
+	}
+
+	s_state = ALIRO_STATE_ERROR;
+	aliro_listener_send_sw(NFC_SW_CONDITIONS_NOT_SAT);
 	(void)atomic_set(&s_crypto_inflight, 0);
 }
 
@@ -61,11 +93,11 @@ static void aliro_listener_on_select(const uint8_t *aid, size_t aid_len, void *u
 	aliro_listener_reset();
 
 	if ((aid_len == ALIRO_AID_LEN) && (memcmp(aid, aliro_expedited_aid, ALIRO_AID_LEN) == 0)) {
+		size_t resp_len = 0U;
+
 		s_state = ALIRO_STATE_AWAIT_AUTH0;
-		s_resp[0] = 0x00U;
-		s_resp[1] = 0x00U;
-		(void)memset(&s_resp[2], 0x11U, ALIRO_NONCE_SIZE);
-		(void)nfc_transport_send_response(s_resp, 2U + ALIRO_NONCE_SIZE);
+		aliro_vectors_build_select_rsp(s_resp, &resp_len);
+		(void)nfc_transport_send_response(s_resp, resp_len);
 		return;
 	}
 
@@ -87,6 +119,7 @@ static void aliro_listener_on_apdu(const nfc_apdu_t *apdu, void *user_ctx)
 	}
 
 	if (apdu->cla != ALIRO_CLA_PROP) {
+		s_state = ALIRO_STATE_ERROR;
 		aliro_listener_send_sw(NFC_SW_CLA_NOT_SUPPORTED);
 		return;
 	}
@@ -103,16 +136,28 @@ static void aliro_listener_on_apdu(const nfc_apdu_t *apdu, void *user_ctx)
 		return;
 	}
 
-	if ((apdu->ins == ALIRO_INS_AUTH1) && (s_state != ALIRO_STATE_AWAIT_AUTH1)) {
-		aliro_listener_send_sw(NFC_SW_CONDITIONS_NOT_SAT);
+	if (apdu->ins == ALIRO_INS_AUTH1) {
+		if (s_state != ALIRO_STATE_AWAIT_AUTH1) {
+			s_state = ALIRO_STATE_ERROR;
+			aliro_listener_send_sw(NFC_SW_CONDITIONS_NOT_SAT);
+			return;
+		}
+
+		if ((apdu->data != NULL) && (apdu->lc >= ALIRO_AUTH1_DATA_SIZE)) {
+			(void)memcpy(s_auth1_sig, apdu->data, ALIRO_AUTH1_DATA_SIZE);
+		}
+		(void)atomic_set(&s_crypto_inflight, 1);
+		(void)nfc_transport_submit_work(&s_crypto_work);
 		return;
 	}
 
 	if ((apdu->ins == ALIRO_INS_EXCHANGE) && (s_state != ALIRO_STATE_AWAIT_EXCHANGE)) {
+		s_state = ALIRO_STATE_ERROR;
 		aliro_listener_send_sw(NFC_SW_CONDITIONS_NOT_SAT);
 		return;
 	}
 
+	s_state = ALIRO_STATE_ERROR;
 	aliro_listener_send_sw(NFC_SW_INS_NOT_SUPPORTED);
 }
 
