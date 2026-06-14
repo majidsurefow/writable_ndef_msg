@@ -119,6 +119,15 @@ const nfc_transport_caps_t *nfc_transport_get_capabilities(void)
 	return &s_test_hal_caps;
 }
 
+#if IS_ENABLED(CONFIG_NFC_ROLE_LISTEN)
+#include "nfc_stack/nfc_stack.h"
+
+nfc_stack_state_t nfc_stack_get_state(void)
+{
+	return NFC_STACK_STATE_STOPPED;
+}
+#endif
+
 static void register_mock_hooks(void)
 {
 	(void)nfc_store_register_save_cb(mock_save_cb, NULL);

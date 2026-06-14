@@ -5,6 +5,8 @@
 
 #include "nfc_stack/nfc_stack.h"
 
+#include "nfc_config.h"
+
 #include "../../stats.h"
 
 #include <errno.h>
@@ -38,6 +40,9 @@
 #endif
 
 LOG_MODULE_REGISTER(nfc_stack, CONFIG_LOG_DEFAULT_LEVEL);
+
+BUILD_ASSERT(NFC_HAS_LISTEN, "listen stack requires CONFIG_NFC_ROLE_LISTEN");
+BUILD_ASSERT(NFC_HAS_LISTEN_STACK, "nfc_stack.c requires CONFIG_NFC_LISTEN_STACK");
 
 static const uint8_t NDEF_AID[] = { 0xD2U, 0x76U, 0x00U, 0x00U, 0x85U, 0x01U, 0x01U };
 

@@ -5,12 +5,14 @@
 
 #include "applets/nfc_applet_policy.h"
 
+#include "nfc_config.h"
 #include "hal/nfc_transport.h"
 #include "router/service.h"
 #include "store/nfc_store.h"
 
 #include <errno.h>
 
+#if NFC_HAS_LISTEN
 static bool nfc_applet_persist_emulatable(uint8_t persist_id)
 {
 	switch (persist_id) {
@@ -24,6 +26,7 @@ static bool nfc_applet_persist_emulatable(uint8_t persist_id)
 		return false;
 	}
 }
+#endif
 
 int nfc_applet_caps_for_card(uint8_t persist_id, uint8_t store_flags, nfc_applet_caps_t *caps)
 {
@@ -40,10 +43,12 @@ int nfc_applet_caps_for_card(uint8_t persist_id, uint8_t store_flags, nfc_applet
 		return 0;
 	}
 
+#if NFC_HAS_LISTEN
 	if (nfc_applet_persist_emulatable(persist_id) && (hal != NULL) &&
 	    ((hal->roles & NFC_ROLE_LISTEN) != 0U)) {
 		*caps |= NFC_APPLET_CAP_EMULATE;
 	}
+#endif
 
 	return 0;
 }
