@@ -24,6 +24,7 @@ from nfc_persist_ids import (  # noqa: E402
 
 STORE_DIR = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "store"
 EMV_DIR = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "emv"
+ALIRO_DIR = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "aliro"
 
 DESFIRE_MODEL = bytes([
     0x01, 0x04, 0x01, 0x01, 0x00, 0x18, 0x05, 0x01, 0x04, 0x01, 0x01, 0x00,
@@ -140,6 +141,15 @@ def emit_emv_fixture(stem: str, model: bytes, persist_id: int, comment: str) -> 
     print(f"Wrote {emv_bin} ({emv_bin.stat().st_size} bytes)", file=sys.stderr)
 
 
+def emit_aliro_fixture(stem: str, model: bytes, persist_id: int, comment: str) -> None:
+    """Emit store envelope + protocol fixture dir copy for Aliro goldens."""
+    emit_fixture(stem, model, persist_id, comment)
+    ALIRO_DIR.mkdir(parents=True, exist_ok=True)
+    aliro_bin = ALIRO_DIR / f"{stem}.card.bin"
+    aliro_bin.write_bytes(build_card_envelope(model, persist_id=persist_id, reader_capture=False))
+    print(f"Wrote {aliro_bin} ({aliro_bin.stat().st_size} bytes)", file=sys.stderr)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Regenerate desfire/emv/aliro store goldens.")
     parser.add_argument("--all", action="store_true", help="Emit all protocol card goldens")
@@ -164,8 +174,8 @@ def main() -> int:
         emit_emv_fixture("Emv_mc", build_emv_mastercard_model(), NFC_PERSIST_ID_EMV,
                          "Tier E golden: nfc_store envelope for EMV Mastercard synthetic card.")
     if args.all or args.aliro:
-        emit_fixture("Aliro", build_aliro_default_model(), NFC_PERSIST_ID_ALIRO,
-                     "Tier E golden: nfc_store envelope for Aliro mock.")
+        emit_aliro_fixture("Aliro", build_aliro_default_model(), NFC_PERSIST_ID_ALIRO,
+                           "Tier E golden: nfc_store envelope for Aliro mock.")
 
     return 0
 
