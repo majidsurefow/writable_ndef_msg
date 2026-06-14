@@ -17,6 +17,11 @@
 extern "C" {
 #endif
 
+/* Forward declaration so shell prototypes below don't bind a prototype-scope
+ * struct shell tag when this header is included before <zephyr/shell/shell.h>.
+ */
+struct shell;
+
 int nfc_store_ram_save_cb(const char *tag, const uint8_t *blob, size_t len, void *user_ctx);
 int nfc_store_ram_load_cb(const char *tag, uint8_t *out, size_t max, size_t *out_len,
 			  void *user_ctx);

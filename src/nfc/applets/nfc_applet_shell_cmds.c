@@ -214,7 +214,7 @@ int cmd_nfc_emulate(const struct shell *sh, size_t argc, char **argv)
 
 		ret = nfc_store_peek_entry_meta(slot, &persist_id, &flags);
 		if (ret == 0) {
-			ret = nfc_applet_check_emulate(persist_id, store_flags);
+			ret = nfc_applet_check_emulate(persist_id, flags);
 			if (ret == -ENOTSUP) {
 				shell_warn(sh, "Slot \"%s\" is clone-only (%s)", slot,
 					   nfc_persist_id_name(persist_id));

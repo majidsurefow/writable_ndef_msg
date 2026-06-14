@@ -16,9 +16,10 @@
 #include "hal/nfc_transport.h"
 #include "protocols/ndef/ndef.h"
 
-#if IS_ENABLED(CONFIG_NFC_LISTEN_STACK)
+/* nfc_profile_t is needed by the emulate API in all builds; nfc_applet_emulate()
+ * is always defined (returns -ENOTSUP when CONFIG_NFC_LISTEN_STACK is off).
+ */
 #include "nfc_stack/nfc_stack.h"
-#endif
 
 struct shell;
 
@@ -35,9 +36,7 @@ int nfc_applet_read_start(const char *slot, k_timeout_t timeout);
 bool nfc_applet_read_busy(void);
 int nfc_applet_read_wait(k_timeout_t deadline);
 
-#if IS_ENABLED(CONFIG_NFC_LISTEN_STACK)
 int nfc_applet_emulate(const char *slot, nfc_profile_t profile);
-#endif
 
 int nfc_applet_verify_start(const char *slot, k_timeout_t timeout);
 bool nfc_applet_verify_busy(void);
