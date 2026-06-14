@@ -13,7 +13,8 @@ config NFC_READER_SHELL
 	default y
 	depends on SHELL
 	help
-	  Register nfc reader scan and clone shell commands.
+	  Register nfc reader scan/detect DK shell commands (the product
+	  nfc reader clone command was dropped — use nfc read).
 
 config NFC_READER_SCAN_TIMEOUT_MS
 	int "Default reader scan timeout (milliseconds)"
