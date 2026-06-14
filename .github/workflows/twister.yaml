@@ -157,6 +157,7 @@ jobs:
             tests/unit/nfc_emv
             tests/unit/nfc_aliro
             tests/unit/nfc_ndef
+            tests/unit/nfc_apdu_asm
           )
           for dir in "${UNIT_DIRS[@]}"; do
             west twister -T "${dir}" -t ci_unit -p qemu_cortex_m3 \
