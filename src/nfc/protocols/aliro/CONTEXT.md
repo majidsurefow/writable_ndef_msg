@@ -103,6 +103,17 @@ Private key is never serialized. Unverified builds ship full AUTH chain + EXCHAN
   ```
 - **PASS criteria:** ISO-DEP AUTH0/AUTH1/EXCHANGE transcript exchanged; listener reaches DONE
 
+## Door-lock reference
+
+**Golden reference:** NCS door-lock repo (`ncs-door-lock-and-access-control`) — **not Flipper** (no Aliro dumps). B validates **reader role** via `lib/aliro/` + RFAL; **card role** via external Test Harness only (no in-repo NFCT listener).
+
+| Tier | Status | Proof |
+|------|--------|-------|
+| **CI SHIPPED** | **PASS** | [`docs/nfc/ALIRO_DOOR_LOCK_SHIP_CHECK.md`](../../../docs/nfc/ALIRO_DOOR_LOCK_SHIP_CHECK.md) — 31/31 `nfc_aliro` + Aliro store/loopback in `nfc_reader` |
+| **Door-lock interop VERIFIED** | **PENDING** | PSA (`CONFIG_NFC_ALIRO_PROTOCOL_VERIFIED=y`), LOAD_CERT, step-up, kpersistent, Test Harness PICS — see ship-check §VERIFIED backlog |
+
+Expedited SELECT/AUTH0/AUTH1/EXCHANGE wire shapes match B/spec 0.9.4; deferred crypto timing matches B `aliro_work` pattern. Gaps (LOAD_CERT, kpersistent, full step-up, PSA default-off) are documented — not CI blockers.
+
 ## NCS Door-Lock / Access-Control Parity
 
 Aliro listener implements the **same protocol** as the NCS `aliro/` tree (Aliro 0.9.4 expedited transaction), but as a **reimplemented protocol module** under the NFC stack architecture (see `docs/nfc/archive/waves/wave5-aliro.md`). Key differences:
