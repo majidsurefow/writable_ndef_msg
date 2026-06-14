@@ -198,7 +198,9 @@ Normative summary aligned with [`NFC_STACK_PLAN.md`](NFC_STACK_PLAN.md) backlog 
 
 Concise LOCKED bullets — per-protocol agents expand into full recipes (§6). Placeholder tags mark handoff points.
 
-### 5.1 ndef (Type-4)
+### 5.1 NDEF Type-4 (ISO-DEP / T4T)
+
+> **Not Type-2.** This recipe covers **ISO-DEP SELECT/READ BINARY** on the NDEF v2 AID only. Type-2 NDEF (Ultralight page READ, CC on page 3, TLV from page 4+) lives in **[§5.2 mf_ultralight](#52-mf_ultralight)** and [`NDEF_T2_T4_ROUTING.md`](NDEF_T2_T4_ROUTING.md). Flipper has **no** `protocols/ndef/` T4 poller — only parse-only content helpers in `supported_cards/ndef.c` (see §5.2).
 
 **Module:** `src/nfc/protocols/ndef/` · **Product-only** (no Flipper `ndef/` folder) · **Lane:** ISO-DEP / NFC Forum Type 4 Tag (T4T)
 
@@ -435,7 +437,7 @@ NDEF is the **reference protocol** for Tiers A/B/C. Full catalog in [§14](#14-p
 | B — Poller | `test_poller.c` | detect v2/v1/enotsup/eio; read empty/uri/chunk_255/sw_error/nlen_overflow | 2 |
 | C — Listener | `test_listener_*.c` | wave5-ndef §8 catalog (select/read/update/dispatch) | 3 |
 
-Fixtures: `tests/fixtures/ndef/*.inc` (scripts), `*.bin` (golden serialize blobs). Flipper `nfc_data_generator` + NXP `RW_NDEF_T4T` table = behavioral source for scripts.
+Fixtures: `tests/fixtures/ndef/*.inc` (scripts), `*.bin` (golden serialize blobs). **Generator:** `scripts/nfc/ndef_to_fixture.py` (NXP `RW_NDEF_T4T` + this §5.1 table) — **not** `flipper_nfc_to_fixture.py`. Canonical poller TX sequence (6 steps) is asserted in `tests/unit/nfc_ndef/src/test_poller.c` `test_read_tx_sequence` — use as §14.3 exemplar for other protocols.
 
 ---
 
@@ -459,10 +461,12 @@ Fixtures: `tests/fixtures/ndef/*.inc` (scripts), `*.bin` (golden serialize blobs
 
 <!-- PROTOCOL_AGENT:ndef -->
 
-### 5.2 mf_ultralight
+### 5.2 mf_ultralight (Type-2 NDEF poll path)
+
+> **Not Type-4.** This recipe covers **NFC-A page READ** and Type-2 CC/TLV extraction. ISO-DEP T4T SELECT/READ BINARY is **[§5.1](#51-ndef-type-4-iso-dep--t4t)** only. Emulate handoff: ultralight poller → T4 adapter → `ndef_listener` (no native T2 listener in v1).
 
 - **When:** **post–Gate 2** (Backlog F1). Requires Gate 2 `protocols/ndef/` poller + `.card` store envelope; no Ultralight in Gate 2 clone path (§11).
-- **Module:** `protocols/ultralight/` — poller + data model only; **no** `<name>_listener.c` in v1.
+- **Module:** `protocols/ultralight/` — poller + data model only; **no** native `<name>_listener.c` in v1 (T4 adapter only).
 
 #### Detect (Flipper port)
 
@@ -501,7 +505,7 @@ Port **read mode only** (`MfUltralightPollerModeRead`); skip write, dict-attack,
    - Ultralight C 3DES auth — optional; store key in page 44 on success.
 3. **Completion** — `pages_read == pages_total` (+ auth completeness rules in `mf_ultralight_is_all_data_read`); emit read success to reader engine → `nfc_store_save()`.
 
-**NDEF extraction for emulate:** Type-2 layout — CC on page 3 (`0xE1` magic), NDEF TLV from page 4 (`0x03` / long `div` `0xFF`). Poller owns full page dump; **adapter** parses TLV (do not re-read tag on load).
+**NDEF extraction for emulate:** Type-2 layout — CC on **page 3** (`0xE1` magic), NDEF TLV from **page 4+** (`0x03` / long `0xFF` div). Poller owns full page dump; **adapter** parses TLV (do not re-read tag on load). Flipper `applications/main/nfc/plugins/supported_cards/ndef.c` **`NDEF_PROTO_UL`** is a **content-parse reference only** (TLV/message bytes after pages are read) — not a wire-format or T4 poller golden.
 
 #### Listen / emulate — skip native T2; T4 adapter handoff (post–Gate 2)
 
