@@ -9,6 +9,7 @@
 #define TESTS_COMMON_NFC_ALIRO_CRYPTO_SHIM_H_
 
 #include <stdbool.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 

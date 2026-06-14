@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: Apache-2.0
+
+mainmenu "ISO15693-3 protocol unit tests"
+
+source "Kconfig.zephyr"
+
+config ISO15693_BLOCKS_MAX
+	int "Maximum ISO15693 blocks in data model"
+	default 128
+	range 16 128
+
+config ISO15693_BLOCK_SIZE_MAX
+	int "Maximum ISO15693 block size"
+	default 4
+	range 1 4
+
+config NFC_ISO15693_3_TEST_TIER_POLLER
+	bool "Build ISO15693-3 poller tier tests"
+	default n
