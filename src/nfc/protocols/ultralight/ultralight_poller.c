@@ -182,6 +182,122 @@ static int ultralight_poller_read_tearing(nfc_reader_session_t *session, uint8_t
 	return 0;
 }
 
+static int ultralight_poller_pwd_auth(nfc_reader_session_t *session, const uint8_t pwd[4])
+{
+	uint8_t tx[5] = {ULTRALIGHT_CMD_PWD_AUTH, pwd[0], pwd[1], pwd[2], pwd[3]};
+	uint8_t rx[NFC_TRANSPORT_MAX_RESPONSE_LEN];
+	size_t rx_len = 0U;
+	int ret;
+
+	ret = ultralight_poller_transceive(session, tx, sizeof(tx), rx, &rx_len);
+	if (ret != 0) {
+		return ret;
+	}
+
+	if (rx_len < ULTRALIGHT_PWD_AUTH_RESP_LEN) {
+		return -EIO;
+	}
+
+	return 0;
+}
+
+static int ultralight_poller_try_pwd_auth(nfc_reader_session_t *session,
+					  const ultralight_config_t *cfg, bool *authenticated)
+{
+	static const uint8_t default_pwd[ULTRALIGHT_PAGE_SIZE] = {0xFFU, 0xFFU, 0xFFU, 0xFFU};
+	int ret;
+
+	if ((session == NULL) || (authenticated == NULL) || *authenticated) {
+		return -EINVAL;
+	}
+
+	if ((cfg != NULL) && cfg->valid) {
+		ret = ultralight_poller_pwd_auth(session, cfg->pwd);
+		if (ret == 0) {
+			*authenticated = true;
+			return 0;
+		}
+
+		if (cfg->authlim == 0U) {
+			ret = ultralight_poller_pwd_auth(session, default_pwd);
+			if (ret == 0) {
+				*authenticated = true;
+				return 0;
+			}
+		}
+
+		return ret;
+	}
+
+	return -ENOTSUP;
+}
+
+static int ultralight_poller_copy_read_chunk(ultralight_data_t *out, uint16_t start,
+					     uint16_t pages_total,
+					     const uint8_t page_buf[ULTRALIGHT_READ_RESP_LEN])
+{
+	for (uint16_t i = 0U; i < 4U; i++) {
+		uint16_t page = (uint16_t)(start + i);
+
+		if (page >= pages_total) {
+			break;
+		}
+
+		(void)memcpy(out->pages[page], &page_buf[i * ULTRALIGHT_PAGE_SIZE],
+			     ULTRALIGHT_PAGE_SIZE);
+	}
+
+	if ((start + 4U) < pages_total) {
+		out->pages_read = (uint16_t)(start + 4U);
+	} else {
+		out->pages_read = pages_total;
+	}
+
+	return 0;
+}
+
+static int ultralight_poller_read_pages(nfc_reader_session_t *session, ultralight_data_t *out,
+					uint16_t pages_total)
+{
+	uint8_t page_buf[ULTRALIGHT_READ_RESP_LEN];
+	ultralight_config_t cfg;
+	bool authenticated = false;
+	int ret;
+
+	out->pages_read = 0U;
+
+	for (uint16_t start = 0U; start < pages_total; start += 4U) {
+		(void)memset(&cfg, 0, sizeof(cfg));
+		(void)ultralight_parse_config(out, &cfg);
+
+		if (ultralight_page_needs_auth(&cfg, start) && !authenticated) {
+			ret = ultralight_poller_try_pwd_auth(session, &cfg, &authenticated);
+			if (ret != 0) {
+				return 0;
+			}
+		}
+
+		ret = ultralight_poller_read_page(session, (uint8_t)start, page_buf);
+		if (ret != 0) {
+			if (!authenticated && cfg.valid) {
+				(void)ultralight_poller_try_pwd_auth(session, &cfg, &authenticated);
+				if (authenticated) {
+					ret = ultralight_poller_read_page(session, (uint8_t)start,
+									  page_buf);
+				}
+			}
+
+			if (ret != 0) {
+				return 0;
+			}
+		}
+
+		(void)ultralight_poller_copy_read_chunk(out, start, pages_total, page_buf);
+	}
+
+	return 0;
+}
+
 static int ultralight_poller_identify_type(nfc_reader_session_t *session,
 					   ultralight_type_t *type_out,
 					   uint8_t version[ULTRALIGHT_VERSION_SIZE],
@@ -246,7 +362,6 @@ int ultralight_poller_detect(const nfc_reader_session_t *session)
 int ultralight_poller_read(const nfc_reader_session_t *session, ultralight_data_t *out)
 {
 	nfc_reader_session_t *sess = (nfc_reader_session_t *)session;
-	uint8_t page_buf[ULTRALIGHT_READ_RESP_LEN];
 	uint8_t version[ULTRALIGHT_VERSION_SIZE];
 	bool has_version = false;
 	ultralight_type_t type;
@@ -283,25 +398,14 @@ int ultralight_poller_read(const nfc_reader_session_t *session, ultralight_data_
 		(void)memcpy(out->version, version, ULTRALIGHT_VERSION_SIZE);
 	}
 
-	for (uint16_t start = 0U; start < pages_total; start += 4U) {
-		ret = ultralight_poller_read_page(sess, (uint8_t)start, page_buf);
-		if (ret != 0) {
-			return ret;
-		}
-
-		for (uint16_t i = 0U; i < 4U; i++) {
-			uint16_t page = (uint16_t)(start + i);
-
-			if (page >= pages_total) {
-				break;
-			}
-
-			(void)memcpy(out->pages[page], &page_buf[i * ULTRALIGHT_PAGE_SIZE],
-				     ULTRALIGHT_PAGE_SIZE);
-		}
+	ret = ultralight_poller_read_pages(sess, out, pages_total);
+	if (ret != 0) {
+		return ret;
 	}
 
-	out->pages_read = pages_total;
+	if (out->pages_read < pages_total) {
+		return 0;
+	}
 
 	if (has_version) {
 		ret = ultralight_poller_read_signature(sess, out->signature);
