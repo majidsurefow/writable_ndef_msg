@@ -19,7 +19,7 @@
 extern "C" {
 #endif
 
-#define NFC_VIRTUAL_LOOPBACK_MAX_BLOB 512U
+#define NFC_VIRTUAL_LOOPBACK_MAX_BLOB 2048U
 
 typedef int (*nfc_virtual_loopback_poller_detect_fn)(nfc_reader_session_t *session);
 typedef int (*nfc_virtual_loopback_poller_read_fn)(nfc_reader_session_t *session,
