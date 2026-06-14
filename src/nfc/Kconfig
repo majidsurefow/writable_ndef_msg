@@ -24,6 +24,66 @@ config NFC_APDU_POOL_COUNT
 
 rsource "run/Kconfig"
 rsource "hal/Kconfig"
+
+# Product profile — bundles roles, orchestrators, store, applets, and protocols
+# via `imply` so overlays need only one profile line. Individual symbols stay
+# overridable (imply, not select) for size-constrained SKUs. Defaults follow the
+# HAL backend: PN7160 reader-only -> READER, NFCT -> CARD_EMULATION, else LAB.
+choice NFC_PROFILE
+	prompt "NFC product profile"
+	default NFC_PROFILE_READER if NFC_HAL_BACKEND_PN7160 && !NFC_ROLE_LISTEN
+	default NFC_PROFILE_CARD_EMULATION if NFC_HAL_BACKEND_NRFX
+	default NFC_PROFILE_LAB
+	help
+	  Choose the product role this firmware ships. The profile implies the
+	  matching orchestrators, store backend, applets, and protocol set so
+	  overlays do not toggle each symbol by hand.
+
+config NFC_PROFILE_READER
+	bool "Reader (read / clone / verify)"
+	imply NFC_READER
+	imply NFC_STORE
+	imply NFC_STORE_RAM
+	imply NFC_APPLETS
+	imply NFC_PROTOCOL_NDEF
+	imply NFC_PROTOCOL_ULTRALIGHT
+	imply NFC_PROTOCOL_CLASSIC
+	imply NFC_PROTOCOL_FELICA
+	imply NFC_PROTOCOL_ISO15693_3
+	imply NFC_PROTOCOL_SLIX
+	imply NFC_PROTOCOL_DESFIRE
+	imply NFC_PROTOCOL_EMV
+	imply NFC_PROTOCOL_ALIRO
+	help
+	  PN7160 poller product. Implies the reader engine, RAM store, applets,
+	  and every poller protocol. Does NOT imply the listen stack — keep
+	  reader-only builds free of NET_BUF + APDU pools by leaving
+	  NFC_ROLE_LISTEN=n in the overlay.
+
+config NFC_PROFILE_CARD_EMULATION
+	bool "Card emulation (listen + emulate)"
+	imply NFC_LISTEN_STACK
+	imply NFC_STORE
+	imply NFC_STORE_RAM
+	imply NFC_PROTOCOL_NDEF
+	imply NFC_PROTOCOL_ULTRALIGHT
+	imply NFC_PROTOCOL_DESFIRE
+	imply NFC_PROTOCOL_EMV
+	imply NFC_PROTOCOL_ALIRO
+	help
+	  Listen + emulate product (PN7160 CE or NFCT). Implies the listen stack
+	  (framing + router + NDEF), RAM store, and the emulatable listener
+	  protocol subset.
+
+config NFC_PROFILE_LAB
+	bool "HAL lab scaffold (HAL + roles only)"
+	help
+	  HAL bring-up only: backend transport plus role compile paths, no
+	  reader engine, store, applets, or protocols. Matches the historical
+	  overlay-pn7160-hal.conf contract (reader role on, reader engine off).
+
+endchoice
+
 rsource "protocols/ndef/Kconfig"
 rsource "protocols/ultralight/Kconfig"
 rsource "protocols/classic/Kconfig"

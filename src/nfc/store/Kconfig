@@ -4,8 +4,10 @@ config NFC_STORE
 	bool "NFC card store (minimal envelope)"
 	default n
 	depends on NFC_STACK
+	select CRC
 	help
 	  Versioned TLV + CRC .card blob save/load. Gate 2 subset without NVS.
+	  Selects CRC for the crc16_ccitt envelope checksum.
 
 if NFC_STORE
 
