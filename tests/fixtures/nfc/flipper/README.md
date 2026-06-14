@@ -2,10 +2,11 @@
 
 Golden tag dumps copied from Flipper Zero’s NFC unit-test resources. They are **reference inputs only** — CI and ztest use derived `.inc` / `.bin` artifacts, not FlipperFormat parsing at runtime.
 
-## Manifest (12 files)
+## Manifest (13 files)
 
 | File | Device / role |
 |------|----------------|
+| `MfClassic_1K_4b.nfc` | MIFARE Classic 1K (4-byte UID) — **generator golden** |
 | `Ultralight_11.nfc` | MIFARE Ultralight EV1 (11 pages) |
 | `Ultralight_21.nfc` | MIFARE Ultralight EV1 (21 pages) |
 | `Ultralight_C.nfc` | MIFARE Ultralight C |
@@ -62,7 +63,8 @@ See `scripts/nfc/flipper_nfc_to_fixture.py --help`. After upstream Flipper updat
 | `Slix_cap_missed.nfc` | yes | pending F4 | **SKIP** | yes |
 | `Slix_cap_accept_all_pass.nfc` | yes | pending F4 | **SKIP** | yes |
 | `nfc_nfca_signal_short.nfc` | `tests/fixtures/hal/` | pending (HAL) | n/a | n/a |
-| `nfc_nfca_signal_long.nfc` | yes | pending (HAL) | n/a | n/a |
+| `nfc_nfca_signal_long.nfc` | NFC-A signal capture (long) |
+| `MfClassic_1K_4b.nfc` | `tests/fixtures/classic/` | F2 Tier A/B | **SKIP** | yes |
 
 Full policy: [NFC_APPLETS_AND_TESTING.md](../../../docs/nfc/NFC_APPLETS_AND_TESTING.md) — per-card Flipper parity.
 
