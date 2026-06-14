@@ -2,11 +2,12 @@
 
 Golden tag dumps copied from Flipper Zero’s NFC unit-test resources. They are **reference inputs only** — CI and ztest use derived `.inc` / `.bin` artifacts, not FlipperFormat parsing at runtime.
 
-## Manifest (13 files)
+## Manifest (14 files)
 
 | File | Device / role |
 |------|----------------|
 | `MfClassic_1K_4b.nfc` | MIFARE Classic 1K (4-byte UID) — **generator golden** |
+| `MfDesfire_EV1_sample.nfc` | MIFARE DESFire EV1 — hand golden (P5) |
 | `Ultralight_11.nfc` | MIFARE Ultralight EV1 (11 pages) |
 | `Ultralight_21.nfc` | MIFARE Ultralight EV1 (21 pages) |
 | `Ultralight_C.nfc` | MIFARE Ultralight C |
@@ -42,11 +43,11 @@ python3 scripts/nfc/flipper_nfc_to_fixture.py \
   --card-bin
 ```
 
-Outputs: `<stem>_model.bin`, `<stem>_read.inc`, and (except HAL signal files) `tests/fixtures/store/<stem>.card.bin`.
+Outputs: `<stem>_model.bin`, `<stem>_read.inc`, Classic `<stem>_tx.inc`, FeliCa `<stem>_framed.inc` (Tier B TX/RX pairs), and (except HAL signal files) `tests/fixtures/store/<stem>.card.bin`.
 
 NDEF store goldens (no Flipper `.nfc`): `python3 scripts/nfc/ndef_to_fixture.py --variant all`.
 
-See `scripts/nfc/flipper_nfc_to_fixture.py --help`. After upstream Flipper updates, re-copy the 12 basenames from the upstream directory above, then re-run `--all --card-bin`.
+See `scripts/nfc/flipper_nfc_to_fixture.py --help`. After upstream Flipper updates, re-copy the 13 basenames from the upstream directory above, then re-run `--all --card-bin`.
 
 ## Per-card parity tracker
 
@@ -58,13 +59,14 @@ See `scripts/nfc/flipper_nfc_to_fixture.py --help`. After upstream Flipper updat
 | `Ntag213_locked.nfc` | yes | **Tier B auth partial** | pending F1 (E+ T4) | yes |
 | `Ntag215.nfc` | yes | pending F1 | pending F1 | yes |
 | `Ntag216.nfc` | yes | pending F1 | pending F1 | yes |
-| `Felica.nfc` | `tests/fixtures/felica/` | pending F4 | **SKIP** | yes |
+| `Felica.nfc` | `tests/fixtures/felica/` | **Tier B framed mocks** | **SKIP** | yes |
 | `Slix_cap_default.nfc` | `tests/fixtures/slix/` | pending F4 | **SKIP** | yes |
 | `Slix_cap_missed.nfc` | yes | pending F4 | **SKIP** | yes |
 | `Slix_cap_accept_all_pass.nfc` | yes | pending F4 | **SKIP** | yes |
 | `nfc_nfca_signal_short.nfc` | `tests/fixtures/hal/` | pending (HAL) | n/a | n/a |
 | `nfc_nfca_signal_long.nfc` | `tests/fixtures/hal/` | pending (HAL) | n/a | n/a |
-| `MfClassic_1K_4b.nfc` | `tests/fixtures/classic/` | F2 Tier A/B | **SKIP** | yes |
+| `MfClassic_1K_4b.nfc` | `tests/fixtures/classic/` | **Tier A/B** (`nfc_classic/`, §14.3 TX) | **SKIP** | yes |
+| `MfDesfire_EV1_sample.nfc` | pending P5 converter | pending P5 | pending P5 | pending |
 
 Full policy: [NFC_APPLETS_AND_TESTING.md](../../../docs/nfc/NFC_APPLETS_AND_TESTING.md) — per-card Flipper parity.
 

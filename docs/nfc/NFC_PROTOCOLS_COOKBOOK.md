@@ -1025,6 +1025,12 @@ Port Flipper `felica_poller.c` state machine via `nfc_reader_session_transceive(
 - Encrypted service read (non-`UNAUTH_READ` services).
 - NDEF Type-3 shortcut only (`RW_NDEF_T3T`) — product path is full Flipper poller for clone parity.
 
+#### Transceive framing (mirror §5.8)
+
+- **Poll TX (pre-CRC):** `[len=0x06][0x00][SYSCODE=FF FF][req=0x00][slot=0x00]` — `felica_poller_polling()` builds this; `felica_poller_frame_exchange()` appends FeliCa CRC-16 and verifies/trims RX CRC.
+- **Read TX (pre-CRC, Lite):** `[len][0x06][IDm×8][service_num=1][service=0B 00][block_count=1][block_list×2]` via `felica_poller_prepare_tx_buffer()`; CRC appended in `frame_exchange`.
+- **Tier B fixtures:** `tests/fixtures/felica/Felica_framed.inc` and `Felica_mock.h` hold **on-air** TX/RX (post-CRC); `test_read_tx_sequence` asserts all 29 transceives against Python-generated constants.
+
 #### Unit test matrix (§14 template)
 
 Universal patterns: [§14.2–14.3](#14-protocol-unit-test-recipe-locked). Poll/traverse SM: Flipper `felica_poller.c` + `nfc_data_generator`.
@@ -1032,10 +1038,10 @@ Universal patterns: [§14.2–14.3](#14-protocol-unit-test-recipe-locked). Poll/
 | Tier | Suite | Extensions | Gate |
 |------|-------|------------|------|
 | A — Model | `test_model.c` | format version 2; Standard vs Lite trees; `EMULATION_COMPLETE` unset | defer F4 |
-| B — Poller | `test_poller.c` | Poll `0x00` detect; LIST_SERVICE / READ_WITHOUT_ENCRYPTION TX order; CRC fail → `-EIO` | defer F4 |
+| B — Poller | `test_poller.c` | Poll `0x00` detect; Lite READ_WITHOUT_ENCRYPTION TX order (29 steps); CRC fail → `-EIO` | **done** (P2) |
 | C — Listener | — | **skip** — clone-only (§14.4) | — |
 
-Fixtures: `tests/fixtures/felica/*.inc` from Flipper `.nfc`; requires `NFC_TECH_TYPE3_FELICA` HAL mock for detect gate.
+Fixtures: `tests/fixtures/felica/` — Tier B framed TX/RX from Flipper `Felica.nfc` (`Felica_framed.inc`, `Felica_mock.h`); requires `NFC_TECH_TYPE3_FELICA` HAL mock for detect gate.
 
 - <!-- PROTOCOL_AGENT:felica -->
 
