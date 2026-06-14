@@ -415,7 +415,114 @@ P4 is a read-only audit phase. All findings confirm correct implementation per C
 
 ## P4b — Applets CONTEXT.md + L1 Verification
 
-**Status:** PENDING
+**Status:** DONE  
+**Date:** 2026-06-14  
+**Exit gate:**
+- `west twister -T tests/unit/nfc_reader -t ci_unit -p qemu_cortex_m3 --no-sysbuild` → **PASS** (2/2 configs, 97/97 cases)
+- Shell-off build (`CONFIG_SHELL=n`) → **PASS** (links clean)
+
+### Deliverables
+
+| Directory | CONTEXT.md | Lines |
+|-----------|------------|-------|
+| `src/nfc/applets/` | Created | ~95 |
+
+### L1 API Verification
+
+Verified `nfc_applet_service.h` matches locked L1 API (Phase A):
+
+| Applet | L1 Functions | No `struct shell`? |
+|--------|--------------|-------------------|
+| Scan | `discover_start/stop/active`, `scan_get_result` | ✓ |
+| Read | `read_start/busy/wait` | ✓ |
+| Emulate | `emulate(slot, profile)` | ✓ |
+| Loop | `loop_run(slot, timeout, log_fn, ctx, &result)` | ✓ |
+| Check | `verify_start/busy/wait/last_result`, `verify_compare` | ✓ |
+| Meta | `get_card_meta(slot, &out)` | ✓ |
+
+### Callback Model Documented
+
+| Applet | Callback | Purpose |
+|--------|----------|---------|
+| Scan | `nfc_applet_tag_cb_t` | Per-tag discovery notification |
+| Loop | `nfc_applet_log_fn` | Per-stage progress (NULL = silent) |
+
+### Grep Audit — Shell Leakage
+
+```bash
+$ grep -r "struct shell" src/nfc/applets/*.c | grep -v "_shell_cmds.c"
+```
+
+**Result:** Only documentation comments found ("Layer-1: NO struct shell"). No actual shell usage in L1.
+
+```bash
+$ grep -r "shell.h" src/nfc/applets/*.c | grep -v "_shell_cmds.c"
+PASS: No shell.h include in L1 applet files
+
+$ grep -r "shell_print\|shell_fprintf" src/nfc/applets/*.c | grep -v "_shell_cmds.c"
+PASS: No shell_print in L1 applet files
+```
+
+**Conclusion:** L1 applet layer is clean — no shell symbols below L2.
+
+### Shell-off Build Verification
+
+```bash
+$ west build -b qemu_cortex_m3 tests/unit/nfc_reader -d build_shell_off -- -DCONFIG_SHELL=n
+```
+
+**Result:** Build succeeded. `.config` confirms `# CONFIG_SHELL is not set`. Proves L1 code links without shell dependencies.
+
+### Audit Findings (D.4 Checklist)
+
+#### A. Buffer Bounds
+
+| Finding | File | Severity | Notes |
+|---------|------|----------|-------|
+| Slot name length validated | `nfc_applet_verify.c:143` | OK | `len >= sizeof(s_verify_slot)` → `-EINVAL` |
+| Result structs bounded | `nfc_applet_service.h` | OK | Fixed-size `nfc_applet_scan_result_t`, `nfc_applet_loop_result_t` |
+
+#### B. Error Propagation
+
+| Finding | File | Severity | Notes |
+|---------|------|----------|-------|
+| Functions return negative errno | all L1 files | OK | Consistent pattern |
+| `-EBUSY` for concurrent access | scan, read, verify | OK | Atomic guards |
+| `-EALREADY` for stop when not running | `discover_stop()` | OK | Expected pattern |
+
+#### C. Session/State
+
+| Finding | File | Severity | Notes |
+|---------|------|----------|-------|
+| Scan single-flight via atomic | `nfc_applet_scan.c:56` | OK | `s_discover_run` atomic |
+| Verify single-flight via atomic | `nfc_applet_verify.c:29` | OK | `verify_busy` atomic |
+| Loop orchestrates stop | `nfc_applet_loop.c:67` | OK | Stack stop between emulate→verify |
+
+#### D. Kconfig↔CMake Consistency
+
+| Finding | File | Severity | Notes |
+|---------|------|----------|-------|
+| L1 sources under `NFC_APPLETS` | `CMakeLists.txt:1-12` | OK | All L1 files gated |
+| Emulate/loop require `NFC_LISTEN_STACK` | `CMakeLists.txt:14-19` | OK | Additional gate |
+| Shell adapter under `NFC_APPLETS_SHELL` | `CMakeLists.txt:21-24` | OK | L2 isolated |
+
+#### E. Shell Leakage
+
+| Finding | File | Severity | Notes |
+|---------|------|----------|-------|
+| No shell in L1 | all non-`*_shell_cmds.c` | OK | Grep audit confirmed |
+| Only `nfc_applet_shell_cmds.c` has shell | L2 adapter | OK | Correct isolation |
+
+#### F. Test Fidelity
+
+| Finding | Tier | Notes |
+|---------|------|-------|
+| `nfc_reader` Tier E | store/verify | 97 cases including verify-compare |
+| Headless applet tier | deferred | P5: `loop_run` with `log==NULL` |
+
+### No Code Changes Required
+
+P4b is a read-only audit phase. All findings confirm correct implementation per Phase A deconvolution
 
 ---
 
@@ -446,7 +553,7 @@ P4 is a read-only audit phase. All findings confirm correct implementation per C
 | P2 | DONE | pn7160_tml 9/9, nfc_apdu_asm 4/4; 4× CONTEXT.md |
 | P3 | DONE | 97/97 (verified); 4× CONTEXT.md |
 | P4 | DONE | 20 configs, 233 cases; 9× protocol CONTEXT.md; parity matrix |
-| P4b | PENDING | — |
+| P4b | DONE | 97/97; applets CONTEXT.md; grep audit + shell-off build PASS |
 | P5 | PENDING | — |
 | P6 | PENDING | — |
 | P7 | PENDING | — |
