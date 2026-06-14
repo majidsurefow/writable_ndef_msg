@@ -170,6 +170,9 @@ int classic_deserialize(classic_data_t *data, const uint8_t *in, size_t in_len)
 	}
 
 	blocks_total = classic_get_total_blocks(data->type);
+	if (blocks_total > CLASSIC_BLOCKS_IN_MODEL) {
+		return -ENOSPC;
+	}
 	if (in_len != offset + (size_t)blocks_total * CLASSIC_BLOCK_SIZE) {
 		return -EBADMSG;
 	}
@@ -177,6 +180,41 @@ int classic_deserialize(classic_data_t *data, const uint8_t *in, size_t in_len)
 	for (uint16_t block = 0U; block < blocks_total; block++) {
 		(void)memcpy(data->blocks[block], &in[offset], CLASSIC_BLOCK_SIZE);
 		offset += CLASSIC_BLOCK_SIZE;
+	}
+
+	return 0;
+}
+
+int classic_compare(const classic_data_t *expected, const classic_data_t *actual)
+{
+	uint16_t blocks_total;
+
+	if ((expected == NULL) || (actual == NULL)) {
+		return -EINVAL;
+	}
+
+	if (expected->type != actual->type) {
+		return -EBADMSG;
+	}
+	if (expected->uid_len != actual->uid_len) {
+		return -EBADMSG;
+	}
+	if (memcmp(expected->uid, actual->uid, expected->uid_len) != 0) {
+		return -EBADMSG;
+	}
+	if ((expected->sak != actual->sak) || (expected->atqa[0] != actual->atqa[0]) ||
+	    (expected->atqa[1] != actual->atqa[1])) {
+		return -EBADMSG;
+	}
+
+	blocks_total = classic_get_total_blocks(actual->type);
+	for (uint16_t block = 0U; block < blocks_total; block++) {
+		if (!classic_is_block_read(actual, block)) {
+			continue;
+		}
+		if (memcmp(expected->blocks[block], actual->blocks[block], CLASSIC_BLOCK_SIZE) != 0) {
+			return -EBADMSG;
+		}
 	}
 
 	return 0;

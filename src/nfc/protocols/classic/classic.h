@@ -14,6 +14,10 @@
 
 #include "router/service.h"
 
+#if defined(__ZEPHYR__)
+#include <zephyr/autoconf.h>
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -24,6 +28,12 @@ extern "C" {
 #define CLASSIC_SECTOR_COUNT_MAX      40U
 #define CLASSIC_KEY_SIZE              6U
 #define CLASSIC_BLOCK_MASK_WORDS      8U
+
+#if defined(CONFIG_NFC_CLASSIC_BLOCK_COUNT)
+#define CLASSIC_BLOCKS_IN_MODEL       CONFIG_NFC_CLASSIC_BLOCK_COUNT
+#else
+#define CLASSIC_BLOCKS_IN_MODEL       CLASSIC_BLOCK_COUNT_MAX
+#endif
 
 typedef enum {
 	CLASSIC_TYPE_MINI = 0U,
@@ -41,7 +51,7 @@ typedef struct {
 	uint32_t block_read_mask[CLASSIC_BLOCK_MASK_WORDS];
 	uint64_t key_a_mask;
 	uint64_t key_b_mask;
-	uint8_t blocks[CLASSIC_BLOCK_COUNT_MAX][CLASSIC_BLOCK_SIZE];
+	uint8_t blocks[CLASSIC_BLOCKS_IN_MODEL][CLASSIC_BLOCK_SIZE];
 } classic_data_t;
 
 void classic_data_reset(classic_data_t *data);
@@ -50,6 +60,7 @@ uint8_t classic_persist_id(void);
 int classic_serialize(const classic_data_t *data, uint8_t *out, size_t out_max,
 		      size_t *out_len);
 int classic_deserialize(classic_data_t *data, const uint8_t *in, size_t in_len);
+int classic_compare(const classic_data_t *expected, const classic_data_t *actual);
 
 const nfc_service_t *classic_service_get(void);
 

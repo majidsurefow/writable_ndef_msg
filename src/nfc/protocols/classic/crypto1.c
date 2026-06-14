@@ -117,6 +117,7 @@ uint32_t crypto1_prng_successor(uint32_t x, uint32_t n)
 		    (((x >> 16) ^ (x >> 18) ^ (x >> 19) ^ (x >> 21)) << 31);
 	}
 
+	SWAPENDIAN(x);
 	return x;
 }
 

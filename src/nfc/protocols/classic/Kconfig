@@ -5,8 +5,8 @@ config NFC_PROTOCOL_CLASSIC
 	default n
 	depends on NFC_STACK
 	help
-	  Classic block data model and TAG-CMD poller (reader only).
-	  No listener — clone-only; NFCT cannot emulate Crypto1.
+	  Classic block data model, TAG-CMD poller, and virtual listener
+	  for QEMU loopback. NFCT product emulate remains clone-only.
 
 if NFC_PROTOCOL_CLASSIC
 
