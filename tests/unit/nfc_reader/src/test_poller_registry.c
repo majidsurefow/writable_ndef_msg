@@ -6,17 +6,19 @@
  */
 
 #include "reader/nfc_reader_poller_registry.h"
+#include "nfc_reader_session_mock.h"
 
 #include <string.h>
 
 #include <zephyr/ztest.h>
 
-const nfc_reader_session_t *nfc_reader_session_get(void)
+static void before_each(void *fixture)
 {
-	return NULL;
+	ARG_UNUSED(fixture);
+	nfc_reader_session_mock_clear();
 }
 
-ZTEST_SUITE(nfc_reader_registry, NULL, NULL, NULL, NULL, NULL);
+ZTEST_SUITE(nfc_reader_registry, NULL, NULL, before_each, NULL, NULL);
 
 ZTEST(nfc_reader_registry, test_pollers_table_clone_hooks)
 {

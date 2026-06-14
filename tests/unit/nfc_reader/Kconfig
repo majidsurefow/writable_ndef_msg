@@ -134,6 +134,13 @@ config NFC_ROLE_LISTEN
 	bool "Listen role (enables emulate policy compile path)"
 	default y
 
+# L1 applet headless service (P5: shell_off scenario)
+# Default n to save RAM for constrained scenarios like store_ram.
+# Enable explicitly in scenarios that need headless applet tests.
+config NFC_APPLETS
+	bool "NFC applet service (headless L1)"
+	default n
+
 config NFC_STORE_RAM
 	bool "In-RAM multi-slot store backend"
 	default n
