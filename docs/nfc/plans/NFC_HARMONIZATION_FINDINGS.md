@@ -268,7 +268,148 @@ P3 is a read-only audit phase. All findings confirm correct implementation per C
 
 ## P4 — Protocol CONTEXT.md + Parity Matrix
 
-**Status:** PENDING
+**Status:** DONE  
+**Date:** 2026-06-14  
+**Exit gate:** All 8 protocol test suites PASS (see below)
+
+### Deliverables
+
+| Directory | CONTEXT.md | Lines |
+|-----------|------------|-------|
+| `src/nfc/protocols/ndef/` | Created | ~95 |
+| `src/nfc/protocols/ultralight/` | Created | ~85 |
+| `src/nfc/protocols/classic/` | Created | ~85 |
+| `src/nfc/protocols/felica/` | Created | ~70 |
+| `src/nfc/protocols/iso15693_3/` | Created | ~65 |
+| `src/nfc/protocols/slix/` | Created | ~70 |
+| `src/nfc/protocols/desfire/` | Created | ~90 |
+| `src/nfc/protocols/emv/` | Created | ~85 |
+| `src/nfc/protocols/aliro/` | Created | ~100 |
+
+### P4 — Protocol Parity Matrix
+
+| Protocol | Class | Flipper ref | QEMU proves | HIL must prove | Emulatable? |
+|----------|-------|-------------|-------------|----------------|-------------|
+| **NDEF** | emulatable | (via Ultralight tags) | model + poller + listener decode, store roundtrip | RF poll, real SELECT/READ BINARY, field on/off | Yes |
+| **Ultralight** | emulatable | `Ultralight_11/21/C.nfc`, `Ntag213/215/216.nfc` | model + poller decode | page read over RF, UID/SAK from NCI | Yes (T4 adapter) |
+| **Classic** | clone-only | `MfClassic_1K_4b.nfc` | model + poller, Crypto1, CRC | anticollision + auth + block read over RF | No |
+| **FeliCa** | clone-only | `Felica.nfc` | model + poller decode | NFC-F polling + block read (tech_mask gap) | No |
+| **ISO15693-3** | clone-only | (via SLIX) | model + poller decode | NFC-V inventory + block read | No |
+| **SLIX** | clone-only | `Slix_cap_default/missed/accept_all_pass.nfc` | model + poller, CAP variants | NFC-V SLIX read over RF | No |
+| **DESFire** | emulatable | (reader-captured) | model + poller + listener APDU | ISO-DEP transceive, app/file SELECT | Yes (partial) |
+| **EMV** | emulatable | (reader-captured) | model + poller + listener decode | PPSE/AID SELECT + READ RECORD | Yes (partial) |
+| **Aliro** | emulatable | (proprietary) | model + poller + listener; AID router | ISO-DEP AUTH transcript exchange | Yes (partial) |
+
+### Flipper Fixture Mapping
+
+| Flipper `.nfc` file | Protocol | Derived fixtures | Store `.card.bin` |
+|--------------------|----------|------------------|-------------------|
+| `Ultralight_11.nfc` | Ultralight | `tests/fixtures/ultralight/` | yes |
+| `Ultralight_21.nfc` | Ultralight | yes | yes |
+| `Ultralight_C.nfc` | Ultralight | yes | yes |
+| `Ntag213_locked.nfc` | Ultralight | yes | yes |
+| `Ntag215.nfc` | Ultralight | yes | yes |
+| `Ntag216.nfc` | Ultralight | yes | yes |
+| `Felica.nfc` | FeliCa | `tests/fixtures/felica/` | yes |
+| `MfClassic_1K_4b.nfc` | Classic | `tests/fixtures/classic/` | yes |
+| `Slix_cap_default.nfc` | SLIX | `tests/fixtures/slix/` | yes |
+| `Slix_cap_missed.nfc` | SLIX | yes | yes |
+| `Slix_cap_accept_all_pass.nfc` | SLIX | yes | yes |
+| `nfc_nfca_signal_short.nfc` | HAL | `tests/fixtures/hal/` | n/a |
+| `nfc_nfca_signal_long.nfc` | HAL | NFC-A signal capture | n/a |
+
+### Loopback Eligibility
+
+| Protocol | Loopback | Reason |
+|----------|----------|--------|
+| NDEF | Yes | `tests/common/nfc_virtual_loopback` |
+| Ultralight | Via NDEF | T4T NDEF adapter, not native T2 |
+| Classic | **SKIP** | Clone-only; no listener |
+| FeliCa | **SKIP** | Clone-only; no listener |
+| ISO15693-3 | **SKIP** | Clone-only; no listener |
+| SLIX | **SKIP** | Clone-only; no listener |
+| DESFire | Yes | `tests/common/nfc_virtual_loopback` |
+| EMV | Yes | `tests/common/nfc_virtual_loopback` |
+| Aliro | Yes | `tests/common/nfc_virtual_loopback` |
+
+### Aliro vs NCS Door-Lock Parity
+
+| Aspect | NCS `aliro/` tree | This protocol module |
+|--------|-------------------|----------------------|
+| Language | C++ | C (MISRA-compliant) |
+| Crypto | C++ PSA wrappers | Direct PSA Crypto API |
+| Key storage | kpersistent_manager | PSA persistent keys |
+| Work queue | `aliro_work/` C++ | `nfc_stack_wq` (HAL-owned, C) |
+| Build gate | `DOOR_LOCK_ALIRO_*` | `NFC_PROTOCOL_ALIRO` |
+| License | GPL-derived reference | Clean-room reimplementation |
+
+**Intent parity:** Both implement Aliro 0.9.4 NFC expedited AUTH (AUTH0 → AUTH1 → optional EXCHANGE). This module is **not a GPL port**—behavioral reference reimplementation.
+
+### Exit Gate Test Results
+
+| Protocol | Configs | Cases | Result |
+|----------|---------|-------|--------|
+| NDEF | 3/3 | 87/87 | **PASS** |
+| Ultralight | 2/2 | 32/32 | **PASS** |
+| Classic | 2/2 | 17/17 | **PASS** |
+| FeliCa | 2/2 | 13/13 | **PASS** |
+| SLIX | 2/2 | 18/18 | **PASS** |
+| DESFire | 3/3 | 30/30 | **PASS** |
+| EMV | 3/3 | 17/17 | **PASS** |
+| Aliro | 3/3 | 19/19 | **PASS** |
+| ISO15693-3 | — | — | SKIP (via nfc_reader) |
+
+**Total:** 20 configs, 233 cases across 8 protocol suites.
+
+### Audit Findings (D.4 Checklist)
+
+#### A. Buffer Bounds
+
+| Finding | Protocol | Severity | Notes |
+|---------|----------|----------|-------|
+| All capacity symbols have Kconfig defaults | all | OK | `NFC_*_MAX_*` symbols protect model arrays |
+| Deserialize validates sizes before copy | all | OK | Oversize → `-ENOSPC` or `-EINVAL` |
+
+#### B. Error Propagation
+
+| Finding | Protocol | Severity | Notes |
+|---------|----------|----------|-------|
+| Functions return negative errno | all | OK | Consistent pattern |
+| No silent drops in serialize/deserialize | all | OK | All paths return status |
+
+#### C. Session/State
+
+| Finding | Protocol | Severity | Notes |
+|---------|----------|----------|-------|
+| Poller single-flight via reader engine | all | OK | `-EBUSY` from engine level |
+| Listener session via nfc_stack state | emulatable | OK | `STARTED` → `-EBUSY` guard |
+
+#### D. Kconfig↔CMake Consistency
+
+| Finding | Protocol | Severity | Notes |
+|---------|----------|----------|-------|
+| All sources gated by `CONFIG_NFC_PROTOCOL_*` | all | OK | CMakeLists.txt uses `zephyr_library_sources_ifdef` |
+| Listener sources gated by `NFC_ROLE_LISTEN OR NFC_STORE` | ndef, ultralight | OK | Conditional in CMakeLists.txt |
+| SLIX selects ISO15693_3 | slix | OK | Kconfig `select` chain |
+
+#### E. Shell Leakage
+
+| Finding | Protocol | Severity | Notes |
+|---------|----------|----------|-------|
+| No shell includes in protocol files | all | OK | Protocol layer is pure L0 |
+
+#### F. Test Fidelity
+
+| Finding | Protocol | Severity | Notes |
+|---------|----------|----------|-------|
+| Model tier (A) exercises serialize/deserialize | all | OK | All 9 protocols have model tests |
+| Poller tier (B) exercises read sequence | all with tests | OK | Session mock fixtures |
+| Listener tier (C) exercises APDU response | emulatable | OK | NDEF, DESFire, EMV, Aliro |
+| Clone-only protocols have no listener tier | classic, felica, slix, iso15693_3 | OK | Correct per design |
+
+### No Code Changes Required
+
+P4 is a read-only audit phase. All findings confirm correct implementation per CONVENTIONS and Master Plan D.4 checklist
 
 ---
 
@@ -304,7 +445,7 @@ P3 is a read-only audit phase. All findings confirm correct implementation per C
 | P1 | DONE | 97/97, imply chains verified |
 | P2 | DONE | pn7160_tml 9/9, nfc_apdu_asm 4/4; 4× CONTEXT.md |
 | P3 | DONE | 97/97 (verified); 4× CONTEXT.md |
-| P4 | PENDING | — |
+| P4 | DONE | 20 configs, 233 cases; 9× protocol CONTEXT.md; parity matrix |
 | P4b | PENDING | — |
 | P5 | PENDING | — |
 | P6 | PENDING | — |
