@@ -29,6 +29,17 @@ ZTEST(aliro_poller, test_read_partial)
 	zassert_true(s_data.transcript_len > 0U);
 }
 
+ZTEST(aliro_poller, test_read_auth_chain_transcript)
+{
+	setup(NULL);
+	nfc_session_mock_load(aliro_Aliro_auth_chain_steps, ALIRO_ALIRO_AUTH_CHAIN_STEP_COUNT);
+	zassert_ok(aliro_poller_read(&s_session, &s_data));
+	zassert_equal(s_data.transcript_len,
+		      (uint16_t)(sizeof(aliro_select_ok) + sizeof(aliro_auth0_rsp) +
+				 sizeof(aliro_auth1_rsp)));
+	zassert_equal(nfc_session_mock_tx_count(), 3U);
+}
+
 ZTEST(aliro_poller, test_inactive_session)
 {
 	setup(NULL);

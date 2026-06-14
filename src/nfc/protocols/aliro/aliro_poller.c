@@ -5,6 +5,7 @@
 
 #include "aliro_poller.h"
 
+#include "aliro_vectors.h"
 #include "framing/apdu_types.h"
 #include "hal/nfc_transport.h"
 
@@ -27,6 +28,39 @@ static bool aliro_poller_select_ok(const uint8_t *rx, size_t rx_len)
 	}
 
 	return (rx[rx_len - 2U] == 0x90U) && (rx[rx_len - 1U] == 0x00U);
+}
+
+static bool aliro_poller_auth0_ok(const uint8_t *rx, size_t rx_len)
+{
+	if (rx_len < ALIRO_AUTH0_RSP_SIZE) {
+		return false;
+	}
+
+	return (rx[0] == 0x00U) && (rx[1] == 0x00U);
+}
+
+static bool aliro_poller_auth1_ok(const uint8_t *rx, size_t rx_len)
+{
+	if (rx_len < ALIRO_AUTH1_RSP_SIZE) {
+		return false;
+	}
+
+	return (rx[0] == 0x00U) && (rx[1] == 0x00U);
+}
+
+static int aliro_poller_append_transcript(aliro_data_t *out, const uint8_t *rx, size_t rx_len)
+{
+	if ((out == NULL) || (rx_len == 0U)) {
+		return 0;
+	}
+
+	if ((out->transcript_len + rx_len) > CONFIG_NFC_ALIRO_MAX_TRANSCRIPT) {
+		return -ENOSPC;
+	}
+
+	(void)memcpy(&out->transcript[out->transcript_len], rx, rx_len);
+	out->transcript_len = (uint16_t)(out->transcript_len + rx_len);
+	return 0;
 }
 
 static int aliro_poller_tx(nfc_reader_session_t *session, const uint8_t *tx, size_t tx_len,
@@ -82,9 +116,45 @@ int aliro_poller_read(const nfc_reader_session_t *session, aliro_data_t *out)
 
 	out->protocol_major = 0x00U;
 	out->protocol_minor = 0x09U;
-	if ((rx_len > 2U) && ((out->transcript_len + rx_len) <= CONFIG_NFC_ALIRO_MAX_TRANSCRIPT)) {
-		(void)memcpy(out->transcript, rx, rx_len);
-		out->transcript_len = (uint16_t)rx_len;
+	ret = aliro_poller_append_transcript(out, rx, rx_len);
+	if (ret != 0) {
+		return ret;
+	}
+
+	{
+		uint8_t tx_auth0[5U + ALIRO_AUTH0_DATA_SIZE];
+		size_t tx_auth0_len = 0U;
+
+		aliro_vectors_build_auth0_tx(tx_auth0, &tx_auth0_len);
+		rx_len = 0U;
+		ret = aliro_poller_tx(mut, tx_auth0, tx_auth0_len, rx, &rx_len);
+		if (ret != 0) {
+			return ret;
+		}
+		if (!aliro_poller_auth0_ok(rx, rx_len)) {
+			return -EIO;
+		}
+		ret = aliro_poller_append_transcript(out, rx, rx_len);
+		if (ret != 0) {
+			return ret;
+		}
+	}
+
+	{
+		uint8_t tx_auth1[5U + ALIRO_AUTH1_DATA_SIZE];
+		size_t tx_auth1_len = 0U;
+
+		aliro_vectors_build_auth1_tx(tx_auth1, &tx_auth1_len);
+		rx_len = 0U;
+		ret = aliro_poller_tx(mut, tx_auth1, tx_auth1_len, rx, &rx_len);
+		if (ret == 0) {
+			if (aliro_poller_auth1_ok(rx, rx_len)) {
+				ret = aliro_poller_append_transcript(out, rx, rx_len);
+				if (ret != 0) {
+					return ret;
+				}
+			}
+		}
 	}
 
 	return 0;
