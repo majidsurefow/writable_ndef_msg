@@ -146,8 +146,8 @@ flowchart TB
 
 | Protocol | Class | Poller (B) | Listener (C) | Emulatable? | Kconfig | QEMU proves | HIL must prove |
 |----------|-------|------------|--------------|-------------|---------|-------------|----------------|
-| **NDEF** | emulatable | `ndef_poller.c` | `ndef_listener.c` | ✓ | `NFC_PROTOCOL_NDEF` | model + poller + listener decode, store roundtrip | RF poll, SELECT/READ BINARY, field on/off |
-| **Ultralight** | emulatable | `ultralight_poller.c` | `ultralight_listener.c` (T4T adapter) | ✓ (via T4T) | `NFC_PROTOCOL_ULTRALIGHT` | model + poller decode | page read over RF, UID/SAK |
+| **NDEF (T4T)** | emulatable | `ndef_poller.c` — ISO-DEP SELECT/READ on NDEF AID | `ndef_listener.c` — native T4T APDU | ✓ (native T4) | `NFC_PROTOCOL_NDEF` | model + poller + listener (87 cases); store roundtrip | RF poll, SELECT/READ BINARY, field on/off |
+| **Ultralight (T2 poll)** | emulatable | `ultralight_poller.c` — page READ | **via T4 adapter** → `ndef_listener.c` (no native T2) | ✓ (via T4T adapter) | `NFC_PROTOCOL_ULTRALIGHT` | model + poller decode (32 cases); listener Tier C in `nfc_ndef` after F1 adapter | page read over RF, UID/SAK; emulate as T4 NDEF |
 | **Classic** | clone-only | `classic_poller.c` | — | — | `NFC_PROTOCOL_CLASSIC` | model + poller, Crypto1, CRC | anticollision + auth + block read |
 | **FeliCa** | clone-only | `felica_poller.c` | — | — | `NFC_PROTOCOL_FELICA` | model + poller decode | NFC-F polling + block read |
 | **ISO15693-3** | clone-only | `iso15693_3_poller.c` | — | — | `NFC_PROTOCOL_ISO15693_3` | model + poller decode | NFC-V inventory + block read |
@@ -343,8 +343,8 @@ All 18 `CONTEXT.md` files are assembled from the following directories:
 | `src/nfc/store/CONTEXT.md` | L0 | Envelope + RAM backend |
 | `src/nfc/run/CONTEXT.md` | L0 | Shared work queue |
 | `src/nfc/applets/CONTEXT.md` | L1 | Headless applets |
-| `src/nfc/protocols/ndef/CONTEXT.md` | L0 | NDEF Type-4 |
-| `src/nfc/protocols/ultralight/CONTEXT.md` | L0 | MIFARE Ultralight/NTAG |
+| `src/nfc/protocols/ndef/CONTEXT.md` | L0 | NDEF Type-4 (ISO-DEP T4T) |
+| `src/nfc/protocols/ultralight/CONTEXT.md` | L0 | Ultralight/NTAG Type-2 poll; emulate via T4 adapter |
 | `src/nfc/protocols/classic/CONTEXT.md` | L0 | MIFARE Classic |
 | `src/nfc/protocols/felica/CONTEXT.md` | L0 | FeliCa |
 | `src/nfc/protocols/iso15693_3/CONTEXT.md` | L0 | ISO15693-3 (NFC-V) |

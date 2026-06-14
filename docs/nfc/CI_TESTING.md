@@ -27,7 +27,7 @@ tests/unit/nfc_slix
 tests/unit/nfc_desfire
 tests/unit/nfc_emv
 tests/unit/nfc_aliro
-tests/unit/nfc_ndef
+tests/unit/nfc_ndef          # 87 cases, 3 configs (model/poller/listener — T4T reference tier)
 tests/unit/nfc_apdu_asm
 ```
 

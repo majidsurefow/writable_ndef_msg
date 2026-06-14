@@ -99,6 +99,27 @@ Regen NDEF goldens: `python3 scripts/nfc/ndef_to_fixture.py --variant all`. Rege
 
 **NDEF first:** `tests/unit/nfc_ndef/` is the Tier A/B/C template. Other protocols copy after cookbook §14.10 exit criteria.
 
+### NDEF Type-2 vs Type-4 routing (LOCKED)
+
+| Path | Wire | Poll module | Emulate module | Test suite | Tier C owner | Flipper reference |
+|------|------|-------------|----------------|------------|--------------|-------------------|
+| **T4T** | ISO-DEP SELECT/READ BINARY on NDEF AID | `protocols/ndef/ndef_poller.c` | `protocols/ndef/ndef_listener.c` | `tests/unit/nfc_ndef/` (87 cases, 3 configs) | `nfc_ndef` listener | **None** — no Flipper T4 poller; goldens from NXP `RW_NDEF_T4T` via `ndef_to_fixture.py` |
+| **T2 (Ultralight/NTAG)** | NFC-A page READ (`0x30`); CC page 3; TLV page 4+ | `protocols/ultralight/ultralight_poller.c` | T4 adapter → `ndef_listener.c` | `tests/unit/nfc_ultralight/` (32 cases, 2 configs) | **`nfc_ndef` listener** (adapter handoff; **not** native T2 Tier C in `nfc_ultralight/`) | `supported_cards/ndef.c` **`NDEF_PROTO_UL`** — **content parse only** |
+
+**Do not route T2 tests to `nfc_ndef` poller** — page READ scripts belong in `nfc_ultralight/`. **Do not cite Flipper as T4 wire golden** — Flipper `.nfc` Ultralight files are raw pages converted by `flipper_nfc_to_fixture.py`.
+
+**Ultralight F1 emulate (Tier C via adapter):** pending; when landed, Tier E+ loopback uses T4 adapter + `ndef_listener`, not a separate `ultralight_listener` ztest suite. See [`NDEF_T2_T4_ROUTING.md`](NDEF_T2_T4_ROUTING.md).
+
+**T4 golden variants** (`tests/unit/nfc_ndef/testcase.yaml` configs `sample.nfc.unit.nfc_ndef.{model,poller,listener}`):
+
+| Variant | Fixture prefix | Tier E+ loopback |
+|---------|----------------|------------------|
+| Empty T4T | `tests/fixtures/ndef/empty.*` | `test_virtual_loopback_empty_card` |
+| URI 5 B | `tests/fixtures/ndef/uri_5byte.*` | `test_virtual_loopback_uri_5byte` |
+| Chunk NLEN=300 | `tests/fixtures/ndef/chunk_255.*` | `test_virtual_loopback_chunk_255` |
+
+Generator: `scripts/nfc/ndef_to_fixture.py --variant all` (cookbook [§5.1](NFC_PROTOCOLS_COOKBOOK.md#51-ndef-type-4-iso-dep--t4t)).
+
 **CI fixture rule (LOCKED):** Twister links `tests/fixtures/<proto>/*.inc` and `*.bin` only — **no FlipperFormat parser in ztest**.
 
 **Ztest counts (QEMU, 2026-06-14):**
@@ -273,5 +294,6 @@ Before landing a new `protocols/<name>/` module, complete the checklist in cookb
 ## Related docs
 
 - [NFC_PROTOCOLS_COOKBOOK.md](NFC_PROTOCOLS_COOKBOOK.md) — protocol recipes, §14 tiers, §14.11 checklist, **§14.12 golden chain workflow**
+- [NDEF_T2_T4_ROUTING.md](NDEF_T2_T4_ROUTING.md) — T2 page poll vs T4 ISO-DEP; PN7160 `RW_NDEF_T4T` note
 - [CI_TESTING.md](CI_TESTING.md) — Twister jobs and local commands
 - [NFC_STACK_PLAN.md](NFC_STACK_PLAN.md) — gate sequencing
