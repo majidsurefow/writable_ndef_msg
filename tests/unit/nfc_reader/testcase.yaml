@@ -20,8 +20,10 @@ tests:
       - writable_ndef.nfc.reader
       - writable_ndef.nfc.store_ram
     platform_allow:
+      - qemu_cortex_m3
       - native_sim
       - native_sim/native
     integration_platforms:
+      - qemu_cortex_m3
       - native_sim
     extra_args: OVERLAY_CONFIG=overlay-store-ram.conf

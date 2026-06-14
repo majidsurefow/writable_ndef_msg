@@ -56,6 +56,10 @@ target_sources(app PRIVATE
   ${NFC_TEST_LOOPBACK_SOURCES}
 )
 
+if(CONFIG_NFC_STORE_RAM)
+  target_sources(app PRIVATE ${REPO_NFC}/store/nfc_store_ram.c)
+endif()
+
 target_include_directories(app PRIVATE
   ${REPO_NFC}
   ${REPO_NFC}/protocols/ndef
