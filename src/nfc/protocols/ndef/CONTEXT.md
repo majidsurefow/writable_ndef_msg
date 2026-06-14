@@ -4,7 +4,9 @@
 
 ## Purpose
 
-NDEF Type-4 Tag protocol: data model (NDEF message + CC file), serialize/deserialize, poller (reader), and listener (card emulation via T4T APDU). Does NOT own the T2T NDEF adapter path—that routes through `ultralight_listener → ndef_listener`.
+**NDEF Type-4 Tag (T4T) only** — ISO-DEP poller/listener on the NDEF v2 AID (`D2 76 00 00 85 01 01`). Owns the data model (CC file + NDEF message), `ndef_poller.c` (SELECT/READ BINARY), and `ndef_listener.c` (T4T APDU emulation).
+
+**Type-2 NDEF is out of scope here.** T2 poll/read (page READ, CC page 3, TLV page 4+) lives in [`../ultralight/CONTEXT.md`](../ultralight/CONTEXT.md). T2 emulate routes through ultralight → **T4 adapter** → `ndef_listener` — see [`NDEF_T2_T4_ROUTING.md`](../../../../docs/nfc/NDEF_T2_T4_ROUTING.md) and cookbook [§5.2](../../../../docs/nfc/NFC_PROTOCOLS_COOKBOOK.md#52-mf_ultralight-type-2-ndef-poll-path).
 
 ## Key files
 
@@ -43,7 +45,8 @@ NDEF Type-4 Tag protocol: data model (NDEF message + CC file), serialize/deseria
 ## Wire/spec
 
 - NFC Forum Type-4 Tag Operation Specification v2.0
-- **Emulatable:** Yes (full listener)
+- **Emulatable:** Yes (full T4T listener)
+- **Canonical poller TX (6 steps):** SELECT NDEF AID → SELECT CC → READ CC (15 B) → SELECT NDEF file → READ NLEN → READ body — asserted in `tests/unit/nfc_ndef/src/test_poller.c` `test_read_tx_sequence`; cookbook [§5.1](../../../../docs/nfc/NFC_PROTOCOLS_COOKBOOK.md#51-ndef-type-4-iso-dep--t4t)
 
 ## Capacity symbols
 
@@ -53,9 +56,9 @@ NDEF Type-4 Tag protocol: data model (NDEF message + CC file), serialize/deseria
 
 ## Fixtures ↔ goldens
 
-- **Flipper:** No direct Flipper NDEF fixture (NDEF is carried by Ultralight/NTAG tags)
-- **Generated:** `scripts/nfc/ndef_to_fixture.py --variant all` produces store goldens
-- **Loopback:** `tests/common/nfc_virtual_loopback` (poller↔listener)
+- **Flipper:** No T4 NDEF poller upstream (`protocols/ndef/` does not exist in Flipper). Flipper `supported_cards/ndef.c` is **content-parse reference only** (UL/MFC/SLIX TLV after read) — not wire goldens for this module.
+- **Generated:** `scripts/nfc/ndef_to_fixture.py --variant all` → `tests/fixtures/ndef/` + store `.card.bin` (NXP `RW_NDEF_T4T` table, cookbook §5.1)
+- **Loopback:** `tests/common/nfc_virtual_loopback` (T4 poller↔listener); Tier E+ in `tests/unit/nfc_reader/src/test_virtual_loopback.c`
 
 ## Profile membership
 

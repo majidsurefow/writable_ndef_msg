@@ -4,7 +4,11 @@
 
 ## Purpose
 
-MIFARE Ultralight / NTAG protocol: page-based data model (UID, pages, OTP, counter, signature), serialize/deserialize, poller (reader page reads), and T4T NDEF adapter listener. Does NOT implement native Type-2 emulation—card emulation wraps Ultralight data in NDEF-T4T responses.
+**MIFARE Ultralight / NTAG Type-2 poll path** — page-based data model, `ultralight_poller.c` (READ/FAST_READ), serialize/deserialize. **No native Type-2 RF listener in v1.**
+
+**T2 NDEF:** CC on page 3, NDEF TLV from page 4+. Flipper `supported_cards/ndef.c` **`NDEF_PROTO_UL`** is **content-parse reference only** (TLV/message bytes after pages are in the model) — not a wire poller golden.
+
+**Emulate handoff:** `ultralight_listener.c` (T4 adapter) extracts NDEF TLV from stored pages → `ndef_service_set_content()` → **`ndef_listener.c`** responds to ISO-DEP SELECT/READ BINARY. Full routing: [`NDEF_T2_T4_ROUTING.md`](../../../../docs/nfc/NDEF_T2_T4_ROUTING.md); T4 wire spec: [`../ndef/CONTEXT.md`](../ndef/CONTEXT.md).
 
 ## Key files
 
@@ -14,7 +18,7 @@ MIFARE Ultralight / NTAG protocol: page-based data model (UID, pages, OTP, count
 | `ultralight.h` | Public types, model API, capacity symbols, NTAG subtype enum |
 | `ultralight_poller.c` | Reader poller: NTAG READ/FAST_READ page commands |
 | `ultralight_poller.h` | Poller API: `ultralight_poller_read` |
-| `ultralight_listener.c` | T4T NDEF adapter: wraps page data as NDEF for emulation |
+| `ultralight_listener.c` | T4 NDEF adapter: pages → NDEF TLV → handoff to `ndef_listener` |
 | `ultralight_listener.h` | Listener API: `ultralight_listener_load` |
 
 ## Kconfig
@@ -38,7 +42,7 @@ MIFARE Ultralight / NTAG protocol: page-based data model (UID, pages, OTP, count
 ## Roles
 
 - **Poller:** `ultralight_poller.c` (Tier B) — reader NFC-A, READ; NTAG21x PWD_AUTH (`0x1B`) before protected pages; partial read stops at AUTH0 when auth fails (Flipper parity: `Ntag213_locked` → `pages_read=4`)
-- **Listener:** `ultralight_listener.c` (Tier C) — T4T NDEF adapter (not native T2)
+- **Listener:** `ultralight_listener.c` — T4 adapter only; Tier C pending F1 (not in `nfc_ultralight/` — emulate via `nfc_ndef` listener + adapter)
 
 ## Deferred
 
@@ -60,7 +64,7 @@ MIFARE Ultralight / NTAG protocol: page-based data model (UID, pages, OTP, count
 
 - **Flipper:** `tests/fixtures/nfc/flipper/Ultralight_11.nfc`, `Ultralight_21.nfc`, `Ultralight_C.nfc`, `Ntag213_locked.nfc`, `Ntag215.nfc`, `Ntag216.nfc`
 - **Generated:** `flipper_nfc_to_fixture.py --all --card-bin` → `tests/fixtures/ultralight/`
-- **Loopback:** Via ndef listener (T4T adapter)
+- **Loopback:** Tier E+ via T4 adapter → `ndef_listener` (not `nfc_ndef` poller on raw pages); cookbook [§5.2](../../../../docs/nfc/NFC_PROTOCOLS_COOKBOOK.md#52-mf_ultralight-type-2-ndef-poll-path)
 
 ## Profile membership
 
