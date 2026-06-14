@@ -30,12 +30,13 @@ Open the serial console, hold the tag on the antenna, and run:
 
 ```
 uart:~$ pn7160 probe          # PN7160 present (CORE_RESET OK)
-uart:~$ nfc scan              # prints UID / protocol / tech
+uart:~$ nfc scan start        # continuous discovery: prints UID/protocol/tech per tag
+uart:~$ nfc scan stop         # stop discovery before clone (single-flight)
 uart:~$ nfc read tag1         # clone into slot "tag1"
 uart:~$ nfc store list        # tag1 listed
 ```
 
-If `nfc scan` prints a UID and `nfc read tag1` reports a non-zero stored length,
+If `nfc scan start` prints a UID and `nfc read tag1` reports a non-zero stored length,
 Gate 2 reader read/clone is **PASS**. Everything below is the same idea, scaled
 to each protocol and hardware role.
 
@@ -102,12 +103,13 @@ west flash
 |------|--------|-------|--------|
 | **2** | Poll session + poller walk + `.card` store on silicon | §2.1 | 1 (reader) |
 | **3** | Listen `on_apdu` → assembler → router → NDEF listener path | §2.2 | 1 (reader+listen) + external reader |
-| **4** | Full applet loop (read→emulate→verify), sequential single-flight | §2.2 | 1 |
+| **4** | Full applet loop (read→emulate→check), sequential single-flight | §2.2 | 1 |
 | **5** | Cross-backend: NFCT emulate ↔ PN7160 verify | §2.1 + §2.3 | 2 |
 
 ### Gate 2 — PN7160 reader: read / clone a real tag
 ```
-uart:~$ nfc scan
+uart:~$ nfc scan start
+uart:~$ nfc scan stop
 uart:~$ nfc read tag1
 uart:~$ nfc store list
 uart:~$ nfc store load tag1
@@ -126,22 +128,22 @@ SELECT NDEF Tag App AID → SELECT CC → READ BINARY → SELECT NDEF file → R
 **PASS:** `nfc_transport stats` shows `apdu_assembled > 0`, `apdu_drop_cons == 0`;
 external reader reads back NDEF matching the stored `.card`; SELECT returns `90 00`.
 
-### Gate 4 — emulate → verify → loop (sequential, RW+CE deferred)
+### Gate 4 — emulate → check → loop (sequential, RW+CE deferred)
 ```
 uart:~$ nfc read tag1           # poll session
 uart:~$ nfc stack stop          # single-flight before re-using the chip
 uart:~$ nfc emulate tag1        # listen session
 uart:~$ nfc stack stop
-uart:~$ nfc verify tag1         # poll session, diff vs stored .card
-uart:~$ nfc loop tag1           # orchestrated read→emulate→verify
+uart:~$ nfc check tag1          # poll session, diff vs stored .card (DK; was nfc verify)
+uart:~$ nfc loop tag1           # orchestrated read→emulate→check
 ```
-**PASS:** `nfc verify tag1` → PASS; `nfc loop tag1` → single PASS line; no
+**PASS:** `nfc check tag1` → PASS; `nfc loop tag1` → single PASS line; no
 `-EBUSY` from store while listen STARTED.
 
 ### Gate 5 — NFCT emulate + PN7160 cross-verify
 Emulator board (§2.3): `nfc store load tag1 ; nfc emulate tag1`.
-Reader board (§2.1), held over the emulator antenna: `nfc verify tag1`.
-**PASS:** PN7160 `nfc verify tag1` → PASS against the NFCT-emulated card;
+Reader board (§2.1), held over the emulator antenna: `nfc check tag1`.
+**PASS:** PN7160 `nfc check tag1` → PASS against the NFCT-emulated card;
 `apdu_assembled > 0`, `apdu_drop_cons == 0`; no concurrent poll+listen on either.
 
 ---
@@ -149,8 +151,8 @@ Reader board (§2.1), held over the emulator antenna: `nfc verify tag1`.
 ## 4. Per-protocol HIL matrix
 
 The product ships 9 protocols. They split by **emulatable** (full PICC listener
-exists → can run the whole read→emulate→verify loop) vs **clone-only** (poller +
-`.card` capture only; no native listener — verify reads back the stored blob, no
+exists → can run the whole read→emulate→check loop) vs **clone-only** (poller +
+`.card` capture only; no native listener — check reads back the stored blob, no
 emulate). The clone-only set still proves the **read/clone** half of the loop on
 silicon.
 
@@ -182,15 +184,16 @@ nfc emulate <slot>
 # external reader exercises the AID/SELECT path
 nfc_transport stats        # apdu_assembled > 0, apdu_drop_cons == 0
 # reader board
-nfc verify <slot>          # PASS
+nfc check <slot>           # PASS (DK; was nfc verify)
 ```
 
 ### 4.2 Per-protocol bench sequence (clone-only, e.g. Classic/FeliCa/SLIX/ISO15693)
 ```
-nfc scan                   # confirm UID + tech for the card class
+nfc scan start             # confirm UID + tech for the card class
+nfc scan stop              # stop discovery before clone (single-flight)
 nfc read <slot>            # capture .card
 nfc store dump <slot>      # inspect captured blob
-# no emulate — verify reads back the stored blob only
+# no emulate — check reads back the stored blob only
 ```
 
 ---

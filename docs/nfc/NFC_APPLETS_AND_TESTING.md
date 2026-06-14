@@ -8,19 +8,34 @@ This document is the standalone entry point for **what users run** (`nfc *` appl
 
 ---
 
-## Product applets (LOCKED)
+## Product applets (LOCKED 2026-06-14 — landed Phase A)
 
-| Applet | Shell | Notes |
-|--------|-------|-------|
-| `nfc scan` | `nfc scan [timeout_ms]` | Prints UID / protocol / tech to shell |
-| `nfc read <slot>` | `nfc read <slot> [timeout_ms]` | One-shot scan + save |
-| `nfc emulate <slot>` | `nfc emulate <slot> [ndef]` | Requires listen overlay |
-| `nfc verify <slot>` | `nfc verify <slot> [timeout_ms]` | Poll + diff vs `.card` |
-| `nfc loop <slot>` | `nfc loop <slot> [timeout_ms]` | read → emulate → verify (HIL) |
+The applet model is split into a **headless Layer-1 service**
+(`src/nfc/applets/nfc_applet_service.h`, no `struct shell`) and a **Layer-2
+shell adapter** (`*_shell_cmds.c`, the only place a `struct shell *` lives). The
+table below is the LOCKED product surface; see the layer detail in
+[NFC_SHELL_APPLETS.md](NFC_SHELL_APPLETS.md).
 
-**Shell aliases (LOCKED):** `nfc read <slot>` and **`nfc reader clone <slot>`** are the same applet — register both names.
+| Applet (L1 module) | Shell (L2) | One sentence |
+|--------------------|------------|--------------|
+| Scan (`nfc_applet_scan`) | `nfc scan start` / `nfc scan stop` | Start/stop **continuous** reader discovery; a per-tag callback fires on each tag (default shell adapter prints UID/protocol/tech) |
+| Read (`nfc_applet_read`) | `nfc read <slot> [t]` | One-shot detect + poller clone → store slot |
+| Emulate (`nfc_applet_emulate`) | `nfc emulate <slot> [ndef]` · `nfc emulate golden <name>` | Load slot, policy check, start listen (golden = store import + emulate shortcut) |
+| Loop (`nfc_applet_loop`) | `nfc loop <slot> [t]` | Orchestrate read → emulate → check on one card (HIL sign-off) |
+| Check (`nfc_applet_verify`) | `nfc check <slot> [t]` *(DK only)* | Field diff vs stored slot → PASS/FAIL; **internal to Loop**, exposed only as a DK command (was `nfc verify`) |
 
-**NOT applets (LOCKED):** `unlock`, `attack`, extra actions, per-protocol shells. **Exception:** `aliro provision` remains under `nfc aliro *` (protocol shell).
+Helpers (not standalone applets): Policy (`nfc_applet_policy`, emulate
+eligibility) and verify-compare core are internal.
+
+**NOT applets (LOCKED):** store, reader engine, stack, HAL, golden import,
+`unlock`, `attack`, extra actions, per-protocol shells. **Exception:**
+`aliro provision` remains under `nfc aliro *` (protocol shell).
+
+**DROPPED (LOCKED 2026-06-14, Phase A):**
+- `nfc reader clone` — removed; **use `nfc read`** (no alias).
+- `nfc verify` as a product command — renamed to DK-only **`nfc check`**.
+- blocking `nfc scan` — replaced by `nfc scan start` / `nfc scan stop`
+  (continuous discovery + callback).
 
 ---
 
@@ -30,7 +45,8 @@ Developer-kit command trees — used by applets and debug scripts, not marketed 
 
 | Tree | Module | Examples |
 |------|--------|----------|
-| `nfc reader *` | `reader/` | `scan`, `clone`, `stats` |
+| `nfc reader *` | `reader/` | `scan`, `detect` (clone DROPPED — use `nfc read`) |
+| `nfc check` | `applets/` | DK field diff vs stored slot (was `nfc verify`) |
 | `nfc stack *` | `nfc_stack/` | `start`, `stop`, `load` |
 | `nfc store *` | `store/` | `save`, `load`, `list` |
 | `nfc_transport *` | `hal/` | backend debug (PN7160 / NFCT) |
@@ -192,14 +208,15 @@ Twister and ztest never parse FlipperFormat. Host-only validation may parse `.nf
 
 ## Migration table (old → locked names)
 
-| Previous / draft | Locked applet or alias |
+| Previous / draft | Locked command (2026-06-14, Phase A) |
 |------------------|------------------------|
-| `nfc reader scan` | `nfc scan` (applet); DK keeps `nfc reader scan` |
-| `nfc reader clone` | `nfc read <slot>` (applet alias) |
+| blocking `nfc scan` | **`nfc scan start`** / **`nfc scan stop`** (continuous discovery + callback) |
+| `nfc reader scan` | DK primitive, kept (async one-shot discovery start) |
+| `nfc reader clone` | **DROPPED** — use **`nfc read <slot>`** (no alias) |
 | `nfc clone` | **`nfc read`** (removed as standalone applet name) |
 | `nfc emulate` | unchanged |
-| `nfc verify` | unchanged |
-| `nfc reader verify` | folded into **`nfc verify`** |
+| `nfc verify` | **`nfc check`** (renamed; DK-only) |
+| `nfc reader verify` | folded into **`nfc check`** |
 | per-protocol shells (`nfc ndef *`, etc.) | **NOT applets** — DK / debug only |
 
 ---
@@ -208,9 +225,9 @@ Twister and ztest never parse FlipperFormat. Host-only validation may parse `.nf
 
 | Gate | Applets | Ultralight / Classic |
 |------|---------|----------------------|
-| 2 | `nfc read` / `nfc reader clone` | NDEF Type-4 only at Gate 2 |
+| 2 | `nfc read` (clone dropped) | NDEF Type-4 only at Gate 2 |
 | 3 | `nfc emulate` (PN7160 CE infra) | — |
-| 4 | `nfc emulate`, `nfc verify`, `nfc loop` | PN7160 CE loop first |
+| 4 | `nfc emulate`, `nfc check`, `nfc loop` | PN7160 CE loop first |
 | 5 | `nfc emulate` on NFCT | Classic poller post–Gate 5; Ultralight emulate via **NDEF T4 adapter** (no native T2 listener) |
 
 ---
@@ -227,10 +244,11 @@ Before landing a new `protocols/<name>/` module, complete the checklist in cookb
 
 | Item | Decision |
 |------|----------|
-| Applet set | `scan`, `read`, `emulate`, `verify`, `loop` only |
-| `nfc read` alias | `nfc reader clone` always registered |
+| Applet set | `scan` (start/stop), `read`, `emulate`, `loop` + DK `check` (was `verify`) |
+| `nfc read` | sole read/clone command; `nfc reader clone` **dropped** (Phase A) |
+| Scan model | continuous discovery (`scan start`/`scan stop`) + per-tag callback; blocking scan dropped |
 | Flipper in CI | `.nfc` offline only; `.inc`/`.bin` in Twister |
-| Tier E owner | `tests/unit/nfc_reader/` — 13 ztests (7 store + 3 verify + 3 loopback); `test_reader_clone_slot` TODO |
+| Tier E owner | `tests/unit/nfc_reader/` — 13 ztests (7 store + 3 verify-compare + 3 loopback); headless applet tier (`scan_get_result`/`get_card_meta`/`loop_run`, `log==NULL`) deferred to P5 |
 | Ultralight listen | NDEF T4 adapter post–Gate 2; skip native T2 Tier C |
 | Classic | PN7160 poller only; clone-only; post–Gate 5 |
 | Aliro provision | protocol shell, not applet |
