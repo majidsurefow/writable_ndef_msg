@@ -17,6 +17,37 @@ config NFC_PROTOCOL_CLASSIC
 	bool "MIFARE Classic protocol model (clone-only)"
 	default n
 
+config NFC_PROTOCOL_FELICA
+	bool "FeliCa protocol model (clone-only)"
+	default n
+
+config NFC_PROTOCOL_ISO15693_3
+	bool "ISO15693-3 protocol model (clone-only parent)"
+	default n
+
+config NFC_PROTOCOL_SLIX
+	bool "NXP SLIX protocol model (clone-only)"
+	default n
+	select NFC_PROTOCOL_ISO15693_3
+
+config FELICA_BLOCKS_MAX
+	int "Maximum FeliCa blocks in data model"
+	default 64
+	range 16 64
+	depends on NFC_PROTOCOL_FELICA
+
+config ISO15693_BLOCKS_MAX
+	int "Maximum ISO15693 blocks in data model"
+	default 256
+	range 16 256
+	depends on NFC_PROTOCOL_ISO15693_3
+
+config ISO15693_BLOCK_SIZE_MAX
+	int "Maximum ISO15693 block size (bytes)"
+	default 32
+	range 4 32
+	depends on NFC_PROTOCOL_ISO15693_3
+
 config NFC_CLASSIC_BLOCK_COUNT
 	int "Maximum Classic blocks in data model"
 	default 256

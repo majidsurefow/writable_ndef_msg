@@ -1,0 +1,19 @@
+# SPDX-License-Identifier: Apache-2.0
+
+mainmenu "SLIX protocol unit tests"
+
+source "Kconfig.zephyr"
+
+config ISO15693_BLOCKS_MAX
+	int "Maximum ISO15693 blocks in data model"
+	default 256
+	range 16 256
+
+config ISO15693_BLOCK_SIZE_MAX
+	int "Maximum ISO15693 block size (bytes)"
+	default 32
+	range 4 32
+
+config NFC_SLIX_TEST_TIER_POLLER
+	bool "Build SLIX poller tier tests"
+	default n

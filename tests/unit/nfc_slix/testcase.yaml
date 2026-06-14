@@ -1,0 +1,26 @@
+tests:
+  sample.nfc.unit.nfc_slix.model:
+    tags:
+      - ci_unit
+      - nfc
+      - writable_ndef.nfc.slix
+    platform_allow:
+      - qemu_cortex_m3
+      - native_sim
+      - native_sim/native
+    integration_platforms:
+      - qemu_cortex_m3
+    extra_args: CONF_FILE=prj_model.conf
+
+  sample.nfc.unit.nfc_slix.poller:
+    tags:
+      - ci_unit
+      - nfc
+      - writable_ndef.nfc.slix
+    platform_allow:
+      - qemu_cortex_m3
+      - native_sim
+      - native_sim/native
+    integration_platforms:
+      - qemu_cortex_m3
+    extra_args: CONF_FILE=prj_poller.conf

@@ -24,6 +24,9 @@ ZTEST(nfc_reader_registry, test_pollers_table_clone_hooks)
 	bool found_ndef = false;
 	bool found_ultralight = false;
 	bool found_classic = false;
+	bool found_felica = false;
+	bool found_slix = false;
+	bool found_iso15693_3 = false;
 
 	for (const nfc_reader_poller_entry_t *e = pollers; e->detect != NULL; e++) {
 		if (strcmp(e->name, "ndef") == 0) {
@@ -38,11 +41,26 @@ ZTEST(nfc_reader_registry, test_pollers_table_clone_hooks)
 			found_classic = true;
 			zassert_not_null(e->clone_fn, "Classic poller needs clone_fn");
 		}
+		if (strcmp(e->name, "felica") == 0) {
+			found_felica = true;
+			zassert_not_null(e->clone_fn, "FeliCa poller needs clone_fn");
+		}
+		if (strcmp(e->name, "slix") == 0) {
+			found_slix = true;
+			zassert_not_null(e->clone_fn, "SLIX poller needs clone_fn");
+		}
+		if (strcmp(e->name, "iso15693_3") == 0) {
+			found_iso15693_3 = true;
+			zassert_not_null(e->clone_fn, "ISO15693-3 poller needs clone_fn");
+		}
 	}
 
 	zassert_true(found_ndef, "NDEF poller registered");
 	zassert_true(found_ultralight, "Ultralight poller registered");
 	zassert_true(found_classic, "Classic poller registered");
+	zassert_true(found_felica, "FeliCa poller registered");
+	zassert_true(found_slix, "SLIX poller registered");
+	zassert_true(found_iso15693_3, "ISO15693-3 poller registered");
 }
 
 ZTEST(nfc_reader_registry, test_pollers_run_no_session)

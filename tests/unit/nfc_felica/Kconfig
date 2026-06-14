@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
+
+mainmenu "FeliCa protocol unit tests"
+
+source "Kconfig.zephyr"
+
+config FELICA_BLOCKS_MAX
+	int "Maximum FeliCa blocks in data model"
+	default 64
+	range 16 64
+
+config NFC_FELICA_TEST_TIER_POLLER
+	bool "Build FeliCa poller tier tests"
+	default n

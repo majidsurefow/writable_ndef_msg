@@ -22,6 +22,21 @@
 #include "protocols/classic/classic_poller.h"
 #endif
 
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_FELICA)
+#include "protocols/felica/felica.h"
+#include "protocols/felica/felica_poller.h"
+#endif
+
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_ISO15693_3)
+#include "protocols/iso15693_3/iso15693_3.h"
+#include "protocols/iso15693_3/iso15693_3_poller.h"
+#endif
+
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_SLIX)
+#include "protocols/slix/slix.h"
+#include "protocols/slix/slix_poller.h"
+#endif
+
 #if IS_ENABLED(CONFIG_NFC_STORE)
 #include "store/nfc_store.h"
 #endif
@@ -131,6 +146,135 @@ static int classic_poller_read_stub(const nfc_reader_session_t *session, void *o
 }
 #endif
 
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_FELICA)
+static int felica_poller_read_wrap(const nfc_reader_session_t *session, void *out)
+{
+	return felica_poller_read(session, out);
+}
+
+static int felica_poller_clone(const nfc_reader_session_t *session, const char *tag)
+{
+	felica_data_t data;
+	const nfc_service_t *svcs[] = { felica_service_get() };
+	int ret;
+
+	felica_data_reset(&data);
+	ret = felica_poller_read(session, &data);
+	if (ret != 0) {
+		LOG_WRN("FeliCa poller read failed: %d", ret);
+		return ret;
+	}
+
+	ret = nfc_store_save(tag, svcs, ARRAY_SIZE(svcs));
+	if (ret != 0) {
+		LOG_ERR("nfc_store_save failed: %d", ret);
+	}
+
+	return ret;
+}
+#else
+static int felica_poller_detect_stub(const nfc_reader_session_t *session)
+{
+	ARG_UNUSED(session);
+
+	return -ENOTSUP;
+}
+
+static int felica_poller_read_stub(const nfc_reader_session_t *session, void *out)
+{
+	ARG_UNUSED(session);
+	ARG_UNUSED(out);
+
+	return -ENOTSUP;
+}
+#endif
+
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_ISO15693_3)
+static int iso15693_3_poller_read_wrap(const nfc_reader_session_t *session, void *out)
+{
+	return iso15693_3_poller_read(session, out);
+}
+
+static int iso15693_3_poller_clone(const nfc_reader_session_t *session, const char *tag)
+{
+	iso15693_3_data_t data;
+	const nfc_service_t *svcs[] = { iso15693_3_service_get() };
+	int ret;
+
+	iso15693_3_data_reset(&data);
+	ret = iso15693_3_poller_read(session, &data);
+	if (ret != 0) {
+		LOG_WRN("ISO15693-3 poller read failed: %d", ret);
+		return ret;
+	}
+
+	ret = nfc_store_save(tag, svcs, ARRAY_SIZE(svcs));
+	if (ret != 0) {
+		LOG_ERR("nfc_store_save failed: %d", ret);
+	}
+
+	return ret;
+}
+#else
+static int iso15693_3_poller_detect_stub(const nfc_reader_session_t *session)
+{
+	ARG_UNUSED(session);
+
+	return -ENOTSUP;
+}
+
+static int iso15693_3_poller_read_stub(const nfc_reader_session_t *session, void *out)
+{
+	ARG_UNUSED(session);
+	ARG_UNUSED(out);
+
+	return -ENOTSUP;
+}
+#endif
+
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_SLIX)
+static int slix_poller_read_wrap(const nfc_reader_session_t *session, void *out)
+{
+	return slix_poller_read(session, out);
+}
+
+static int slix_poller_clone(const nfc_reader_session_t *session, const char *tag)
+{
+	slix_data_t data;
+	const nfc_service_t *svcs[] = { slix_service_get() };
+	int ret;
+
+	slix_data_reset(&data);
+	ret = slix_poller_read(session, &data);
+	if (ret != 0) {
+		LOG_WRN("SLIX poller read failed: %d", ret);
+		return ret;
+	}
+
+	ret = nfc_store_save(tag, svcs, ARRAY_SIZE(svcs));
+	if (ret != 0) {
+		LOG_ERR("nfc_store_save failed: %d", ret);
+	}
+
+	return ret;
+}
+#else
+static int slix_poller_detect_stub(const nfc_reader_session_t *session)
+{
+	ARG_UNUSED(session);
+
+	return -ENOTSUP;
+}
+
+static int slix_poller_read_stub(const nfc_reader_session_t *session, void *out)
+{
+	ARG_UNUSED(session);
+	ARG_UNUSED(out);
+
+	return -ENOTSUP;
+}
+#endif
+
 #if IS_ENABLED(CONFIG_NFC_PROTOCOL_NDEF)
 static int nfc_reader_poller_ndef_read(const nfc_reader_session_t *session, void *out)
 {
@@ -210,6 +354,69 @@ static const nfc_reader_poller_entry_t s_pollers[] = {
 		.tech_mask = NFC_TECH_ISO14443_3A_RAW,
 		.detect = classic_poller_detect_stub,
 		.read = classic_poller_read_stub,
+		.listener_get = NULL,
+		.clone_fn = NULL,
+	},
+#endif
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_FELICA)
+	{
+		.name = "felica",
+		.persist_id = NFC_PERSIST_ID_FELICA,
+		.tech_mask = NFC_TECH_TYPE3_FELICA,
+		.detect = felica_poller_detect,
+		.read = felica_poller_read_wrap,
+		.listener_get = NULL,
+		.clone_fn = felica_poller_clone,
+	},
+#else
+	{
+		.name = "felica",
+		.persist_id = NFC_PERSIST_ID_FELICA,
+		.tech_mask = NFC_TECH_TYPE3_FELICA,
+		.detect = felica_poller_detect_stub,
+		.read = felica_poller_read_stub,
+		.listener_get = NULL,
+		.clone_fn = NULL,
+	},
+#endif
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_SLIX)
+	{
+		.name = "slix",
+		.persist_id = NFC_PERSIST_ID_SLIX,
+		.tech_mask = NFC_TECH_ISO15693,
+		.detect = slix_poller_detect,
+		.read = slix_poller_read_wrap,
+		.listener_get = NULL,
+		.clone_fn = slix_poller_clone,
+	},
+#else
+	{
+		.name = "slix",
+		.persist_id = NFC_PERSIST_ID_SLIX,
+		.tech_mask = NFC_TECH_ISO15693,
+		.detect = slix_poller_detect_stub,
+		.read = slix_poller_read_stub,
+		.listener_get = NULL,
+		.clone_fn = NULL,
+	},
+#endif
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_ISO15693_3)
+	{
+		.name = "iso15693_3",
+		.persist_id = NFC_PERSIST_ID_ISO15693,
+		.tech_mask = NFC_TECH_ISO15693,
+		.detect = iso15693_3_poller_detect,
+		.read = iso15693_3_poller_read_wrap,
+		.listener_get = NULL,
+		.clone_fn = iso15693_3_poller_clone,
+	},
+#else
+	{
+		.name = "iso15693_3",
+		.persist_id = NFC_PERSIST_ID_ISO15693,
+		.tech_mask = NFC_TECH_ISO15693,
+		.detect = iso15693_3_poller_detect_stub,
+		.read = iso15693_3_poller_read_stub,
 		.listener_get = NULL,
 		.clone_fn = NULL,
 	},

@@ -14,6 +14,8 @@ set(REPO_SRC ${CMAKE_CURRENT_SOURCE_DIR}/../../../src)
 target_sources(app PRIVATE
   src/test_store_roundtrip.c
   src/test_store_classic_roundtrip.c
+  src/test_store_felica_roundtrip.c
+  src/test_store_slix_roundtrip.c
   src/test_verify_diff.c
   src/test_virtual_loopback.c
   src/test_poller_registry.c
@@ -29,6 +31,12 @@ target_sources(app PRIVATE
   ${REPO_NFC}/protocols/classic/classic_poller.c
   ${REPO_NFC}/protocols/classic/crypto1.c
   ${REPO_NFC}/protocols/classic/iso14443_crc.c
+  ${REPO_NFC}/protocols/felica/felica.c
+  ${REPO_NFC}/protocols/felica/felica_poller.c
+  ${REPO_NFC}/protocols/iso15693_3/iso15693_3.c
+  ${REPO_NFC}/protocols/iso15693_3/iso15693_3_poller.c
+  ${REPO_NFC}/protocols/slix/slix.c
+  ${REPO_NFC}/protocols/slix/slix_poller.c
   ${REPO_NFC}/store/nfc_store.c
   ${REPO_NFC}/applets/nfc_applet_policy.c
   ${REPO_NFC}/applets/nfc_applet_verify_compare.c
@@ -46,5 +54,7 @@ target_include_directories(app PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/../../fixtures/store
   ${CMAKE_CURRENT_SOURCE_DIR}/../../fixtures/ultralight
   ${CMAKE_CURRENT_SOURCE_DIR}/../../fixtures/classic
+  ${CMAKE_CURRENT_SOURCE_DIR}/../../fixtures/felica
+  ${CMAKE_CURRENT_SOURCE_DIR}/../../fixtures/slix
   ${NFC_TEST_COMMON_INCLUDES}
 )

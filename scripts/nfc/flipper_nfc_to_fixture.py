@@ -327,7 +327,9 @@ def felica_read_steps(meta: dict) -> list[tuple[str, bytes]]:
     blocks_total = int(meta.get("Blocks total", len(blocks_map)))
     steps: list[tuple[str, bytes]] = []
     uid = parse_hex_bytes(meta.get("Manufacture id", meta.get("UID", "")))
-    steps.append(("felica poll response", uid[:8] if len(uid) >= 8 else uid.ljust(8, b"\x00")))
+    pmm = parse_hex_bytes(meta.get("Manufacture parameter", ""))
+    poll = uid[:8].ljust(8, b"\x00") + pmm[:8].ljust(8, b"\x00")
+    steps.append(("felica poll response", poll))
     for block_num in range(blocks_total):
         raw = blocks_map.get(block_num, b"\x00" * 18)
         payload = raw[2:18].ljust(16, b"\x00") if len(raw) >= 2 else raw.ljust(16, b"\x00")
@@ -402,10 +404,12 @@ def build_slix_model(meta: dict, stem: str) -> bytes:
 def iso15693_read_steps(meta: dict) -> list[tuple[str, bytes]]:
     uid = parse_hex_bytes(meta.get("UID", ""))
     dsfid = int(meta.get("DSFID", "0"), 16) if "DSFID" in meta else 0
-    steps = [("iso15693 inventory", bytes([0x00, dsfid]) + uid[::-1])]
     block_count = int(meta.get("Block Count", "0"))
     block_size = int(meta.get("Block Size", "4"), 16)
     data = parse_hex_bytes(meta.get("Data Content", ""))
+    steps = [("iso15693 inventory", bytes([0x00, dsfid]) + uid[::-1])]
+    steps.append(("iso15693 GET_SYSTEM_INFO",
+                  bytes([0x00]) + struct.pack("<H", block_count) + bytes([block_size])))
     for block_num in range(block_count):
         start = block_num * block_size
         payload = data[start:start + block_size].ljust(block_size, b"\x00")
@@ -418,9 +422,62 @@ def slix_read_steps(meta: dict, stem: str) -> list[tuple[str, bytes]]:
     signature = parse_hex_bytes(meta.get("Signature", ""))
     steps.append(("slix GET_NXP_SYSTEM_INFO", bytes([0x00, 0x0F])))
     steps.append(("slix READ_SIGNATURE", signature.ljust(32, b"\x00")[:32]))
-    if slix_capabilities(meta, stem) == CAP_MISSED:
+    cap = slix_capabilities(meta, stem)
+    if cap == CAP_MISSED:
         steps.append(("slix CAP missed", b""))
+    elif cap == CAP_ACCEPT_ALL:
+        steps.append(("slix CAP accept all pass", b"\xAC"))
+    else:
+        steps.append(("slix CAP default", b"\x00"))
     return steps
+
+
+def emit_protocol_mock_header(prefix: str, stem: str, steps: list[tuple[str, bytes]],
+                              model: bytes, out_dir: Path) -> None:
+    sym = stem.replace("-", "_")
+    tag = prefix.upper()
+    lines = [
+        f"/* Auto-generated from Flipper {stem}.nfc — do not edit. */",
+        f"#ifndef {tag}_FIXTURE_{sym.upper()}_H_",
+        f"#define {tag}_FIXTURE_{sym.upper()}_H_",
+        "",
+        "#include \"nfc_session_mock.h\"",
+        "",
+        "#include <stddef.h>",
+        "#include <stdint.h>",
+        "",
+        "#include <zephyr/sys/util.h>",
+        "",
+        f"static const uint8_t {prefix}_{sym}_model[] = {{",
+        model_bin_to_inc(model).rstrip(),
+        "};",
+        "",
+        f"#define {tag}_{sym.upper()}_MODEL_LEN sizeof({prefix}_{sym}_model)",
+        "",
+    ]
+    step_refs: list[str] = []
+    for idx, (_label, payload) in enumerate(steps):
+        arr = f"{prefix}_{sym}_step{idx}_rx"
+        lines.append(f"static const uint8_t {arr}[] = {{")
+        if payload:
+            lines.append(model_bin_to_inc(payload).rstrip())
+        lines.append("};")
+        lines.append("")
+        step_refs.append(f"\t{{ .rx = {arr}, .rx_len = sizeof({arr}), .err = 0 }},")
+    lines.append(f"static const nfc_session_mock_step_t {prefix}_{sym}_read_steps[] = {{")
+    lines.extend(step_refs)
+    lines.append("};")
+    lines.append("")
+    lines.append(
+        f"#define {tag}_{sym.upper()}_READ_STEP_COUNT "
+        f"ARRAY_SIZE({prefix}_{sym}_read_steps)"
+    )
+    lines.append("")
+    lines.append("#endif")
+    lines.append("")
+    out_path = out_dir / f"{stem}_mock.h"
+    out_path.write_text("\n".join(lines), encoding="utf-8")
+    print(f"Wrote {out_path}", file=sys.stderr)
 
 
 def build_hal_signal_model(meta: dict, stem: str) -> bytes:
@@ -724,6 +781,10 @@ def emit_fixture(meta: dict, out_dir: Path, stem: str, *, write_card_bin: bool) 
         emit_ultralight_mock_header(stem, steps, model, out_dir)
     elif proto == "classic":
         emit_classic_mock_header(stem, steps, model, out_dir)
+    elif proto == "felica":
+        emit_protocol_mock_header("felica", stem, steps, model, out_dir)
+    elif proto == "slix":
+        emit_protocol_mock_header("slix", stem, steps, model, out_dir)
     print(f"Wrote {model_path} ({len(model)} bytes)", file=sys.stderr)
     print(f"Wrote {read_path} ({len(steps)} steps)", file=sys.stderr)
 
