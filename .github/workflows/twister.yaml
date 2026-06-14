@@ -115,7 +115,6 @@ jobs:
     timeout-minutes: 60
     env:
       BASE_REF: ${{ github.base_ref }}
-      UNIT_TEST_DIR: modules/nfc_pn7160/tests/unit/pn7160_tml
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -147,9 +146,20 @@ jobs:
         run: |
           export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr"
           export ZEPHYR_TOOLCHAIN_VARIANT=zephyr
-          west twister -T "${UNIT_TEST_DIR}" -t ci_unit -p qemu_cortex_m3 \
-            --no-sysbuild --force-color --inline-logs -v --clobber-output \
-            -j $(nproc)
+          UNIT_DIRS=(
+            modules/nfc_pn7160/tests/unit/pn7160_tml
+            tests/unit/nfc_reader
+            tests/unit/nfc_ultralight
+            tests/unit/nfc_classic
+            tests/unit/nfc_felica
+            tests/unit/nfc_slix
+            tests/unit/nfc_ndef
+          )
+          for dir in "${UNIT_DIRS[@]}"; do
+            west twister -T "${dir}" -t ci_unit -p qemu_cortex_m3 \
+              --no-sysbuild --force-color --inline-logs -v --clobber-output \
+              -j $(nproc)
+          done
 
       - name: Upload Twister results
         if: always()
