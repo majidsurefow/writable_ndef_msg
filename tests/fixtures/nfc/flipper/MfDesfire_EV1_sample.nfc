@@ -1,0 +1,30 @@
+Filetype: Flipper NFC device
+Version: 4
+Device type: Mifare DESFire
+UID: 04 01 02 03 04 05 06
+ATQA: 03 44
+SAK: 20
+ATS: 06 75 77 81 02 80
+PICC Version: 04 01 01 00 18 05 01 04 01 01 00 18 05 01 04 01 02 03 04 05 06 00 00 00 00 00 01 24 60
+PICC Free Memory: 7520
+PICC Change Key ID: 00
+PICC Config Changeable: true
+PICC Free Create Delete: false
+PICC Free Directory List: true
+PICC Key Changeable: true
+PICC Max Keys: 01
+PICC Key 0 Version: 00
+Application Count: 1
+Application IDs: 01 02 03
+Application 010203 Change Key ID: 00
+Application 010203 Config Changeable: true
+Application 010203 Free Create Delete: false
+Application 010203 Free Directory List: true
+Application 010203 Key Changeable: true
+Application 010203 Max Keys: 00
+Application 010203 File IDs: 01
+Application 010203 File 1 Type: 00
+Application 010203 File 1 Communication Settings: 00
+Application 010203 File 1 Access Rights: 0E 0E
+Application 010203 File 1 Size: 15
+Application 010203 File 1: 48 45 4C 4C 4F 20 44 45 53 46 49 52 45 21 21
