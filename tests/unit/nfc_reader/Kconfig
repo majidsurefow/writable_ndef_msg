@@ -128,3 +128,18 @@ config NFC_STORE_MAX_TAG_LEN
 	default 16
 	depends on NFC_STORE
 	range 8 32
+
+config NFC_STORE_RAM
+	bool "In-RAM multi-slot store backend"
+	default n
+	depends on NFC_STORE
+
+if NFC_STORE_RAM
+
+config NFC_STORE_RAM_SLOT_COUNT
+	int "Number of RAM store slots"
+	default 4
+	depends on NFC_STORE_RAM
+	range 1 16
+
+endif

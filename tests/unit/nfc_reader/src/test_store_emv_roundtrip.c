@@ -7,7 +7,9 @@
 
 #include "applets/nfc_applet_policy.h"
 #include "emv_listener.h"
+#include "emv.h"
 #include "store/nfc_store.h"
+#include "emv_store_fixture.h"
 
 #include <errno.h>
 #include <string.h>
@@ -16,6 +18,13 @@
 
 static uint8_t s_saved_blob[2048];
 static size_t s_saved_len;
+
+static void load_golden_blob(const uint8_t *blob, size_t len)
+{
+	zassert_true(len <= sizeof(s_saved_blob));
+	(void)memcpy(s_saved_blob, blob, len);
+	s_saved_len = len;
+}
 
 static int mock_save_cb(const char *tag, const uint8_t *blob, size_t len, void *user_ctx)
 {
@@ -87,6 +96,33 @@ ZTEST(nfc_reader_emv_store, test_store_load_roundtrip)
 	zassert_ok(ret);
 	zassert_equal(loaded.pan_len, expected.pan_len);
 	zassert_equal(loaded.record_count, expected.record_count);
+}
+
+ZTEST(nfc_reader_emv_store, test_store_load_golden_emv_card)
+{
+	const nfc_service_t *svcs[] = { emv_listener_get() };
+	emv_card_image_t expected;
+	uint8_t body[512];
+	uint8_t expected_body[512];
+	size_t body_len = 0U;
+	size_t expected_len = 0U;
+	int ret;
+
+	emv_card_image_load_default(&expected);
+	load_golden_blob(store_fixture_emv_card, STORE_FIXTURE_EMV_CARD_LEN);
+
+	(void)emv_listener_shutdown();
+	zassert_ok(emv_listener_init(NULL));
+
+	ret = nfc_store_load("golden", svcs, ARRAY_SIZE(svcs));
+	zassert_ok(ret);
+
+	ret = emv_listener_get()->serialize(body, sizeof(body), &body_len, NULL);
+	zassert_ok(ret);
+	ret = emv_serialize(&expected, expected_body, sizeof(expected_body), &expected_len);
+	zassert_ok(ret);
+	zassert_equal(body_len, expected_len);
+	zassert_mem_equal(body, expected_body, expected_len);
 }
 
 ZTEST(nfc_reader_emv_store, test_store_peek_emulate_allowed)

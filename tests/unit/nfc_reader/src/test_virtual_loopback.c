@@ -14,6 +14,19 @@
 #include "store/nfc_store.h"
 #include "store_fixture.h"
 #include "ultralight_store_fixture.h"
+#include "desfire_store_fixture.h"
+#include "emv_store_fixture.h"
+#include "aliro_store_fixture.h"
+
+#include "desfire_listener.h"
+#include "desfire_poller.h"
+#include "desfire.h"
+#include "emv_listener.h"
+#include "emv_poller.h"
+#include "emv.h"
+#include "aliro_listener.h"
+#include "aliro_poller.h"
+#include "aliro.h"
 
 #include "nfc_virtual_loopback.h"
 
@@ -23,6 +36,7 @@
 #include "Ntag213_locked_mock.h"
 #include "Ntag215_mock.h"
 #include "Ntag216_mock.h"
+#include "Desfire_mock.h"
 
 #include <string.h>
 
@@ -31,6 +45,10 @@
 static ndef_data_t s_read;
 static ndef_data_t s_clone_model;
 static ndef_data_t s_expected;
+
+static desfire_data_t s_desfire_clone;
+static emv_card_image_t s_emv_clone;
+static aliro_data_t s_aliro_clone;
 
 static int clone_serialize(uint8_t *out, size_t out_max, size_t *out_len, void *user_ctx)
 {
@@ -56,6 +74,7 @@ static int ndef_listener_setup(void *user_ctx)
 {
 	ARG_UNUSED(user_ctx);
 
+	(void)ndef_listener_shutdown();
 	return ndef_listener_init(NULL, &(ndef_listener_config_t){ .writable = false });
 }
 
@@ -266,11 +285,18 @@ static void loopback_before(void *fixture)
 	ARG_UNUSED(fixture);
 
 	nfc_virtual_loopback_reset();
+	(void)nfc_virtual_loopback_init();
 	(void)ultralight_listener_shutdown();
 	(void)ndef_listener_shutdown();
+	(void)desfire_listener_shutdown();
+	(void)emv_listener_shutdown();
+	(void)aliro_listener_shutdown();
 	ndef_data_reset(&s_read);
 	ndef_data_reset(&s_clone_model);
 	ndef_data_reset(&s_expected);
+	desfire_data_reset(&s_desfire_clone);
+	emv_card_image_reset(&s_emv_clone);
+	aliro_data_reset(&s_aliro_clone);
 }
 
 ZTEST_SUITE(nfc_reader_loopback, NULL, suite_setup, loopback_before, NULL, NULL);
@@ -431,4 +457,333 @@ ZTEST(nfc_reader_loopback, test_virtual_loopback_ntag216)
 	run_ultralight_loopback(store_fixture_ntag216_card,
 				STORE_FIXTURE_NTAG216_CARD_LEN, ultralight_Ntag216_model,
 				ULTRALIGHT_NTAG216_MODEL_LEN, "golden_216", "cloned_216");
+}
+
+/* ISO-DEP partial protocols — listener vtable loopback (cookbook §5.4–§5.6). */
+
+static int desfire_clone_serialize(uint8_t *out, size_t out_max, size_t *out_len, void *user_ctx)
+{
+	ARG_UNUSED(user_ctx);
+
+	return desfire_serialize(&s_desfire_clone, out, out_max, out_len);
+}
+
+static int desfire_clone_deserialize(const uint8_t *in, size_t in_len, void *user_ctx)
+{
+	ARG_UNUSED(user_ctx);
+
+	return desfire_deserialize(&s_desfire_clone, in, in_len);
+}
+
+static nfc_service_t s_desfire_clone_svc = {
+	.serialize = desfire_clone_serialize,
+	.deserialize = desfire_clone_deserialize,
+	.persist_id = NFC_PERSIST_ID_DESFIRE,
+};
+
+static int desfire_listener_setup(void *user_ctx)
+{
+	ARG_UNUSED(user_ctx);
+
+	(void)desfire_listener_shutdown();
+	return desfire_listener_init(NULL);
+}
+
+static void desfire_listener_teardown(void *user_ctx)
+{
+	ARG_UNUSED(user_ctx);
+
+	(void)desfire_listener_shutdown();
+}
+
+static int desfire_copy_read(void *save_model, const void *read_out, void *user_ctx)
+{
+	ARG_UNUSED(user_ctx);
+
+	*(desfire_data_t *)save_model = *(const desfire_data_t *)read_out;
+	return 0;
+}
+
+static int desfire_compare(const void *expected, const void *actual, void *user_ctx)
+{
+	const desfire_data_t *exp = expected;
+	const desfire_data_t *act = actual;
+
+	ARG_UNUSED(user_ctx);
+
+	if ((exp == NULL) || (act == NULL)) {
+		return -EINVAL;
+	}
+
+	if (memcmp(exp->uid, act->uid, DESFIRE_UID_SIZE) != 0) {
+		return -EBADMSG;
+	}
+	if (exp->free_memory != act->free_memory) {
+		return -EBADMSG;
+	}
+	if (exp->master_key_settings != act->master_key_settings) {
+		return -EBADMSG;
+	}
+
+	return 0;
+}
+
+static int desfire_poller_detect_wrap(nfc_reader_session_t *session)
+{
+	return desfire_poller_detect(session);
+}
+
+static int desfire_poller_read_wrap(nfc_reader_session_t *session, void *read_out)
+{
+	return desfire_poller_read(session, read_out);
+}
+
+ZTEST(nfc_reader_loopback, test_virtual_loopback_desfire)
+{
+	desfire_data_t read;
+	desfire_data_t expected;
+	int ret;
+
+	desfire_data_reset(&read);
+	zassert_ok(desfire_deserialize(&expected, desfire_Desfire_model,
+				       DESFIRE_DESFIRE_MODEL_LEN));
+
+	ret = nfc_virtual_loopback_run(&(nfc_virtual_loopback_params_t){
+		.listener_svc = desfire_listener_get(),
+		.save_svc = &s_desfire_clone_svc,
+		.golden_blob = store_fixture_desfire_card,
+		.golden_blob_len = STORE_FIXTURE_DESFIRE_CARD_LEN,
+		.golden_slot = "golden_desfire",
+		.output_slot = "cloned_desfire",
+		.poller_detect = desfire_poller_detect_wrap,
+		.poller_read = desfire_poller_read_wrap,
+		.read_out = &read,
+		.listener_setup = desfire_listener_setup,
+		.listener_teardown = desfire_listener_teardown,
+		.save_model = &s_desfire_clone,
+		.copy_read_to_save = desfire_copy_read,
+		.expected = &expected,
+		.compare = desfire_compare,
+		.verify_envelope = true,
+	});
+	zassert_ok(ret);
+}
+
+static int emv_clone_serialize(uint8_t *out, size_t out_max, size_t *out_len, void *user_ctx)
+{
+	ARG_UNUSED(user_ctx);
+
+	return emv_serialize(&s_emv_clone, out, out_max, out_len);
+}
+
+static int emv_clone_deserialize(const uint8_t *in, size_t in_len, void *user_ctx)
+{
+	ARG_UNUSED(user_ctx);
+
+	return emv_deserialize(&s_emv_clone, in, in_len);
+}
+
+static nfc_service_t s_emv_clone_svc = {
+	.serialize = emv_clone_serialize,
+	.deserialize = emv_clone_deserialize,
+	.persist_id = NFC_PERSIST_ID_EMV,
+};
+
+static int emv_listener_setup(void *user_ctx)
+{
+	ARG_UNUSED(user_ctx);
+
+	(void)emv_listener_shutdown();
+	return emv_listener_init(NULL);
+}
+
+static void emv_listener_teardown(void *user_ctx)
+{
+	ARG_UNUSED(user_ctx);
+
+	(void)emv_listener_shutdown();
+}
+
+static int emv_copy_read(void *save_model, const void *read_out, void *user_ctx)
+{
+	ARG_UNUSED(user_ctx);
+
+	*(emv_card_image_t *)save_model = *(const emv_card_image_t *)read_out;
+	return 0;
+}
+
+static int emv_compare(const void *expected, const void *actual, void *user_ctx)
+{
+	const emv_card_image_t *exp = expected;
+	const emv_card_image_t *act = actual;
+
+	ARG_UNUSED(user_ctx);
+
+	if ((exp == NULL) || (act == NULL)) {
+		return -EINVAL;
+	}
+
+	if (exp->record_count != act->record_count) {
+		return -EBADMSG;
+	}
+
+	return 0;
+}
+
+static int emv_poller_detect_wrap(nfc_reader_session_t *session)
+{
+	return emv_poller_detect(session);
+}
+
+static int emv_poller_read_wrap(nfc_reader_session_t *session, void *read_out)
+{
+	return emv_poller_read(session, read_out);
+}
+
+static int aliro_poller_detect_wrap(nfc_reader_session_t *session)
+{
+	return aliro_poller_detect(session);
+}
+
+static int aliro_poller_read_wrap(nfc_reader_session_t *session, void *read_out)
+{
+	return aliro_poller_read(session, read_out);
+}
+
+ZTEST(nfc_reader_loopback, test_virtual_loopback_emv)
+{
+	emv_card_image_t read;
+	emv_card_image_t expected;
+	int ret;
+
+	emv_card_image_reset(&read);
+	emv_card_image_reset(&expected);
+	expected.record_count = 1U;
+
+	ret = nfc_virtual_loopback_run(&(nfc_virtual_loopback_params_t){
+		.listener_svc = emv_listener_get(),
+		.save_svc = &s_emv_clone_svc,
+		.golden_blob = store_fixture_emv_card,
+		.golden_blob_len = STORE_FIXTURE_EMV_CARD_LEN,
+		.golden_slot = "golden_emv",
+		.output_slot = "cloned_emv",
+		.poller_detect = emv_poller_detect_wrap,
+		.poller_read = emv_poller_read_wrap,
+		.read_out = &read,
+		.listener_setup = emv_listener_setup,
+		.listener_teardown = emv_listener_teardown,
+		.save_model = &s_emv_clone,
+		.copy_read_to_save = emv_copy_read,
+		.expected = &expected,
+		.compare = emv_compare,
+		.verify_envelope = true,
+	});
+	zassert_ok(ret);
+}
+
+static int aliro_clone_serialize(uint8_t *out, size_t out_max, size_t *out_len, void *user_ctx)
+{
+	ARG_UNUSED(user_ctx);
+
+	return aliro_serialize(&s_aliro_clone, out, out_max, out_len);
+}
+
+static int aliro_clone_deserialize(const uint8_t *in, size_t in_len, void *user_ctx)
+{
+	ARG_UNUSED(user_ctx);
+
+	return aliro_deserialize(&s_aliro_clone, in, in_len);
+}
+
+static nfc_service_t s_aliro_clone_svc = {
+	.serialize = aliro_clone_serialize,
+	.deserialize = aliro_clone_deserialize,
+	.persist_id = NFC_PERSIST_ID_ALIRO,
+};
+
+static int aliro_listener_setup(void *user_ctx)
+{
+	ARG_UNUSED(user_ctx);
+
+	(void)aliro_listener_shutdown();
+	return aliro_listener_init(NULL);
+}
+
+static void aliro_listener_teardown(void *user_ctx)
+{
+	ARG_UNUSED(user_ctx);
+
+	(void)aliro_listener_shutdown();
+}
+
+static int aliro_copy_read(void *save_model, const void *read_out, void *user_ctx)
+{
+	ARG_UNUSED(user_ctx);
+
+	*(aliro_data_t *)save_model = *(const aliro_data_t *)read_out;
+	return 0;
+}
+
+static int aliro_compare(const void *expected, const void *actual, void *user_ctx)
+{
+	const aliro_data_t *exp = expected;
+	const aliro_data_t *act = actual;
+
+	ARG_UNUSED(user_ctx);
+
+	if ((exp == NULL) || (act == NULL)) {
+		return -EINVAL;
+	}
+
+	if (exp->transcript_len != act->transcript_len) {
+		return -EBADMSG;
+	}
+	if (exp->transcript_len > 0U) {
+		if (memcmp(exp->transcript, act->transcript, exp->transcript_len) != 0) {
+			return -EBADMSG;
+		}
+	}
+
+	return 0;
+}
+
+static void build_aliro_poller_expected(aliro_data_t *expected)
+{
+	aliro_data_reset(expected);
+	expected->protocol_major = 0U;
+	expected->protocol_minor = 9U;
+	expected->transcript[0] = 0x00U;
+	expected->transcript[1] = 0x00U;
+	(void)memset(&expected->transcript[2], 0x11U, ALIRO_NONCE_SIZE);
+	expected->transcript_len = (uint16_t)(2U + ALIRO_NONCE_SIZE);
+}
+
+ZTEST(nfc_reader_loopback, test_virtual_loopback_aliro)
+{
+	aliro_data_t read;
+	aliro_data_t expected;
+	int ret;
+
+	aliro_data_reset(&read);
+	build_aliro_poller_expected(&expected);
+
+	ret = nfc_virtual_loopback_run(&(nfc_virtual_loopback_params_t){
+		.listener_svc = aliro_listener_get(),
+		.save_svc = &s_aliro_clone_svc,
+		.golden_blob = store_fixture_aliro_card,
+		.golden_blob_len = STORE_FIXTURE_ALIRO_CARD_LEN,
+		.golden_slot = "golden_aliro",
+		.output_slot = "cloned_aliro",
+		.poller_detect = aliro_poller_detect_wrap,
+		.poller_read = aliro_poller_read_wrap,
+		.read_out = &read,
+		.listener_setup = aliro_listener_setup,
+		.listener_teardown = aliro_listener_teardown,
+		.save_model = &s_aliro_clone,
+		.copy_read_to_save = aliro_copy_read,
+		.expected = &expected,
+		.compare = aliro_compare,
+		.verify_envelope = true,
+	});
+	zassert_ok(ret);
 }

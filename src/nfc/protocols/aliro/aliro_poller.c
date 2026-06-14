@@ -15,6 +15,20 @@
 
 #define ALIRO_POLLER_TIMEOUT K_MSEC(5000)
 
+static bool aliro_poller_select_ok(const uint8_t *rx, size_t rx_len)
+{
+	if (rx_len < 2U) {
+		return false;
+	}
+
+	/* Expedited listener SELECT: 0000 || nonce (virtual loopback / PICC). */
+	if ((rx_len >= (2U + ALIRO_NONCE_SIZE)) && (rx[0] == 0x00U) && (rx[1] == 0x00U)) {
+		return true;
+	}
+
+	return (rx[rx_len - 2U] == 0x90U) && (rx[rx_len - 1U] == 0x00U);
+}
+
 static int aliro_poller_tx(nfc_reader_session_t *session, const uint8_t *tx, size_t tx_len,
 			   uint8_t *rx, size_t *rx_len)
 {
@@ -36,7 +50,7 @@ int aliro_poller_detect(const nfc_reader_session_t *session)
 	}
 
 	ret = aliro_poller_tx(mut, tx, sizeof(tx), rx, &rx_len);
-	if ((ret != 0) || (rx_len < 2U) || (rx[rx_len - 2U] != 0x90U) || (rx[rx_len - 1U] != 0x00U)) {
+	if ((ret != 0) || !aliro_poller_select_ok(rx, rx_len)) {
 		return -ENOTSUP;
 	}
 
@@ -62,7 +76,7 @@ int aliro_poller_read(const nfc_reader_session_t *session, aliro_data_t *out)
 		return ret;
 	}
 
-	if ((rx_len < 2U) || (rx[rx_len - 2U] != 0x90U)) {
+	if (!aliro_poller_select_ok(rx, rx_len)) {
 		return -EIO;
 	}
 
