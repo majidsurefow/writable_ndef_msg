@@ -694,7 +694,37 @@ All doc fixes are consistent with:
 
 ## P7 — Architecture Assembly
 
-**Status:** PENDING
+**Status:** DONE  
+**Date:** 2026-06-14  
+**Exit gate:** All CONTEXT.md cross-links resolve; architecture doc contains all 9 sections
+
+### Deliverables
+
+| Item | File | Status |
+|------|------|--------|
+| Architecture doc | `docs/nfc/NFC_STACK_ARCHITECTURE.md` | Created (9 sections) |
+| Findings rollup | This file | Updated |
+
+### Architecture Document Sections
+
+1. **Block diagram L0→L3** — ASCII art showing modules, HAL, protocols, applets, shell
+2. **Mermaid data flow** — reader path, listen path, loop orchestration
+3. **HAL profiles table** — PN7160 reader/listen, NFCT CE, LAB scaffold
+4. **Protocol registry** — 9 protocols with emulatable status, Kconfig, QEMU/HIL coverage
+5. **Store envelope** — V2 blob format, CRC, quiescent check
+6. **Applet L1/L2/L3 split** — headless API, shell mapping (cross-link to NFC_SHELL_APPLETS.md)
+7. **Test pyramid** — Tiers A/B/C/D/E with Kconfig gates, 24 configs/392 cases
+8. **Overlay × profile matrix** — what each overlay enables
+9. **HIL pointer** — "bench ready, run when hardware available" → link to NFC_HIL_PROTOCOL_GUIDE.md
+
+### Cross-Link Verification
+
+| Link | Source | Target | Status |
+|------|--------|--------|--------|
+| `NFC_SHELL_APPLETS.md` | Architecture §6 | `docs/nfc/NFC_SHELL_APPLETS.md` | ✓ resolves |
+| `NFC_HIL_PROTOCOL_GUIDE.md` | Architecture §9 | `docs/nfc/NFC_HIL_PROTOCOL_GUIDE.md` | ✓ resolves |
+| `CONTEXT.md` files (18) | Architecture §cross-ref | `src/nfc/**/CONTEXT.md`, `modules/nfc_pn7160/CONTEXT.md` | ✓ all resolve |
+| `plans/NFC_APPLET_API_LAYERING.md` | applets CONTEXT.md | `docs/nfc/plans/NFC_APPLET_API_LAYERING.md` | ✓ resolves |
 
 ---
 
@@ -710,4 +740,51 @@ All doc fixes are consistent with:
 | P4b | DONE | 97/97; applets CONTEXT.md; grep audit + shell-off build PASS |
 | P5 | DONE | 155/156 cases (3 configs); CMake guards; headless tests |
 | P6 | DONE | **24 configs, 392/392 cases**; CI updated (nfc_apdu_asm); 6 doc drift fixes |
-| P7 | PENDING | — |
+| P7 | DONE | NFC_STACK_ARCHITECTURE.md (9 sections); cross-links verified |
+
+---
+
+## Program Completion Summary
+
+**Program:** NFC Harmonization (P1–P7)  
+**Status:** COMPLETE  
+**Date:** 2026-06-14
+
+### Final Metrics
+
+| Metric | Value |
+|--------|-------|
+| QEMU test configs | 24 |
+| QEMU test cases | 392/392 PASS |
+| CONTEXT.md files | 18 |
+| Architecture doc sections | 9 |
+| Protocols documented | 9 |
+| Profile overlays | 4 |
+
+### Open Items
+
+| Item | Category | Status | Notes |
+|------|----------|--------|-------|
+| P5b shell independence audit | Test fidelity | **DEFERRED** | DESFire loopback fails with SHELL=n; workaround in place |
+| HIL Gates 2–5 | Hardware | **BENCH READY** | Run when hardware available; see NFC_HIL_PROTOCOL_GUIDE.md |
+| RW+CE concurrent | Feature | **DEFERRED** | NXP combined-discovery sequencing not implemented |
+| tech_mask NFC-F | Feature | **DEFERRED** | FeliCa discovery via tech_mask not honored |
+| nfc_t2t_lib Type-2 listener | Feature | **DEFERRED** | T4T adapter covers v1 |
+
+### Landed Artifacts
+
+| Category | Items |
+|----------|-------|
+| **Docs** | NFC_STACK_ARCHITECTURE.md, 18× CONTEXT.md, NFC_SHELL_APPLETS.md, NFC_HIL_PROTOCOL_GUIDE.md |
+| **Code** | L1/L2 deconvolution (Phase A), CMake protocol guards (P5), headless applet tests |
+| **CI** | 11 unit test directories in twister.yaml; 24 configs green |
+
+### Authority Documents
+
+| Doc | Role |
+|-----|------|
+| `NFC_STACK_ARCHITECTURE.md` | Assembled architecture (block diagram, data flow, matrices) |
+| `NFC_SHELL_APPLETS.md` | Shell command reference (LOCKED) |
+| `NFC_HIL_PROTOCOL_GUIDE.md` | Bench procedure for Gates 2–5 |
+| `plans/NFC_CONSOLIDATED_EXECUTION.md` | Operational plan of record |
+| `plans/NFC_HARMONIZATION_MASTER_PLAN.md` | Authority on layering, acceptance philosophy |
