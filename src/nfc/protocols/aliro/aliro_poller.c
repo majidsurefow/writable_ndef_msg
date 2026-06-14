@@ -48,6 +48,15 @@ static bool aliro_poller_auth1_ok(const uint8_t *rx, size_t rx_len)
 	return (rx[0] == 0x00U) && (rx[1] == 0x00U);
 }
 
+static bool aliro_poller_exchange_ok(const uint8_t *rx, size_t rx_len)
+{
+	if (rx_len < ALIRO_EXCHANGE_RSP_SIZE) {
+		return false;
+	}
+
+	return (rx[0] == 0x00U) && (rx[1] == 0x00U);
+}
+
 static int aliro_poller_append_transcript(aliro_data_t *out, const uint8_t *rx, size_t rx_len)
 {
 	if ((out == NULL) || (rx_len == 0U)) {
@@ -151,6 +160,23 @@ int aliro_poller_read(const nfc_reader_session_t *session, aliro_data_t *out)
 		ret = aliro_poller_tx(mut, tx_auth1, tx_auth1_len, rx, &rx_len);
 		if (ret == 0) {
 			if (aliro_poller_auth1_ok(rx, rx_len)) {
+				ret = aliro_poller_append_transcript(out, rx, rx_len);
+				if (ret != 0) {
+					return ret;
+				}
+			}
+		}
+	}
+
+	{
+		uint8_t tx_exchange[5U + ALIRO_EXCHANGE_DATA_SIZE];
+		size_t tx_exchange_len = 0U;
+
+		aliro_vectors_build_exchange_tx(tx_exchange, &tx_exchange_len);
+		rx_len = 0U;
+		ret = aliro_poller_tx(mut, tx_exchange, tx_exchange_len, rx, &rx_len);
+		if (ret == 0) {
+			if (aliro_poller_exchange_ok(rx, rx_len)) {
 				ret = aliro_poller_append_transcript(out, rx, rx_len);
 				if (ret != 0) {
 					return ret;

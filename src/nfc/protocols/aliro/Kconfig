@@ -13,7 +13,11 @@ config NFC_ALIRO_PROTOCOL_VERIFIED
 	bool "Aliro wire format verified against spec 0.9.4"
 	default n
 	help
-	  Gate hardware-facing AUTH field order checks (cookbook §5.6).
+	  When enabled, listener crypto uses PSA ECDH/HKDF/ECDSA/AES-GCM against
+	  Aliro 0.9.4 field order (requires provisioned credential key).
+	  When disabled (default), production CI and QEMU builds use deterministic
+	  wire vectors from aliro_vectors.h — same code path as
+	  tests/common/nfc_aliro_crypto_shim.c.
 
 config NFC_ALIRO_MAX_TRANSCRIPT
 	int "Maximum public AUTH transcript bytes"

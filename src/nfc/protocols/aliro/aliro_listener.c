@@ -21,6 +21,8 @@ static atomic_t s_crypto_inflight;
 static struct k_work s_crypto_work;
 static uint8_t s_resp[NFC_TRANSPORT_MAX_RESPONSE_LEN];
 static uint8_t s_auth1_sig[ALIRO_P256_SIGNATURE_SIZE];
+static uint8_t s_exchange_data[ALIRO_EXCHANGE_DATA_SIZE];
+static size_t s_exchange_data_len;
 
 static void aliro_listener_send_sw(uint16_t sw)
 {
@@ -34,6 +36,8 @@ static void aliro_listener_reset(void)
 	s_state = ALIRO_STATE_IDLE;
 	(void)atomic_set(&s_crypto_inflight, 0);
 	(void)memset(s_auth1_sig, 0, sizeof(s_auth1_sig));
+	(void)memset(s_exchange_data, 0, sizeof(s_exchange_data));
+	s_exchange_data_len = 0U;
 }
 
 static void aliro_listener_crypto_handler(struct k_work *work)
@@ -77,6 +81,37 @@ static void aliro_listener_crypto_handler(struct k_work *work)
 #endif
 		(void)nfc_transport_send_response(s_resp, resp_len);
 		s_state = ALIRO_STATE_AWAIT_EXCHANGE;
+		(void)atomic_set(&s_crypto_inflight, 0);
+		return;
+	}
+
+	if (s_state == ALIRO_STATE_AWAIT_EXCHANGE) {
+#if !IS_ENABLED(CONFIG_NFC_ALIRO_PROTOCOL_VERIFIED)
+		uint8_t expected[ALIRO_EXCHANGE_DATA_SIZE];
+
+		if (s_exchange_data_len < ALIRO_EXCHANGE_DATA_SIZE) {
+			s_state = ALIRO_STATE_ERROR;
+			aliro_listener_send_sw(0x6982U);
+			(void)atomic_set(&s_crypto_inflight, 0);
+			return;
+		}
+
+		aliro_vectors_fill(expected, ALIRO_EXCHANGE_DATA_SIZE, ALIRO_TEST_EXCHANGE_FILL);
+		if (memcmp(s_exchange_data, expected, ALIRO_EXCHANGE_DATA_SIZE) != 0) {
+			s_state = ALIRO_STATE_ERROR;
+			aliro_listener_send_sw(0x6982U);
+			(void)atomic_set(&s_crypto_inflight, 0);
+			return;
+		}
+		aliro_vectors_build_exchange_rsp(s_resp, &resp_len);
+#else
+		s_state = ALIRO_STATE_ERROR;
+		aliro_listener_send_sw(NFC_SW_CONDITIONS_NOT_SAT);
+		(void)atomic_set(&s_crypto_inflight, 0);
+		return;
+#endif
+		(void)nfc_transport_send_response(s_resp, resp_len);
+		s_state = ALIRO_STATE_DONE;
 		(void)atomic_set(&s_crypto_inflight, 0);
 		return;
 	}
@@ -151,9 +186,23 @@ static void aliro_listener_on_apdu(const nfc_apdu_t *apdu, void *user_ctx)
 		return;
 	}
 
-	if ((apdu->ins == ALIRO_INS_EXCHANGE) && (s_state != ALIRO_STATE_AWAIT_EXCHANGE)) {
-		s_state = ALIRO_STATE_ERROR;
-		aliro_listener_send_sw(NFC_SW_CONDITIONS_NOT_SAT);
+	if (apdu->ins == ALIRO_INS_EXCHANGE) {
+		if (s_state != ALIRO_STATE_AWAIT_EXCHANGE) {
+			s_state = ALIRO_STATE_ERROR;
+			aliro_listener_send_sw(NFC_SW_CONDITIONS_NOT_SAT);
+			return;
+		}
+
+		if ((apdu->data == NULL) || (apdu->lc < ALIRO_EXCHANGE_DATA_SIZE)) {
+			s_state = ALIRO_STATE_ERROR;
+			aliro_listener_send_sw(NFC_SW_WRONG_LENGTH);
+			return;
+		}
+
+		(void)memcpy(s_exchange_data, apdu->data, ALIRO_EXCHANGE_DATA_SIZE);
+		s_exchange_data_len = ALIRO_EXCHANGE_DATA_SIZE;
+		(void)atomic_set(&s_crypto_inflight, 1);
+		(void)nfc_transport_submit_work(&s_crypto_work);
 		return;
 	}
 
