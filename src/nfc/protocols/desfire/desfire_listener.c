@@ -141,10 +141,100 @@ static void desfire_listener_cmd_get_free_memory(void)
 
 static void desfire_listener_cmd_get_key_settings(void)
 {
+	const desfire_application_t *app = desfire_listener_selected_app();
 	uint8_t buf[2];
 
-	buf[0] = s_model.master_key_settings;
-	buf[1] = 0x0FU;
+	if (app != NULL) {
+		buf[0] = app->key_settings;
+		buf[1] = app->key_count;
+	} else {
+		buf[0] = s_model.master_key_settings;
+		buf[1] = 0x0FU;
+	}
+
+	desfire_listener_send_data_status(buf, sizeof(buf), DESFIRE_STATUS_OK);
+}
+
+static void desfire_listener_cmd_get_application_ids(void)
+{
+	size_t len = 0U;
+
+	for (uint8_t i = 0U; i < s_model.app_count; i++) {
+		if ((len + DESFIRE_APP_ID_SIZE) > (NFC_TRANSPORT_MAX_RESPONSE_LEN - 2U)) {
+			desfire_listener_send_status(DESFIRE_STATUS_LENGTH_ERROR);
+			return;
+		}
+
+		(void)memcpy(&s_resp_buf[len], s_model.apps[i].app_id, DESFIRE_APP_ID_SIZE);
+		len += DESFIRE_APP_ID_SIZE;
+	}
+
+	desfire_listener_send_data_status(s_resp_buf, len, DESFIRE_STATUS_OK);
+}
+
+static void desfire_listener_cmd_get_file_ids(void)
+{
+	const desfire_application_t *app = desfire_listener_selected_app();
+	size_t len = 0U;
+
+	if (app == NULL) {
+		desfire_listener_send_status(DESFIRE_STATUS_APP_NOT_FOUND);
+		return;
+	}
+
+	for (uint8_t i = 0U; i < app->file_count; i++) {
+		if ((len + 1U) > (NFC_TRANSPORT_MAX_RESPONSE_LEN - 2U)) {
+			desfire_listener_send_status(DESFIRE_STATUS_LENGTH_ERROR);
+			return;
+		}
+
+		s_resp_buf[len++] = app->file_ids[i];
+	}
+
+	desfire_listener_send_data_status(s_resp_buf, len, DESFIRE_STATUS_OK);
+}
+
+static void desfire_listener_cmd_get_file_settings(const nfc_apdu_t *apdu)
+{
+	const desfire_application_t *app = desfire_listener_selected_app();
+	uint8_t file_idx;
+	uint8_t buf[8];
+	const desfire_file_settings_t *fs;
+
+	if (app == NULL) {
+		desfire_listener_send_status(DESFIRE_STATUS_APP_NOT_FOUND);
+		return;
+	}
+
+	if ((apdu->lc < 1U) || (apdu->data == NULL)) {
+		desfire_listener_send_status(DESFIRE_STATUS_LENGTH_ERROR);
+		return;
+	}
+
+	if (desfire_listener_find_file(app, apdu->data[0], &file_idx) != 0) {
+		desfire_listener_send_status(DESFIRE_STATUS_FILE_NOT_FOUND);
+		return;
+	}
+
+	fs = &app->file_settings[file_idx];
+	(void)memset(buf, 0, sizeof(buf));
+	buf[0] = (uint8_t)fs->type;
+	buf[1] = (uint8_t)fs->comm;
+	buf[2] = (uint8_t)(fs->access_rights & 0xFFU);
+	buf[3] = (uint8_t)((fs->access_rights >> 8U) & 0xFFU);
+
+	switch (fs->type) {
+	case DESFIRE_FILE_TYPE_STANDARD:
+	case DESFIRE_FILE_TYPE_BACKUP:
+		buf[4] = (uint8_t)(fs->settings.data.size & 0xFFU);
+		buf[5] = (uint8_t)((fs->settings.data.size >> 8U) & 0xFFU);
+		buf[6] = (uint8_t)((fs->settings.data.size >> 16U) & 0xFFU);
+		break;
+	default:
+		desfire_listener_send_status(DESFIRE_STATUS_ILLEGAL_CMD);
+		return;
+	}
+
 	desfire_listener_send_data_status(buf, sizeof(buf), DESFIRE_STATUS_OK);
 }
 
@@ -293,6 +383,15 @@ static void desfire_listener_on_apdu(const nfc_apdu_t *apdu, void *user_ctx)
 		break;
 	case DESFIRE_CMD_GET_KEY_SETTINGS:
 		desfire_listener_cmd_get_key_settings();
+		break;
+	case DESFIRE_CMD_GET_APPLICATION_IDS:
+		desfire_listener_cmd_get_application_ids();
+		break;
+	case DESFIRE_CMD_GET_FILE_IDS:
+		desfire_listener_cmd_get_file_ids();
+		break;
+	case DESFIRE_CMD_GET_FILE_SETTINGS:
+		desfire_listener_cmd_get_file_settings(apdu);
 		break;
 	case DESFIRE_CMD_GET_KEY_VERSION:
 		desfire_listener_cmd_get_key_version(apdu);
