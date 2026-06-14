@@ -8,6 +8,8 @@
 #include "protocols/slix/slix_poller.h"
 
 #include "protocols/iso15693_3/iso15693_3_poller.h"
+#include "protocols/iso15693_3/iso15693_3_poller_i.h"
+#include "protocols/slix/slix_poller_i.h"
 
 #include <errno.h>
 #include <string.h>
@@ -15,28 +17,42 @@
 #include <zephyr/kernel.h>
 
 #define SLIX_POLLER_TIMEOUT K_MSEC(5000)
-#define SLIX_CMD_GET_NXP_SYSINFO 0xABU
-#define SLIX_CMD_READ_SIGNATURE  0xBDU
-#define SLIX_CAP_MARKER_ACCEPT   0xACU
+#define SLIX_TX_MAX           32U
 
-static int slix_poller_transceive(nfc_reader_session_t *session, const uint8_t *tx,
-				  size_t tx_len, uint8_t *rx, size_t *rx_len)
+static int slix_poller_transceive_crc(nfc_reader_session_t *session, uint8_t *tx,
+				      size_t tx_payload_len, uint8_t *rx, size_t *rx_len)
 {
-	return nfc_reader_session_transceive(session, tx, tx_len, rx,
-					     NFC_TRANSPORT_MAX_RESPONSE_LEN, rx_len,
-					     SLIX_POLLER_TIMEOUT);
+	size_t tx_len;
+	size_t rx_raw_len = 0U;
+	int ret;
+
+	tx_len = iso15693_3_crc_append(tx, SLIX_TX_MAX, tx_payload_len);
+	if (tx_len == 0U) {
+		return -EINVAL;
+	}
+
+	ret = nfc_reader_session_transceive(session, tx, tx_len, rx, NFC_TRANSPORT_MAX_RESPONSE_LEN,
+					  &rx_raw_len, SLIX_POLLER_TIMEOUT);
+	if (ret != 0) {
+		return ret;
+	}
+
+	if (!iso15693_3_crc_check(rx, rx_raw_len)) {
+		return -EIO;
+	}
+
+	*rx_len = iso15693_3_crc_trim(rx, rx_raw_len);
+	return 0;
 }
 
-static slix_capabilities_t slix_poller_parse_capabilities(const uint8_t *rx, size_t rx_len)
+static bool slix_type_has_nxp_sysinfo(slix_type_t type)
 {
-	if (rx_len == 0U) {
-		return SLIX_CAP_MISSED;
-	}
-	if ((rx_len >= 1U) && (rx[0] == SLIX_CAP_MARKER_ACCEPT)) {
-		return SLIX_CAP_ACCEPT_ALL;
-	}
+	return type == SLIX_TYPE_SLIX2;
+}
 
-	return SLIX_CAP_DEFAULT;
+static bool slix_type_has_signature(slix_type_t type)
+{
+	return type == SLIX_TYPE_SLIX2;
 }
 
 int slix_poller_detect(const nfc_reader_session_t *session)
@@ -70,11 +86,10 @@ int slix_poller_detect(const nfc_reader_session_t *session)
 int slix_poller_read(const nfc_reader_session_t *session, slix_data_t *out)
 {
 	nfc_reader_session_t *mut = (nfc_reader_session_t *)session;
-	uint8_t tx_sys[] = {ISO15693_INV_FLAGS, SLIX_CMD_GET_NXP_SYSINFO};
-	uint8_t tx_sig[] = {ISO15693_INV_FLAGS, SLIX_CMD_READ_SIGNATURE};
-	uint8_t tx_cap[] = {ISO15693_INV_FLAGS, 0xB0U};
+	uint8_t tx[SLIX_TX_MAX];
 	uint8_t rx[NFC_TRANSPORT_MAX_RESPONSE_LEN];
 	size_t rx_len = 0U;
+	size_t tx_len;
 	int ret;
 
 	if ((session == NULL) || (out == NULL)) {
@@ -92,27 +107,38 @@ int slix_poller_read(const nfc_reader_session_t *session, slix_data_t *out)
 		return -ENOTSUP;
 	}
 
-	ret = slix_poller_transceive(mut, tx_sys, sizeof(tx_sys), rx, &rx_len);
-	if ((ret == 0) && (rx_len >= 2U)) {
-		out->protection_pointer = rx[1];
-		if (rx_len >= 3U) {
-			out->protection_condition = rx[2];
+	if (slix_type_has_nxp_sysinfo(out->type)) {
+		tx_len = slix_poller_prepare_request(out->parent.uid, SLIX_CMD_GET_NXP_SYSINFO, false,
+						     tx, sizeof(tx));
+		if (tx_len == 0U) {
+			return -EINVAL;
+		}
+
+		ret = slix_poller_transceive_crc(mut, tx, tx_len, rx, &rx_len);
+		if ((ret == 0) && (rx_len >= 2U)) {
+			out->protection_pointer = rx[1];
+			if (rx_len >= 3U) {
+				out->protection_condition = rx[2];
+			}
 		}
 	}
 
-	ret = slix_poller_transceive(mut, tx_sig, sizeof(tx_sig), rx, &rx_len);
-	if (ret == 0) {
-		size_t copy = rx_len;
-
-		if (copy > SLIX_SIGNATURE_SIZE) {
-			copy = SLIX_SIGNATURE_SIZE;
+	if (slix_type_has_signature(out->type)) {
+		tx_len = slix_poller_prepare_request(out->parent.uid, SLIX_CMD_READ_SIGNATURE, false,
+						     tx, sizeof(tx));
+		if (tx_len == 0U) {
+			return -EINVAL;
 		}
-		(void)memcpy(out->signature, rx, copy);
-	}
 
-	ret = slix_poller_transceive(mut, tx_cap, sizeof(tx_cap), rx, &rx_len);
-	if (ret == 0) {
-		out->capabilities = slix_poller_parse_capabilities(rx, rx_len);
+		ret = slix_poller_transceive_crc(mut, tx, tx_len, rx, &rx_len);
+		if (ret == 0) {
+			size_t copy = rx_len;
+
+			if (copy > SLIX_SIGNATURE_SIZE) {
+				copy = SLIX_SIGNATURE_SIZE;
+			}
+			(void)memcpy(out->signature, rx, copy);
+		}
 	}
 
 	return 0;
