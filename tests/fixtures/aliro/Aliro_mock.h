@@ -25,6 +25,14 @@ static const uint8_t aliro_auth1_rsp[] = {
 #include "AUTH1_rsp.inc"
 };
 
+static const uint8_t aliro_exchange_req[] = {
+#include "EXCHANGE_req.inc"
+};
+
+static const uint8_t aliro_exchange_rsp[] = {
+#include "EXCHANGE_rsp.inc"
+};
+
 static const nfc_session_mock_step_t aliro_Aliro_read_steps[] = {
 	{.rx = aliro_select_ok, .rx_len = sizeof(aliro_select_ok), .err = 0},
 	{.rx = aliro_auth0_rsp, .rx_len = sizeof(aliro_auth0_rsp), .err = 0},
@@ -34,6 +42,7 @@ static const nfc_session_mock_step_t aliro_Aliro_auth_chain_steps[] = {
 	{.rx = aliro_select_ok, .rx_len = sizeof(aliro_select_ok), .err = 0},
 	{.rx = aliro_auth0_rsp, .rx_len = sizeof(aliro_auth0_rsp), .err = 0},
 	{.rx = aliro_auth1_rsp, .rx_len = sizeof(aliro_auth1_rsp), .err = 0},
+	{.rx = aliro_exchange_rsp, .rx_len = sizeof(aliro_exchange_rsp), .err = 0},
 };
 
 #define ALIRO_ALIRO_READ_STEP_COUNT ARRAY_SIZE(aliro_Aliro_read_steps)

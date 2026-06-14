@@ -19,6 +19,11 @@ void nfc_aliro_crypto_shim_build_auth1_rsp(uint8_t *out, size_t *out_len)
 	aliro_vectors_build_auth1_rsp(out, out_len);
 }
 
+void nfc_aliro_crypto_shim_build_exchange_rsp(uint8_t *out, size_t *out_len)
+{
+	aliro_vectors_build_exchange_rsp(out, out_len);
+}
+
 bool nfc_aliro_crypto_shim_verify_reader_sig(const uint8_t *sig, size_t sig_len)
 {
 	uint8_t expected[ALIRO_AUTH1_DATA_SIZE];
@@ -29,4 +34,16 @@ bool nfc_aliro_crypto_shim_verify_reader_sig(const uint8_t *sig, size_t sig_len)
 
 	aliro_vectors_fill(expected, ALIRO_AUTH1_DATA_SIZE, ALIRO_TEST_READER_SIG_FILL);
 	return memcmp(sig, expected, ALIRO_AUTH1_DATA_SIZE) == 0;
+}
+
+bool nfc_aliro_crypto_shim_verify_exchange_payload(const uint8_t *payload, size_t payload_len)
+{
+	uint8_t expected[ALIRO_EXCHANGE_DATA_SIZE];
+
+	if ((payload == NULL) || (payload_len < ALIRO_EXCHANGE_DATA_SIZE)) {
+		return false;
+	}
+
+	aliro_vectors_fill(expected, ALIRO_EXCHANGE_DATA_SIZE, ALIRO_TEST_EXCHANGE_FILL);
+	return memcmp(payload, expected, ALIRO_EXCHANGE_DATA_SIZE) == 0;
 }

@@ -9,7 +9,6 @@
 #define TESTS_COMMON_NFC_ALIRO_CRYPTO_SHIM_H_
 
 #include <stdbool.h>
-#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -19,7 +18,9 @@ extern "C" {
 
 void nfc_aliro_crypto_shim_build_auth0_rsp(uint8_t *out, size_t *out_len);
 void nfc_aliro_crypto_shim_build_auth1_rsp(uint8_t *out, size_t *out_len);
+void nfc_aliro_crypto_shim_build_exchange_rsp(uint8_t *out, size_t *out_len);
 bool nfc_aliro_crypto_shim_verify_reader_sig(const uint8_t *sig, size_t sig_len);
+bool nfc_aliro_crypto_shim_verify_exchange_payload(const uint8_t *payload, size_t payload_len);
 
 #ifdef __cplusplus
 }
