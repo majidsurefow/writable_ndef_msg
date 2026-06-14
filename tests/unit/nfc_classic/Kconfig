@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
+
+mainmenu "Classic protocol unit tests"
+
+source "Kconfig.zephyr"
+
+config NFC_CLASSIC_BLOCK_COUNT
+	int "Maximum Classic blocks in data model"
+	default 256
+	range 64 256
+
+config NFC_CLASSIC_TEST_TIER_POLLER
+	bool "Build Classic poller tier tests"
+	default n

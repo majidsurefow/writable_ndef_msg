@@ -1,0 +1,20 @@
+# MIFARE Classic protocol — cookbook §5.3 (F2, clone-only).
+
+config NFC_PROTOCOL_CLASSIC
+	bool "MIFARE Classic protocol model"
+	default n
+	depends on NFC_STACK
+	help
+	  Classic block data model and TAG-CMD poller (reader only).
+	  No listener — clone-only; NFCT cannot emulate Crypto1.
+
+if NFC_PROTOCOL_CLASSIC
+
+config NFC_CLASSIC_BLOCK_COUNT
+	int "Maximum Classic blocks in data model"
+	default 256
+	range 64 256
+	help
+	  Largest supported tag (Classic 4K = 256 blocks).
+
+endif

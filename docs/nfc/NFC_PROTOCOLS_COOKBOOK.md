@@ -629,7 +629,12 @@ Universal patterns: [§14.2–14.3](#14-protocol-unit-test-recipe-locked). Crypt
 
 Fixtures: `tests/fixtures/classic/*.inc` from Flipper generator + `.nfc` dumps; TAG-CMD scripts mirror `classic_poller_i` auth/read sequence.
 
-- <!-- PROTOCOL_AGENT:classic -->
+- <!-- PROTOCOL_AGENT:classic
+  **F2 status (2026-06-14):** scaffold landed (`protocols/classic/`, `tests/unit/nfc_classic/`).
+  **Blocker:** no Flipper `.nfc` golden in `tests/fixtures/nfc/flipper/` — capture
+  `MfClassic_1K` (or generator output) before Tier B goldens / store roundtrip.
+  **Skip Step 4 (E+ loopback)** — clone-only per §14.13.
+  -->
 
 ### 5.4 mf_desfire
 
