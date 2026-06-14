@@ -20,7 +20,11 @@ if(CONFIG_NFC_ULTRALIGHT_TEST_TIER_POLLER)
   target_sources(app PRIVATE
     src/test_poller.c
     ${REPO_NFC}/protocols/ultralight/ultralight_poller.c
+    ${REPO_NFC}/protocols/ultralight/ultralight_poller_i.c
+    ${REPO_NFC}/protocols/ultralight/ultralight_des.c
+    ${REPO_NFC}/protocols/ultralight/ultralight_3des.c
   )
+  target_compile_definitions(app PRIVATE NFC_SESSION_MOCK_MAX_TX=128)
 endif()
 
 target_include_directories(app PRIVATE

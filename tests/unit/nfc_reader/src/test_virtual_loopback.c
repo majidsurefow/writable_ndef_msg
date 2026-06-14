@@ -10,7 +10,9 @@
 #include "ndef_poller.h"
 #include "protocols/ndef/ndef.h"
 #include "protocols/ultralight/ultralight.h"
-#include "protocols/ultralight/ultralight_listener.h"
+#include "protocols/ultralight/ultralight_listener_t2.h"
+#include "protocols/ultralight/ultralight_poller.h"
+#include "protocols/ultralight/ultralight_poller_i.h"
 #include "store/nfc_store.h"
 #include "store_fixture.h"
 #include "ultralight_store_fixture.h"
@@ -91,6 +93,9 @@ static ndef_data_t s_read;
 static ndef_data_t s_clone_model;
 static ndef_data_t s_expected;
 
+static ultralight_data_t s_ul_read;
+static ultralight_data_t s_ul_expected;
+
 static desfire_data_t s_desfire_clone;
 static emv_card_image_t s_emv_clone;
 static aliro_data_t s_aliro_clone;
@@ -157,26 +162,176 @@ static int ndef_poller_read_wrap(nfc_reader_session_t *session, void *read_out)
 
 static int ultralight_listener_setup(void *user_ctx)
 {
-	int ret;
-
 	ARG_UNUSED(user_ctx);
 
-	(void)ultralight_listener_shutdown();
-	(void)ndef_listener_shutdown();
-
-	ret = ultralight_listener_init();
-	if (ret == -EALREADY) {
-		ret = 0;
-	}
-
-	return ret;
+	(void)ultralight_listener_t2_shutdown();
+	return ultralight_listener_t2_init();
 }
 
 static void ultralight_listener_teardown(void *user_ctx)
 {
 	ARG_UNUSED(user_ctx);
 
-	(void)ultralight_listener_shutdown();
+	(void)ultralight_listener_t2_shutdown();
+}
+
+static int ultralight_clone_serialize(uint8_t *out, size_t out_max, size_t *out_len, void *user_ctx)
+{
+	ARG_UNUSED(user_ctx);
+
+	return ultralight_serialize(&s_ul_read, out, out_max, out_len);
+}
+
+static int ultralight_clone_deserialize(const uint8_t *in, size_t in_len, void *user_ctx)
+{
+	ARG_UNUSED(user_ctx);
+
+	return ultralight_deserialize(&s_ul_read, in, in_len);
+}
+
+static nfc_service_t s_ultralight_clone_svc = {
+	.serialize = ultralight_clone_serialize,
+	.deserialize = ultralight_clone_deserialize,
+	.persist_id = NFC_PERSIST_ID_ULTRALIGHT,
+};
+
+static int ultralight_copy_read(void *save_model, const void *read_out, void *user_ctx)
+{
+	ARG_UNUSED(user_ctx);
+
+	*(ultralight_data_t *)save_model = *(const ultralight_data_t *)read_out;
+	return 0;
+}
+
+static int ultralight_compare(const void *expected, const void *actual, void *user_ctx)
+{
+	const ultralight_data_t *exp = expected;
+	const ultralight_data_t *act = actual;
+
+	ARG_UNUSED(user_ctx);
+
+	if ((exp == NULL) || (act == NULL)) {
+		return -EINVAL;
+	}
+
+	if (exp->type != act->type) {
+		return -EBADMSG;
+	}
+	if (exp->pages_total != act->pages_total) {
+		return -EBADMSG;
+	}
+	if (exp->pages_read != act->pages_read) {
+		return -EBADMSG;
+	}
+
+	for (uint16_t page = 0U; page < exp->pages_read; page++) {
+		if (memcmp(exp->pages[page], act->pages[page], ULTRALIGHT_PAGE_SIZE) != 0) {
+			return -EBADMSG;
+		}
+	}
+
+	if (exp->has_version != act->has_version) {
+		return -EBADMSG;
+	}
+	if (exp->has_version &&
+	    (memcmp(exp->version, act->version, ULTRALIGHT_VERSION_SIZE) != 0)) {
+		return -EBADMSG;
+	}
+
+	if (exp->has_signature != act->has_signature) {
+		return -EBADMSG;
+	}
+	if (exp->has_signature &&
+	    (memcmp(exp->signature, act->signature, ULTRALIGHT_SIGNATURE_SIZE) != 0)) {
+		return -EBADMSG;
+	}
+
+	if (exp->counter_count != act->counter_count) {
+		return -EBADMSG;
+	}
+	for (uint8_t i = 0U; i < exp->counter_count; i++) {
+		if (memcmp(exp->counters[i], act->counters[i], 3U) != 0) {
+			return -EBADMSG;
+		}
+	}
+
+	if (exp->tearing_flag_count != act->tearing_flag_count) {
+		return -EBADMSG;
+	}
+	for (uint8_t i = 0U; i < exp->tearing_flag_count; i++) {
+		if (exp->tearing_flags[i] != act->tearing_flags[i]) {
+			return -EBADMSG;
+		}
+	}
+
+	return 0;
+}
+
+static int ultralight_poller_detect_wrap(nfc_reader_session_t *session)
+{
+	return ultralight_poller_detect(session);
+}
+
+static int ultralight_poller_read_wrap(nfc_reader_session_t *session, void *read_out)
+{
+	return ultralight_poller_read(session, read_out);
+}
+
+static void run_ultralight_loopback(const uint8_t *golden, size_t golden_len,
+				    const uint8_t *model, size_t model_len,
+				    const char *golden_slot, const char *output_slot)
+{
+	int ret;
+
+	ultralight_data_reset(&s_ul_expected);
+	ultralight_data_reset(&s_ul_read);
+	zassert_ok(ultralight_deserialize(&s_ul_expected, model, model_len));
+
+	if (strstr(golden_slot, "locked") != NULL) {
+		ultralight_config_t cfg;
+
+		if (ultralight_parse_config(&s_ul_expected, &cfg) && cfg.valid) {
+			s_ul_expected.pages_read = cfg.auth0;
+			s_ul_expected.has_signature = false;
+			s_ul_expected.counter_count = 0U;
+			s_ul_expected.tearing_flag_count = 0U;
+		}
+	}
+
+	if (!s_ul_expected.has_version) {
+		s_ul_expected.counter_count = 0U;
+		s_ul_expected.tearing_flag_count = 0U;
+	}
+
+#if defined(CONFIG_ZTEST)
+	{
+		static const uint8_t fixed_rnda[ULTRALIGHT_C_AUTH_RND_BLOCK_SIZE] = {
+			0x00U, 0x01U, 0x02U, 0x03U, 0x04U, 0x05U, 0x06U, 0x07U,
+		};
+
+		ultralight_poller_i_test_set_fixed_rnda(fixed_rnda);
+	}
+#endif
+
+	ret = nfc_virtual_loopback_run(&(nfc_virtual_loopback_params_t){
+		.listener_svc = ultralight_listener_t2_get(),
+		.save_svc = &s_ultralight_clone_svc,
+		.golden_blob = golden,
+		.golden_blob_len = golden_len,
+		.golden_slot = golden_slot,
+		.output_slot = output_slot,
+		.poller_detect = ultralight_poller_detect_wrap,
+		.poller_read = ultralight_poller_read_wrap,
+		.read_out = &s_ul_read,
+		.listener_setup = ultralight_listener_setup,
+		.listener_teardown = ultralight_listener_teardown,
+		.save_model = &s_ul_read,
+		.copy_read_to_save = ultralight_copy_read,
+		.expected = &s_ul_expected,
+		.compare = ultralight_compare,
+		.verify_envelope = true,
+	});
+	zassert_ok(ret);
 }
 
 static void fill_synthesized_cc(ndef_data_t *data)
@@ -201,89 +356,6 @@ static void fill_synthesized_cc(ndef_data_t *data)
 	data->cc[13] = 0x00U;
 	data->cc[14] = 0xFFU;
 	data->cc_len = NFC_NDEF_CC_LEN;
-}
-
-static void build_expected_ndef_from_ul_model(const uint8_t *model, size_t model_len,
-					      ndef_data_t *expected)
-{
-	ultralight_data_t ul;
-	const uint8_t *msg = NULL;
-	size_t msg_len = 0U;
-
-	ndef_data_reset(expected);
-	fill_synthesized_cc(expected);
-
-	zassert_ok(ultralight_deserialize(&ul, model, model_len));
-	zassert_ok(ultralight_extract_ndef(&ul, &msg, &msg_len));
-
-	if ((msg != NULL) && (msg_len > 0U)) {
-		expected->ndef_file[0] = (uint8_t)(msg_len >> 8U);
-		expected->ndef_file[1] = (uint8_t)(msg_len & 0xFFU);
-		(void)memcpy(&expected->ndef_file[2], msg, msg_len);
-		expected->ndef_file_len = (uint16_t)(NFC_NDEF_NLEN_FIELD_LEN + msg_len);
-	} else {
-		expected->ndef_file[0] = 0U;
-		expected->ndef_file[1] = 0U;
-		expected->ndef_file_len = NFC_NDEF_NLEN_FIELD_LEN;
-	}
-}
-
-static int ultralight_ndef_compare(const void *expected, const void *actual, void *user_ctx)
-{
-	const ndef_data_t *exp = expected;
-	const ndef_data_t *act = actual;
-	uint16_t exp_nlen;
-	uint16_t act_nlen;
-
-	ARG_UNUSED(user_ctx);
-
-	if ((exp == NULL) || (act == NULL)) {
-		return -EINVAL;
-	}
-
-	exp_nlen = (uint16_t)(((uint16_t)exp->ndef_file[0] << 8U) | (uint16_t)exp->ndef_file[1]);
-	act_nlen = (uint16_t)(((uint16_t)act->ndef_file[0] << 8U) | (uint16_t)act->ndef_file[1]);
-
-	if (exp_nlen != act_nlen) {
-		return -EBADMSG;
-	}
-
-	if (exp_nlen > 0U) {
-		if (memcmp(&exp->ndef_file[2], &act->ndef_file[2], exp_nlen) != 0) {
-			return -EBADMSG;
-		}
-	}
-
-	return 0;
-}
-
-static void run_ultralight_loopback(const uint8_t *golden, size_t golden_len,
-				    const uint8_t *model, size_t model_len,
-				    const char *golden_slot, const char *output_slot)
-{
-	int ret;
-
-	build_expected_ndef_from_ul_model(model, model_len, &s_expected);
-
-	ret = nfc_virtual_loopback_run(&(nfc_virtual_loopback_params_t){
-		.listener_svc = ultralight_listener_get(),
-		.save_svc = &s_clone_svc,
-		.golden_blob = golden,
-		.golden_blob_len = golden_len,
-		.golden_slot = golden_slot,
-		.output_slot = output_slot,
-		.poller_detect = ndef_poller_detect_wrap,
-		.poller_read = ndef_poller_read_wrap,
-		.read_out = &s_read,
-		.listener_setup = ultralight_listener_setup,
-		.listener_teardown = ultralight_listener_teardown,
-		.save_model = &s_clone_model,
-		.copy_read_to_save = ndef_copy_read,
-		.expected = &s_expected,
-		.compare = ultralight_ndef_compare,
-		.verify_envelope = true,
-	});
-	zassert_ok(ret);
 }
 
 static void set_empty_ndef_model(ndef_data_t *data)
@@ -331,7 +403,7 @@ static void loopback_before(void *fixture)
 
 	nfc_virtual_loopback_reset();
 	(void)nfc_virtual_loopback_init();
-	(void)ultralight_listener_shutdown();
+	(void)ultralight_listener_t2_shutdown();
 	(void)ndef_listener_shutdown();
 	(void)desfire_listener_shutdown();
 	(void)emv_listener_shutdown();
@@ -339,6 +411,8 @@ static void loopback_before(void *fixture)
 	ndef_data_reset(&s_read);
 	ndef_data_reset(&s_clone_model);
 	ndef_data_reset(&s_expected);
+	ultralight_data_reset(&s_ul_read);
+	ultralight_data_reset(&s_ul_expected);
 	desfire_data_reset(&s_desfire_clone);
 	emv_card_image_reset(&s_emv_clone);
 	aliro_data_reset(&s_aliro_clone);
@@ -486,7 +560,7 @@ ZTEST(nfc_reader_loopback, test_virtual_loopback_ntag213_locked)
 	run_ultralight_loopback(store_fixture_ntag213_locked_card,
 				STORE_FIXTURE_NTAG213_LOCKED_CARD_LEN,
 				ultralight_Ntag213_locked_model,
-				ULTRALIGHT_NTAG213_LOCKED_MODEL_LEN, "golden_213",
+				ULTRALIGHT_NTAG213_LOCKED_MODEL_LEN, "golden_ntag213_locked",
 				"cloned_213");
 }
 
