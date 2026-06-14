@@ -8,6 +8,10 @@ if(CONFIG_NFC_STACK)
     add_subdirectory(protocols/ndef)
   endif()
 
+  if(CONFIG_NFC_PROTOCOL_ULTRALIGHT)
+    add_subdirectory(protocols/ultralight)
+  endif()
+
   if(CONFIG_NFC_STORE)
     add_subdirectory(store)
   endif()

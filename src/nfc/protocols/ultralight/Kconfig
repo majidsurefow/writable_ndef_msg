@@ -1,0 +1,22 @@
+# MIFARE Ultralight / NTAG protocol — cookbook §5.2.
+
+config NFC_PROTOCOL_ULTRALIGHT
+	bool "MIFARE Ultralight / NTAG protocol model"
+	default n
+	depends on NFC_STACK
+	select NFC_PROTOCOL_NDEF
+	help
+	  Ultralight page data model, poller (reader), and T4 NDEF adapter
+	  listener. Emulate path uses ndef_listener (no native T2).
+
+if NFC_PROTOCOL_ULTRALIGHT
+
+config NFC_ULTRALIGHT_MAX_PAGES
+	int "Maximum Ultralight pages in data model"
+	default 256
+	range 16 256
+	help
+	  Largest supported tag (NTAG216 = 231 pages). Must fit Tier B
+	  fixtures and poller page loop.
+
+endif

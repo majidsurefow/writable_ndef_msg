@@ -25,6 +25,7 @@ config NFC_APDU_POOL_COUNT
 rsource "run/Kconfig"
 rsource "hal/Kconfig"
 rsource "protocols/ndef/Kconfig"
+rsource "protocols/ultralight/Kconfig"
 rsource "store/Kconfig"
 rsource "framing/Kconfig"
 rsource "router/Kconfig"
