@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
+
+mainmenu "Ultralight protocol unit tests"
+
+source "Kconfig.zephyr"
+
+config NFC_ULTRALIGHT_MAX_PAGES
+	int "Maximum Ultralight pages in data model"
+	default 256
+	range 16 256
+
+config NFC_ULTRALIGHT_TEST_TIER_POLLER
+	bool "Build Ultralight poller tier tests"
+	default n
