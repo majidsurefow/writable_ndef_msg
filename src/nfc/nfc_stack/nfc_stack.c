@@ -401,6 +401,40 @@ int nfc_stack_load(const char *tag)
 	return 0;
 }
 
+int nfc_stack_save(const char *tag)
+{
+	const nfc_service_t *svcs[6];
+	size_t n;
+	int ret;
+
+	if (s_state == NFC_STACK_STATE_STARTED) {
+		return -EBUSY;
+	}
+
+	if ((s_state != NFC_STACK_STATE_INITIALIZED) && (s_state != NFC_STACK_STATE_STOPPED)) {
+		return -ENODEV;
+	}
+
+	if (tag == NULL) {
+		return -EINVAL;
+	}
+
+	n = nfc_stack_listen_services(svcs, ARRAY_SIZE(svcs));
+	if (n == 0U) {
+		return -ENODEV;
+	}
+
+	ret = nfc_store_save(tag, svcs, n);
+	if (ret != 0) {
+		return ret;
+	}
+
+	(void)strncpy(s_active_tag, tag, sizeof(s_active_tag) - 1U);
+	s_active_tag[sizeof(s_active_tag) - 1U] = '\0';
+	STATS_INC(&s_stats_lock, s_stats, save_count);
+	return 0;
+}
+
 void nfc_stack_on_service_dirty(const nfc_service_t *svc)
 {
 #if IS_ENABLED(CONFIG_NFC_STORE)

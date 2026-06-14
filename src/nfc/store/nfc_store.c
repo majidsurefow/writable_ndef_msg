@@ -225,6 +225,90 @@ static int nfc_store_read_envelope(const char *tag, size_t *blob_len, uint16_t *
 	return 0;
 }
 
+static int nfc_store_validate_blob_buf(const uint8_t *blob, size_t len, uint16_t *payload_len,
+				       uint8_t *version)
+{
+	uint16_t crc_stored;
+	uint16_t crc_calc;
+
+	if (blob == NULL) {
+		return -EINVAL;
+	}
+
+	if (len < NFC_STORE_ENVELOPE_OVERHEAD) {
+		return -EBADMSG;
+	}
+
+	if ((blob[0] != NFC_STORE_BLOB_MAGIC_0) || (blob[1] != NFC_STORE_BLOB_MAGIC_1)) {
+		return -EBADMSG;
+	}
+
+	if ((blob[2] != NFC_STORE_BLOB_VERSION) && (blob[2] != NFC_STORE_BLOB_VERSION_V1)) {
+		return -EBADMSG;
+	}
+
+	*version = blob[2];
+	*payload_len = (uint16_t)blob[4] | ((uint16_t)blob[5] << 8U);
+	if ((size_t)(NFC_STORE_BLOB_HDR_SIZE + *payload_len + NFC_STORE_BLOB_CRC_SIZE) != len) {
+		return -EBADMSG;
+	}
+
+	crc_stored = (uint16_t)blob[NFC_STORE_BLOB_HDR_SIZE + *payload_len] |
+		     ((uint16_t)blob[NFC_STORE_BLOB_HDR_SIZE + *payload_len + 1U] << 8U);
+	crc_calc = crc16_ccitt(0xFFFFU, blob, NFC_STORE_BLOB_HDR_SIZE + *payload_len);
+	if (crc_calc != crc_stored) {
+		return -EBADMSG;
+	}
+
+	return 0;
+}
+
+int nfc_store_validate_blob(const uint8_t *blob, size_t len)
+{
+	uint16_t payload_len;
+	uint8_t version;
+
+	return nfc_store_validate_blob_buf(blob, len, &payload_len, &version);
+}
+
+int nfc_store_import_blob(const char *tag, const uint8_t *blob, size_t len)
+{
+	uint16_t payload_len;
+	uint8_t version;
+	int ret;
+
+	if ((tag == NULL) || (blob == NULL)) {
+		return -EINVAL;
+	}
+
+	ret = nfc_store_validate_blob_buf(blob, len, &payload_len, &version);
+	if (ret != 0) {
+		STATS_INC(&s_stats_lock, s_stats, corrupt_blob_count);
+		return ret;
+	}
+
+	if (s_state != NFC_STORE_STATE_INITIALIZED) {
+		return -ENODEV;
+	}
+
+	ret = nfc_store_validate_tag(tag);
+	if (ret != 0) {
+		return ret;
+	}
+
+	if (s_save_cb == NULL) {
+		return -ENODEV;
+	}
+
+	ret = s_save_cb(tag, blob, len, s_save_user_ctx);
+	if (ret != 0) {
+		STATS_ERROR(&s_stats_lock, s_stats, ret);
+		return -EIO;
+	}
+
+	return 0;
+}
+
 int nfc_store_init(const nfc_store_config_t *cfg)
 {
 	if (s_state == NFC_STORE_STATE_INITIALIZED) {

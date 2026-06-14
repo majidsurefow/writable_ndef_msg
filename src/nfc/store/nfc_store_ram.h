@@ -27,8 +27,13 @@ int nfc_store_ram_init(void);
 /** Clear all RAM slots (unit tests). */
 void nfc_store_ram_reset(void);
 
+/** Import validated raw .card blob into a RAM slot (requires CONFIG_NFC_STORE_RAM). */
+int nfc_store_ram_import(const char *tag, const uint8_t *blob, size_t len);
+
 #if IS_ENABLED(CONFIG_NFC_STORE_RAM_SHELL)
-extern const union shell_cmd_entry nfc_store_ram_cmds;
+int cmd_nfc_store_ram_list(const struct shell *sh, size_t argc, char **argv);
+int cmd_nfc_store_ram_dump(const struct shell *sh, size_t argc, char **argv);
+extern const union shell_cmd_entry nfc_store_cmds;
 #endif
 
 #ifdef __cplusplus

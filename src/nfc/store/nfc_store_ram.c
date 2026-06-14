@@ -15,6 +15,8 @@
 #include <zephyr/kernel.h>
 #include <zephyr/shell/shell.h>
 
+#include "store/nfc_persist_name.h"
+
 typedef struct {
 	char tag[CONFIG_NFC_STORE_MAX_TAG_LEN];
 	uint8_t blob[CONFIG_NFC_STORE_BLOB_SIZE];
@@ -162,9 +164,26 @@ int nfc_store_ram_init(void)
 	return 0;
 }
 
+int nfc_store_ram_import(const char *tag, const uint8_t *blob, size_t len)
+{
+	int ret;
+
+	ret = nfc_store_validate_blob(blob, len);
+	if (ret != 0) {
+		return ret;
+	}
+
+	ret = nfc_store_ram_init();
+	if (ret != 0) {
+		return ret;
+	}
+
+	return nfc_store_ram_save_cb(tag, blob, len, NULL);
+}
+
 #if IS_ENABLED(CONFIG_NFC_STORE_RAM_SHELL)
 
-static int cmd_nfc_store_ram_list(const struct shell *sh, size_t argc, char **argv)
+int cmd_nfc_store_ram_list(const struct shell *sh, size_t argc, char **argv)
 {
 	char tags[CONFIG_NFC_STORE_RAM_SLOT_COUNT][CONFIG_NFC_STORE_MAX_TAG_LEN];
 	size_t lens[CONFIG_NFC_STORE_RAM_SLOT_COUNT];
@@ -198,8 +217,8 @@ static int cmd_nfc_store_ram_list(const struct shell *sh, size_t argc, char **ar
 		int meta_ret = nfc_store_peek_entry_meta(tags[i], &persist_id, &flags);
 
 		if (meta_ret == 0) {
-			shell_print(sh, "[%zu] %s len=%zu persist_id=0x%02x flags=0x%02x", i,
-				    tags[i], lens[i], persist_id, flags);
+			shell_print(sh, "[%zu] %s len=%zu %s flags=0x%02x", i, tags[i], lens[i],
+				    nfc_persist_id_name(persist_id), flags);
 		} else {
 			shell_print(sh, "[%zu] %s len=%zu (meta %d)", i, tags[i], lens[i],
 				    meta_ret);
@@ -209,7 +228,7 @@ static int cmd_nfc_store_ram_list(const struct shell *sh, size_t argc, char **ar
 	return 0;
 }
 
-static int cmd_nfc_store_ram_dump(const struct shell *sh, size_t argc, char **argv)
+int cmd_nfc_store_ram_dump(const struct shell *sh, size_t argc, char **argv)
 {
 	k_spinlock_key_t key;
 	int slot_idx;
@@ -240,12 +259,6 @@ static int cmd_nfc_store_ram_dump(const struct shell *sh, size_t argc, char **ar
 	shell_print(sh, "");
 	return 0;
 }
-
-SHELL_STATIC_SUBCMD_SET_CREATE(
-	nfc_store_ram_cmds,
-	SHELL_CMD(list, NULL, "List occupied RAM store slots", cmd_nfc_store_ram_list),
-	SHELL_CMD_ARG(dump, NULL, "Hex dump RAM slot blob: <slot>", cmd_nfc_store_ram_dump, 2, 0),
-	SHELL_SUBCMD_SET_END);
 
 #endif /* CONFIG_NFC_STORE_RAM_SHELL */
 
@@ -282,6 +295,15 @@ int nfc_store_ram_init(void)
 
 void nfc_store_ram_reset(void)
 {
+}
+
+int nfc_store_ram_import(const char *tag, const uint8_t *blob, size_t len)
+{
+	ARG_UNUSED(tag);
+	ARG_UNUSED(blob);
+	ARG_UNUSED(len);
+
+	return -ENOTSUP;
 }
 
 #endif /* CONFIG_NFC_STORE_RAM */

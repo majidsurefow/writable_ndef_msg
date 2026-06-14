@@ -78,6 +78,12 @@ int nfc_store_register_commit_cb(nfc_store_commit_fn fn, void *user_ctx);
 int nfc_store_save(const char *tag, const nfc_service_t *const *svcs, size_t n);
 int nfc_store_load(const char *tag, const nfc_service_t *const *svcs, size_t n);
 int nfc_store_peek_entry_meta(const char *tag, uint8_t *persist_id, uint8_t *flags);
+
+/** Validate raw .card envelope bytes (magic, length, CRC). */
+int nfc_store_validate_blob(const uint8_t *blob, size_t len);
+
+/** Import raw .card blob to store backend (bypass serialize). */
+int nfc_store_import_blob(const char *tag, const uint8_t *blob, size_t len);
 int nfc_store_on_dirty(const nfc_service_t *svc, const char *tag);
 
 const nfc_store_config_t *nfc_store_get_config(void);

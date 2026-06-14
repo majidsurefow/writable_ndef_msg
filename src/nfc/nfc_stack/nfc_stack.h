@@ -35,6 +35,7 @@ typedef struct {
 	uint32_t start_count;
 	uint32_t stop_count;
 	uint32_t load_count;
+	uint32_t save_count;
 } nfc_stack_stats_t;
 
 typedef enum {
@@ -51,6 +52,7 @@ int nfc_stack_stop(void);
 int nfc_stack_shutdown(void);
 
 int nfc_stack_load(const char *tag);
+int nfc_stack_save(const char *tag);
 
 void nfc_stack_on_service_dirty(const nfc_service_t *svc);
 
