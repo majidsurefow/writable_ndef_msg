@@ -250,6 +250,29 @@ def build_ultralight_model(meta: dict) -> bytes:
     return bytes(buf)
 
 
+def ultralight_locked_auth0(meta: dict) -> int | None:
+    """Return AUTH0 page index when tag has password protection, else None."""
+    pages_map: dict[int, bytes] = meta.get("pages", {})
+    pages_total = int(meta.get("Pages total", len(pages_map)))
+    if pages_total < 5:
+        return None
+
+    auth0_page = pages_total - 4
+    access_page = pages_total - 3
+    auth0_data = pages_map.get(auth0_page, b"\xff" * 4)
+    access_data = pages_map.get(access_page, b"\x00" * 4)
+    auth0 = auth0_data[3]
+    prot = (access_data[0] & 0x01) != 0
+
+    if auth0 == 0xFF:
+        return None
+    if auth0 >= pages_total:
+        return None
+    if prot or auth0 < pages_total:
+        return auth0
+    return None
+
+
 def ultralight_read_steps(meta: dict) -> list[tuple[str, bytes]]:
     pages_map: dict[int, bytes] = meta.get("pages", {})
     pages_total = int(meta.get("Pages total", len(pages_map)))
@@ -279,11 +302,19 @@ def ultralight_read_steps(meta: dict) -> list[tuple[str, bytes]]:
             page47 = page47.ljust(16, b"\x00")
             steps.append(("ultralight READ page 47 probe", page47))
 
-    for start in range(0, pages_total, 4):
+    auth0 = ultralight_locked_auth0(meta)
+    read_limit = pages_total
+    if auth0 is not None:
+        read_limit = auth0
+
+    for start in range(0, read_limit, 4):
         chunk = b"".join(pages_map.get(p, b"\x00" * 4) for p in range(start, min(start + 4, pages_total)))
         if len(chunk) < 16:
             chunk = chunk.ljust(16, b"\x00")
         steps.append((f"ultralight READ page {start}", chunk))
+
+    if auth0 is not None:
+        return steps
 
     if len(version) == 8 and any(version):
         steps.append(("ultralight READ_SIG", signature.ljust(32, b"\x00")[:32]))

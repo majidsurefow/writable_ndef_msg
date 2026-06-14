@@ -86,6 +86,7 @@ ZTEST(ultralight_poller, test_read_ntag213_locked_golden)
 			      ULTRALIGHT_NTAG213_LOCKED_READ_STEP_COUNT);
 	zassert_ok(ultralight_poller_read(&s_session, &s_data));
 	zassert_equal(s_data.pages_total, 45U);
+	zassert_equal(s_data.pages_read, 4U);
 	zassert_equal(s_data.type, UL_TYPE_NTAG213);
 }
 
