@@ -5,7 +5,7 @@ Track sequential Flipper parity ship. **Only one protocol in PROGRESS at a time.
 | P | Protocol | Status | Flipper fixtures | Tier B TX | Tier C listener | E+ deep compare | Last commit |
 |---|----------|--------|------------------|-----------|-----------------|-----------------|-------------|
 | P1 | Ultralight | **SHIPPED** | 6 `.nfc` + `.card.bin` | full TX all fixtures | native T2 + T4 adapter | yes (`ultralight_compare`) | 6b3b804 |
-| P2 | FeliCa | **SHIPPED** | Felica.nfc + `.card.bin` | 29-TX full assert | virtual listener | yes (`felica_compare`) | pending |
+| P2 | FeliCa | **SHIPPED** | Felica.nfc + `.card.bin` | 29-TX full assert | virtual listener | yes (`felica_compare`) | 0d4db7b |
 | P3 | SLIX / ISO15693 | WIP | 3× Slix_cap | addressed | none | SKIP | 903845b |
 | P4a | EMV | WIP | synthetic | yes | yes | **envelope only** | b80d127 |
 | P4b | Aliro | WIP | wave5 | SELECT+AUTH | AUTH chain | yes | e259343 |
