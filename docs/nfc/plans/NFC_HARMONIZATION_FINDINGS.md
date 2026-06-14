@@ -102,7 +102,79 @@ INFO - 97 of 97 executed test cases passed (100.00%)
 
 ## P2 — HAL + APDU Layer CONTEXT.md
 
-**Status:** PENDING
+**Status:** DONE  
+**Date:** 2026-06-14  
+**Exit gate:**
+- `west twister -T modules/nfc_pn7160/tests -t ci_unit -p qemu_cortex_m3 --no-sysbuild` → **PASS** (1/1 config, 9/9 cases)
+- `west twister -T tests/unit/nfc_apdu_asm -t ci_unit -p qemu_cortex_m3 --no-sysbuild` → **PASS** (1/1 config, 4/4 cases)
+
+### Deliverables
+
+| Directory | CONTEXT.md | Lines |
+|-----------|------------|-------|
+| `modules/nfc_pn7160/` | Created | ~60 |
+| `src/nfc/hal/` | Created | ~55 |
+| `src/nfc/framing/` | Created | ~45 |
+| `src/nfc/router/` | Created | ~50 |
+
+### Audit Findings (D.4 Checklist)
+
+#### A. Buffer Bounds
+
+| Finding | File | Severity | Notes |
+|---------|------|----------|-------|
+| TML frame length validated before read | `pn7160_tml_framing.c` | OK | `pn7160_tml_frame_len_validate()` rejects oversize → `-EINVAL` |
+| APDU net_buf FIXED pool with capacity check | `nfc_apdu_pool.c`, `nfc_apdu_asm.c` | OK | `nfc_apdu_frag_fits()` + `on_frag()` check before `net_buf_add_mem`; overflow → `NFC_APDU_ASM_DROP_OVERSIZE` |
+| PN7160 RX buffer static | `pn7160_priv.h:46` | OK | `rx_buf[CONFIG_PN7160_RX_BUF_SIZE]` (default 258) |
+| APDU parse validates length before access | `apdu_assembler.c:51-116` | OK | Rejects < 4 bytes, length mismatch → `6700` SW |
+| AID router table capped | `aid_router.c:30` | OK | `s_table[CONFIG_NFC_ROUTER_MAX_AIDS]`; register → `-ENOMEM` when full |
+
+#### B. Error Propagation
+
+| Finding | File | Severity | Notes |
+|---------|------|----------|-------|
+| errno returned consistently | all | OK | Functions return negative errno |
+| Stats counters track errors | all | OK | `error_count`, `last_error_code` in each stats struct |
+| Named drop counters | transport, framing | OK | `frag_dropped_no_buffer`, `apdu_oversized_count`, `apdu_dropped_no_consumer`, `apdu_parse_reject_count` |
+
+#### C. Session/State
+
+| Finding | File | Severity | Notes |
+|---------|------|----------|-------|
+| PN7160 `discovery_active` flag | `pn7160_priv.h:43` | OK | Tracks RF state |
+| Transport state enum | `nfc_transport.h:47-52` | OK | UNINITIALIZED/INITIALIZED/STARTED/STOPPED |
+| Framing state | `apdu_assembler.c:34` | OK | Drops APDUs when not INITIALIZED |
+| Router state | `aid_router.c:28` | OK | Returns `-ENODEV` when not initialized |
+
+#### D. Kconfig↔CMake Consistency
+
+| Finding | File | Severity | Notes |
+|---------|------|----------|-------|
+| PN7160 module gating | `modules/nfc_pn7160/CMakeLists.txt` | OK | All sources under `if(CONFIG_PN7160)` |
+| TML I2C/SPI conditional | CMakeLists.txt:15-20 | OK | `if(CONFIG_PN7160_TML_I2C/SPI)` |
+| Shell gating | CMakeLists.txt:21-23 | OK | `if(CONFIG_PN7160_SHELL)` |
+| HAL sources gated | `src/nfc/hal/CMakeLists.txt` | OK | Backend + pool/asm + shell all conditional |
+| Framing/router gated | respective CMakeLists.txt | OK | `zephyr_library_sources_ifdef(CONFIG_NFC_FRAMING/ROUTER ...)` |
+
+#### E. Shell Leakage
+
+| Finding | File | Severity | Notes |
+|---------|------|----------|-------|
+| No shell in L0 engine files | all non-`*_shell_cmds.c` | OK | Verified: no `#include <zephyr/shell/shell.h>` outside shell adapters |
+| PN7160 shell isolated | `pn7160_shell.c` under `PN7160_SHELL` | OK | Thin wrappers over public API |
+| Transport shell isolated | `nfc_transport_shell_cmds.c` under `NFC_HAL_SHELL` | OK | Only reads via `get_*` functions |
+
+#### F. Test Fidelity
+
+| Finding | Tier | Notes |
+|---------|------|-------|
+| `pn7160_tml` Tier A | model | 9 cases: frame length validation (normal + DWL mode, boundary conditions) |
+| `nfc_apdu_asm` Tier A | model | 4 cases: `frag_fits` boundaries, oversize drop decision, state preservation |
+| Framing/router Tier C | via loopback | Exercised through emulatable protocol tests (NDEF, DESFire, EMV, Aliro) |
+
+### No Code Changes Required
+
+P2 is a read-only audit phase. All findings confirm correct implementation per CONVENTIONS and Master Plan D.4 checklist.
 
 ---
 
@@ -148,7 +220,7 @@ INFO - 97 of 97 executed test cases passed (100.00%)
 |-------|--------|------------|
 | A | DONE | 97/97 baseline |
 | P1 | DONE | 97/97, imply chains verified |
-| P2 | PENDING | — |
+| P2 | DONE | pn7160_tml 9/9, nfc_apdu_asm 4/4; 4× CONTEXT.md |
 | P3 | PENDING | — |
 | P4 | PENDING | — |
 | P4b | PENDING | — |
