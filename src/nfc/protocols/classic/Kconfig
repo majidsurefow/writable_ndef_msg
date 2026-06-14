@@ -17,4 +17,10 @@ config NFC_CLASSIC_BLOCK_COUNT
 	help
 	  Largest supported tag (Classic 4K = 256 blocks).
 
+config NFC_CLASSIC_TEST_DETERMINISTIC_NR
+	bool "Use fixed NR bytes in poller unit tests"
+	default n
+	help
+	  Deterministic Crypto1 auth for Tier B session-mock fixtures.
+
 endif
