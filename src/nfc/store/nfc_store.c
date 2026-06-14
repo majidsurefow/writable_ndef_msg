@@ -12,7 +12,6 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
-#include <zephyr/shell/shell.h>
 #include <zephyr/sys/crc.h>
 #include <zephyr/sys/util.h>
 
@@ -39,21 +38,19 @@ static void *s_commit_user_ctx;
 
 static uint8_t s_resolved_max_tag_len;
 
+/* Inert default: the store core never renders. A real backend (RAM) or the
+ * shell adapter (@@NFCDUMP@@ hex dump) registers a save cb via
+ * nfc_store_register_save_cb(). Layer-0 must contain no shell symbols.
+ */
 static int nfc_store_default_save(const char *tag, const uint8_t *blob, size_t len,
 				  void *user_ctx)
 {
-	const struct shell *sh = user_ctx;
+	ARG_UNUSED(tag);
+	ARG_UNUSED(blob);
+	ARG_UNUSED(len);
+	ARG_UNUSED(user_ctx);
 
-	if (sh == NULL) {
-		return -ENODEV;
-	}
-
-	shell_print(sh, "@@NFCDUMP@@ %s", tag);
-	for (size_t i = 0U; i < len; i++) {
-		shell_fprintf(sh, SHELL_NORMAL, "%02x", blob[i]);
-	}
-	shell_print(sh, "");
-	return 0;
+	return -ENODEV;
 }
 
 static int nfc_store_default_load(const char *tag, uint8_t *out, size_t max, size_t *out_len,

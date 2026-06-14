@@ -13,7 +13,6 @@
 #include <string.h>
 
 #include <zephyr/kernel.h>
-#include <zephyr/shell/shell.h>
 
 #include "store/nfc_persist_name.h"
 
@@ -182,6 +181,8 @@ int nfc_store_ram_import(const char *tag, const uint8_t *blob, size_t len)
 }
 
 #if IS_ENABLED(CONFIG_NFC_STORE_RAM_SHELL)
+
+#include <zephyr/shell/shell.h>
 
 int cmd_nfc_store_ram_list(const struct shell *sh, size_t argc, char **argv)
 {
