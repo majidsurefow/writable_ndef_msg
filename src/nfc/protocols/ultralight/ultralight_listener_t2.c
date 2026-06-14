@@ -6,7 +6,6 @@
  */
 
 #include "ultralight_listener_t2.h"
-#include "ultralight_listener.h"
 
 #include "ultralight_3des.h"
 
@@ -334,39 +333,3 @@ const nfc_service_t *ultralight_listener_t2_get(void)
 	return &s_ultralight_listener_t2_service;
 }
 
-int ultralight_listener_init(void)
-{
-	return ultralight_listener_t2_init();
-}
-
-int ultralight_listener_shutdown(void)
-{
-	return ultralight_listener_t2_shutdown();
-}
-
-int ultralight_listener_load(const ultralight_data_t *model)
-{
-	if (!s_initialized) {
-		return -ENODEV;
-	}
-
-	if (model == NULL) {
-		return -EINVAL;
-	}
-
-	s_model = *model;
-	(void)memset(&s_cfg, 0, sizeof(s_cfg));
-	(void)ultralight_parse_config(&s_model, &s_cfg);
-	s_auth_state = UL_T2_AUTH_IDLE;
-	if (ultralight_t2_type_supports_pwd(s_model.type) &&
-	    (s_model.pages_read >= s_model.pages_total) && s_cfg.valid &&
-	    (!ultralight_read_protection_enabled(&s_cfg) || !s_cfg.prot)) {
-		s_auth_state = UL_T2_AUTH_SUCCESS;
-	}
-	return 0;
-}
-
-const nfc_service_t *ultralight_listener_get(void)
-{
-	return ultralight_listener_t2_get();
-}

@@ -9,6 +9,8 @@ zephyr_library_sources_ifdef(CONFIG_NFC_PROTOCOL_ULTRALIGHT ultralight_3des.c)
 
 if(CONFIG_NFC_PROTOCOL_ULTRALIGHT AND (CONFIG_NFC_ROLE_LISTEN OR CONFIG_NFC_STORE))
   zephyr_library_sources(ultralight_listener.c)
+endif()
+if(CONFIG_NFC_PROTOCOL_ULTRALIGHT AND CONFIG_NFC_ROLE_LISTEN)
   zephyr_library_sources(ultralight_listener_t2.c)
 endif()
 

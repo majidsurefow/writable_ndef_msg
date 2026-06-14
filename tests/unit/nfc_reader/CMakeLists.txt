@@ -55,6 +55,7 @@ if(CONFIG_NFC_PROTOCOL_ULTRALIGHT)
   target_sources(app PRIVATE
     src/test_store_ultralight_roundtrip.c
     ${REPO_NFC}/protocols/ultralight/ultralight.c
+    ${REPO_NFC}/protocols/ultralight/ultralight_listener.c
     ${REPO_NFC}/protocols/ultralight/ultralight_listener_t2.c
     ${REPO_NFC}/protocols/ultralight/ultralight_poller.c
     ${REPO_NFC}/protocols/ultralight/ultralight_poller_i.c
