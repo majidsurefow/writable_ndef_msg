@@ -54,6 +54,7 @@
 
 #if IS_ENABLED(CONFIG_NFC_STORE)
 #include "store/nfc_store.h"
+#include "store/nfc_persist_name.h"
 #endif
 
 #include <errno.h>
@@ -655,6 +656,30 @@ const nfc_reader_poller_entry_t *nfc_reader_pollers_get(void)
 	return s_pollers;
 }
 
+int nfc_reader_pollers_detect(const nfc_reader_session_t *session, const char **out_name)
+{
+	int ret;
+
+	if (session == NULL) {
+		return -ENODEV;
+	}
+
+	for (const nfc_reader_poller_entry_t *e = s_pollers; e->detect != NULL; e++) {
+		ret = e->detect(session);
+		if (ret != 0) {
+			continue;
+		}
+
+		if (out_name != NULL) {
+			*out_name = e->name;
+		}
+
+		return 0;
+	}
+
+	return -ENOTSUP;
+}
+
 int nfc_reader_pollers_run(const char *tag)
 {
 #if IS_ENABLED(CONFIG_NFC_STORE)
@@ -688,8 +713,8 @@ int nfc_reader_pollers_run(const char *tag)
 			int meta_ret = nfc_store_peek_entry_meta(tag, &persist_id, &flags);
 
 			if (meta_ret == 0) {
-				LOG_INF("Clone saved tag \"%s\" via %s poller (persist_id=0x%02x)",
-					tag, e->name, persist_id);
+				LOG_INF("Clone saved tag \"%s\" via %s poller (protocol %s)",
+					tag, e->name, nfc_persist_id_name(persist_id));
 			} else {
 				LOG_INF("Clone saved tag \"%s\" via %s poller", tag, e->name);
 			}

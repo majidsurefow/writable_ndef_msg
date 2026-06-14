@@ -53,6 +53,15 @@ const nfc_reader_poller_entry_t *nfc_reader_pollers_get(void);
  */
 int nfc_reader_pollers_run(const char *tag);
 
+/**
+ * @brief Detect-only poller walk on an active session (no read/save).
+ *
+ * @param session Active reader session.
+ * @param out_name Matched poller name (optional).
+ * @return 0 when a poller matched; -ENOTSUP if none; -ENODEV if no session.
+ */
+int nfc_reader_pollers_detect(const nfc_reader_session_t *session, const char **out_name);
+
 #ifdef __cplusplus
 }
 #endif

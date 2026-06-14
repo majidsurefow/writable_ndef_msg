@@ -3,12 +3,20 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * NFC product applet shell — Gate 4 top-level nfc scan/read/emulate/verify/loop.
+ *
+ * DEFERRED (no code): Flipper macro recorder — out of scope for this stack.
  */
 
 #include "applets/nfc_applet.h"
 
 #if IS_ENABLED(CONFIG_NFC_STORE)
+#include "applets/nfc_applet_policy.h"
 #include "store/nfc_store.h"
+#include "store/nfc_persist_name.h"
+#if IS_ENABLED(CONFIG_NFC_STORE_RAM)
+#include "store/nfc_store_golden.h"
+#include "store/nfc_store_ram.h"
+#endif
 #endif
 
 #include <stdlib.h>
@@ -89,6 +97,19 @@ static int nfc_applet_shell_save_cb(const char *tag, const uint8_t *blob, size_t
 }
 #endif
 
+#if IS_ENABLED(CONFIG_NFC_STORE)
+static void nfc_applet_shell_print_protocol(const struct shell *sh, const char *slot)
+{
+	uint8_t persist_id;
+	uint8_t flags;
+
+	if (nfc_store_peek_entry_meta(slot, &persist_id, &flags) == 0) {
+		shell_print(sh, "Protocol: %s (persist_id=0x%02x)", nfc_persist_id_name(persist_id),
+			    persist_id);
+	}
+}
+#endif
+
 static int nfc_applet_shell_read(const struct shell *sh, const char *slot, int argc, char **argv)
 {
 	k_timeout_t timeout = nfc_applet_parse_timeout(argc, argv, 2,
@@ -118,6 +139,9 @@ static int nfc_applet_shell_read(const struct shell *sh, const char *slot, int a
 	}
 
 	shell_print(sh, "Read complete for slot \"%s\"", slot);
+#if IS_ENABLED(CONFIG_NFC_STORE)
+	nfc_applet_shell_print_protocol(sh, slot);
+#endif
 	return 0;
 }
 
@@ -134,23 +158,73 @@ int cmd_nfc_read(const struct shell *sh, size_t argc, char **argv)
 int cmd_nfc_emulate(const struct shell *sh, size_t argc, char **argv)
 {
 	nfc_profile_t profile = NFC_PROFILE_NDEF;
-	int ret;
+	const char *slot;
+	int ret = 0;
 
 	if (argc < 2) {
 		shell_error(sh, "Usage: nfc emulate <slot> [profile]");
+		shell_error(sh, "       nfc emulate golden <name>");
 		return -EINVAL;
 	}
 
-	if (argc >= 3) {
-		if (strcmp(argv[2], "ndef") == 0) {
-			profile = NFC_PROFILE_NDEF;
-		} else {
-			shell_error(sh, "Unknown profile \"%s\" (supported: ndef)", argv[2]);
+	if (strcmp(argv[1], "golden") == 0) {
+#if IS_ENABLED(CONFIG_NFC_STORE_RAM) && IS_ENABLED(CONFIG_NFC_STORE_GOLDENS)
+		const uint8_t *blob;
+		size_t len;
+
+		if (argc < 3) {
+			shell_error(sh, "Usage: nfc emulate golden <name>");
 			return -EINVAL;
+		}
+
+		ret = nfc_store_golden_lookup(argv[2], &blob, &len);
+		if (ret != 0) {
+			shell_error(sh, "Unknown golden \"%s\" (%d)", argv[2], ret);
+			return ret;
+		}
+
+		ret = nfc_store_ram_import(argv[2], blob, len);
+		if (ret != 0) {
+			shell_error(sh, "Golden import failed: %d", ret);
+			return ret;
+		}
+
+		slot = argv[2];
+#else
+		shell_error(sh, "Golden emulate requires CONFIG_NFC_STORE_RAM and CONFIG_NFC_STORE_GOLDENS");
+		return -ENOTSUP;
+#endif
+	} else {
+		slot = argv[1];
+
+		if (argc >= 3) {
+			if (strcmp(argv[2], "ndef") == 0) {
+				profile = NFC_PROFILE_NDEF;
+			} else {
+				shell_error(sh, "Unknown profile \"%s\" (supported: ndef)", argv[2]);
+				return -EINVAL;
+			}
 		}
 	}
 
-	ret = nfc_applet_emulate(argv[1], profile);
+#if IS_ENABLED(CONFIG_NFC_STORE)
+	{
+		uint8_t persist_id;
+		uint8_t flags;
+
+		ret = nfc_store_peek_entry_meta(slot, &persist_id, &flags);
+		if (ret == 0) {
+			ret = nfc_applet_check_emulate(persist_id, store_flags);
+			if (ret == -ENOTSUP) {
+				shell_warn(sh, "Slot \"%s\" is clone-only (%s)", slot,
+					   nfc_persist_id_name(persist_id));
+				return ret;
+			}
+		}
+	}
+#endif
+
+	ret = nfc_applet_emulate(slot, profile);
 	if (ret == -ENOTSUP) {
 		shell_error(sh, "Emulate not supported for this card type");
 		return ret;
@@ -160,7 +234,10 @@ int cmd_nfc_emulate(const struct shell *sh, size_t argc, char **argv)
 		return ret;
 	}
 
-	shell_print(sh, "Emulating slot \"%s\"", argv[1]);
+	shell_print(sh, "Emulating slot \"%s\"", slot);
+#if IS_ENABLED(CONFIG_NFC_STORE)
+	nfc_applet_shell_print_protocol(sh, slot);
+#endif
 	return 0;
 }
 

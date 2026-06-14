@@ -13,7 +13,10 @@
 
 #if IS_ENABLED(CONFIG_NFC_STORE)
 #include "store/nfc_store.h"
+#include "store/nfc_persist_name.h"
 #endif
+
+#include "reader/nfc_reader_poller_registry.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -24,7 +27,7 @@ extern const union shell_cmd_entry nfc_stack_cmds;
 #endif
 
 #if IS_ENABLED(CONFIG_NFC_STORE_RAM) && IS_ENABLED(CONFIG_NFC_STORE_RAM_SHELL)
-extern const union shell_cmd_entry nfc_store_ram_cmds;
+extern const union shell_cmd_entry nfc_store_cmds;
 #endif
 
 #if IS_ENABLED(CONFIG_NFC_APPLETS_SHELL)
@@ -67,6 +70,31 @@ static int cmd_nfc_reader_scan(const struct shell *sh, size_t argc, char **argv)
 
 	shell_print(sh, "Scan started (%lu ms timeout); watch logs for UID/protocol",
 		    timeout_ms);
+	return 0;
+}
+
+static int cmd_nfc_reader_detect(const struct shell *sh, size_t argc, char **argv)
+{
+	const nfc_reader_session_t *session;
+	const char *poller_name;
+	int ret;
+
+	ARG_UNUSED(argc);
+	ARG_UNUSED(argv);
+
+	session = nfc_reader_session_get();
+	if (session == NULL) {
+		shell_error(sh, "No active session — run \"nfc scan\" first");
+		return -ENODEV;
+	}
+
+	ret = nfc_reader_pollers_detect(session, &poller_name);
+	if (ret != 0) {
+		shell_warn(sh, "No poller matched active tag (%d)", ret);
+		return ret;
+	}
+
+	shell_print(sh, "Poller: %s", poller_name);
 	return 0;
 }
 
@@ -122,6 +150,9 @@ static int cmd_nfc_reader_clone(const struct shell *sh, size_t argc, char **argv
 	}
 
 	shell_print(sh, "Clone started for tag \"%s\"; watch logs for @@NFCDUMP@@", argv[1]);
+#if IS_ENABLED(CONFIG_NFC_STORE)
+	/* Async clone — protocol name logged by poller registry on success. */
+#endif
 	return 0;
 #endif
 }
@@ -130,6 +161,9 @@ SHELL_STATIC_SUBCMD_SET_CREATE(nfc_reader_cmds,
 			       SHELL_CMD(scan, NULL,
 					 "Async tag scan (discovery start + wait; non-blocking)",
 					 cmd_nfc_reader_scan),
+			       SHELL_CMD(detect, NULL,
+					 "Detect poller on active session (no save)",
+					 cmd_nfc_reader_detect),
 			       SHELL_CMD(clone, NULL,
 					 "Clone active tag to .card blob (alias: nfc read)",
 					 cmd_nfc_reader_clone),
@@ -149,7 +183,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(nfc_cmds,
 			       SHELL_CMD(stack, &nfc_stack_cmds, "NFC listen stack commands", NULL),
 #endif
 #if IS_ENABLED(CONFIG_NFC_STORE_RAM) && IS_ENABLED(CONFIG_NFC_STORE_RAM_SHELL)
-			       SHELL_CMD(store, &nfc_store_ram_cmds, "RAM store slots (list, dump)", NULL),
+			       SHELL_CMD(store, &nfc_store_cmds, "Store slots (list, import, save, load)", NULL),
 #endif
 			       SHELL_CMD(reader, &nfc_reader_cmds, "NFC reader commands", NULL),
 			       SHELL_SUBCMD_SET_END);
