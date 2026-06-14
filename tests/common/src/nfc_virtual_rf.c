@@ -68,17 +68,18 @@ int nfc_virtual_rf_transceive(nfc_reader_session_t *session, const uint8_t *tx, 
 
 	nfc_response_spy_reset();
 
-	ret = nfc_test_apdu_from_bytes(tx, tx_len, apdu_storage, sizeof(apdu_storage), &apdu);
-	if (ret != 0) {
-		return ret;
-	}
-
-	if (apdu_is_select_by_aid(&apdu)) {
-		if (s_listener_svc->on_select != NULL) {
-			s_listener_svc->on_select(apdu.data, apdu.lc, s_listener_svc->user_ctx);
+	if (nfc_test_apdu_from_bytes(tx, tx_len, apdu_storage, sizeof(apdu_storage), &apdu) == 0) {
+		if (apdu_is_select_by_aid(&apdu)) {
+			if (s_listener_svc->on_select != NULL) {
+				s_listener_svc->on_select(apdu.data, apdu.lc, s_listener_svc->user_ctx);
+			}
+		} else if (s_listener_svc->on_apdu != NULL) {
+			s_listener_svc->on_apdu(&apdu, s_listener_svc->user_ctx);
 		}
-	} else if (s_listener_svc->on_apdu != NULL) {
-		s_listener_svc->on_apdu(&apdu, s_listener_svc->user_ctx);
+	} else if (s_listener_svc->on_tag_cmd != NULL) {
+		s_listener_svc->on_tag_cmd(tx, tx_len, s_listener_svc->user_ctx);
+	} else {
+		return -ENOTSUP;
 	}
 
 	ret = nfc_response_spy_last(&resp, &resp_len);

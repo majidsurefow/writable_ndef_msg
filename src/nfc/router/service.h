@@ -20,6 +20,8 @@ extern "C" {
 typedef struct {
 	void (*on_select)(const uint8_t *aid, size_t aid_len, void *user_ctx);
 	void (*on_apdu)(const nfc_apdu_t *apdu, void *user_ctx);
+	/** Raw NFC-A Type-2 / Ultralight command bytes (0x30 READ, 0x1A AUTH, …). */
+	void (*on_tag_cmd)(const uint8_t *tx, size_t tx_len, void *user_ctx);
 	void (*on_deselect)(void *user_ctx);
 	void (*on_field_off)(void *user_ctx);
 	int (*serialize)(uint8_t *out, size_t out_max, size_t *out_len, void *user_ctx);
