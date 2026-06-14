@@ -13,10 +13,13 @@
 extern "C" {
 #endif
 
-#define ISO15693_CMD_INVENTORY      0x01U
-#define ISO15693_CMD_READ           0x20U
-#define ISO15693_CMD_GET_SYS_INFO   0x2BU
-#define ISO15693_INV_FLAGS          0x26U
+#define ISO15693_CMD_INVENTORY          0x01U
+#define ISO15693_CMD_READ               0x20U
+#define ISO15693_CMD_GET_SYS_INFO       0x2BU
+#define ISO15693_CMD_GET_BLOCKS_SEC     0x2CU
+#define ISO15693_INV_FLAGS              0x26U
+#define ISO15693_CMD_FLAGS              0x02U
+#define ISO15693_ADDR_FLAGS             0x22U
 
 int iso15693_3_poller_detect(const nfc_reader_session_t *session);
 int iso15693_3_poller_inventory(nfc_reader_session_t *session, iso15693_3_data_t *data);
