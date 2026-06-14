@@ -12,3 +12,7 @@ config FELICA_BLOCKS_MAX
 config NFC_FELICA_TEST_TIER_POLLER
 	bool "Build FeliCa poller tier tests"
 	default n
+
+config NFC_FELICA_TEST_TIER_LISTENER
+	bool "Build FeliCa listener tier tests"
+	default n

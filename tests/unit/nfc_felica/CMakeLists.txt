@@ -23,11 +23,24 @@ if(CONFIG_NFC_FELICA_TEST_TIER_POLLER)
     ${REPO_NFC}/protocols/felica/felica_poller.c
     ${REPO_NFC}/protocols/felica/felica_poller_i.c
   )
+  target_compile_definitions(app PRIVATE NFC_SESSION_MOCK_MAX_TX=32)
+endif()
+
+if(CONFIG_NFC_FELICA_TEST_TIER_LISTENER)
+  target_sources(app PRIVATE
+    src/test_listener.c
+    ${REPO_NFC}/helpers/felica_crc.c
+    ${REPO_NFC}/protocols/felica/felica_listener.c
+    ${REPO_NFC}/protocols/felica/felica_poller.c
+    ${REPO_NFC}/protocols/felica/felica_poller_i.c
+  )
+  target_compile_definitions(app PRIVATE NFC_SESSION_MOCK_MAX_TX=32)
 endif()
 
 target_include_directories(app PRIVATE
   ${REPO_NFC}
   ${REPO_NFC}/protocols/felica
   ${CMAKE_CURRENT_SOURCE_DIR}/../../fixtures/felica
+  ${CMAKE_CURRENT_SOURCE_DIR}/../../fixtures/store
   ${NFC_TEST_COMMON_INCLUDES}
 )

@@ -75,6 +75,10 @@ int nfc_virtual_rf_transceive(nfc_reader_session_t *session, const uint8_t *tx, 
 			}
 		} else if (s_listener_svc->on_apdu != NULL) {
 			s_listener_svc->on_apdu(&apdu, s_listener_svc->user_ctx);
+		} else if (s_listener_svc->on_tag_cmd != NULL) {
+			s_listener_svc->on_tag_cmd(tx, tx_len, s_listener_svc->user_ctx);
+		} else {
+			return -ENOTSUP;
 		}
 	} else if (s_listener_svc->on_tag_cmd != NULL) {
 		s_listener_svc->on_tag_cmd(tx, tx_len, s_listener_svc->user_ctx);
