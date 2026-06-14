@@ -30,6 +30,7 @@ from pathlib import Path
 
 from nfc_persist_ids import (
     NFC_PERSIST_ID_CLASSIC,
+    NFC_PERSIST_ID_DESFIRE,
     NFC_PERSIST_ID_FELICA,
     NFC_PERSIST_ID_SLIX,
     NFC_PERSIST_ID_ULTRALIGHT,
@@ -93,7 +94,13 @@ PROTO_OUT_DIRS: dict[str, Path] = {
     "iso15693_3": REPO_ROOT / "tests" / "fixtures" / "iso15693_3",
     "hal": REPO_ROOT / "tests" / "fixtures" / "hal",
     "classic": REPO_ROOT / "tests" / "fixtures" / "classic",
+    "desfire": REPO_ROOT / "tests" / "fixtures" / "desfire",
 }
+
+DESFIRE_FORMAT_VERSION = 0x01
+DESFIRE_SW1 = 0x91
+DESFIRE_STATUS_OK = 0x00
+DESFIRE_STATUS_AF = 0xAF
 
 CLASSIC_FORMAT_VERSION = 0x01
 CLASSIC_TYPE_MINI = 0
@@ -1257,6 +1264,193 @@ def emit_classic_mock_header(stem: str, steps: list[tuple[str, bytes]], model: b
     print(f"Wrote {out_path}", file=sys.stderr)
 
 
+def desfire_key_settings(meta: dict, prefix: str) -> int:
+    ks = 0
+    if meta.get(f"{prefix} Config Changeable", "false") == "true":
+        ks |= 0x01
+    if meta.get(f"{prefix} Free Create Delete", "false") == "true":
+        ks |= 0x02
+    if meta.get(f"{prefix} Key Changeable", "false") == "true":
+        ks |= 0x04
+    if meta.get(f"{prefix} Free Directory List", "false") == "true":
+        ks |= 0x08
+    return ks
+
+
+def desfire_app_prefix(meta: dict, aid: bytes) -> str:
+    return f"Application {aid[0]:02X}{aid[1]:02X}{aid[2]:02X}"
+
+
+def desfire_resp(payload: bytes, sw2: int = DESFIRE_STATUS_OK) -> bytes:
+    return payload + bytes([DESFIRE_SW1, sw2])
+
+
+def build_desfire_model(meta: dict) -> bytes:
+    ver = parse_hex_bytes(meta["PICC Version"])
+    if len(ver) < 28:
+        raise ValueError(f"PICC Version must be at least 28 bytes, got {len(ver)}")
+    ver = ver[:28]
+    free_mem = int(meta["PICC Free Memory"])
+    body = bytearray()
+    body.append(DESFIRE_FORMAT_VERSION)
+    body.extend(ver[:7])
+    body.extend(ver[7:14])
+    body.extend(ver[14:21])
+    body.extend(ver[21:26])
+    body.extend(ver[26:28])
+    body.extend(struct.pack("<I", free_mem))
+    body.extend(bytes(16))
+    body.append(desfire_key_settings(meta, "PICC"))
+
+    app_count = int(meta.get("Application Count", "0"))
+    body.append(app_count)
+    app_ids = parse_hex_bytes(meta.get("Application IDs", ""))
+    for ai in range(app_count):
+        aid = app_ids[ai * 3:(ai + 1) * 3]
+        prefix = desfire_app_prefix(meta, aid)
+        body.extend(aid)
+        body.append(desfire_key_settings(meta, prefix))
+        key_count = int(meta.get(f"{prefix} Max Keys", "0"))
+        body.append(key_count)
+        file_ids = parse_hex_bytes(meta.get(f"{prefix} File IDs", ""))
+        body.append(len(file_ids))
+        for fid in file_ids:
+            fp = f"{prefix} File {fid}"
+            ftype = int(meta.get(f"{fp} Type", "0"))
+            fcomm = int(meta.get(f"{fp} Communication Settings", "0"))
+            access = parse_hex_bytes(meta.get(f"{fp} Access Rights", "EE EE"))
+            fdata = parse_hex_bytes(meta.get(fp, ""))
+            body.append(fid)
+            fs = bytearray(8)
+            fs[0] = ftype
+            fs[1] = fcomm
+            fs[2] = access[0]
+            fs[3] = access[1]
+            if ftype in (0, 1):
+                size = int(meta.get(f"{fp} Size", str(len(fdata))))
+                fs[4] = size & 0xFF
+                fs[5] = (size >> 8) & 0xFF
+                fs[6] = (size >> 16) & 0xFF
+            elif ftype == 2:
+                if len(fdata) >= 4:
+                    fs[4:8] = fdata[:4]
+            else:
+                rec_size = int(meta.get(f"{fp} Size", str(len(fdata) if fdata else 1)))
+                fs[4] = rec_size & 0xFF
+                fs[5] = (rec_size >> 8) & 0xFF
+                fs[6] = (rec_size >> 16) & 0xFF
+            body.extend(fs)
+            body.extend(struct.pack("<H", len(fdata)))
+            body.extend(fdata)
+    return bytes(body)
+
+
+def desfire_version_frames(meta: dict) -> list[bytes]:
+    ver = parse_hex_bytes(meta["PICC Version"])[:28]
+    return [
+        ver[:7] + bytes([DESFIRE_SW1, DESFIRE_STATUS_AF]),
+        ver[7:14] + bytes([DESFIRE_SW1, DESFIRE_STATUS_AF]),
+        ver[14:] + bytes([DESFIRE_SW1, DESFIRE_STATUS_OK]),
+    ]
+
+
+def desfire_read_steps(meta: dict) -> list[tuple[str, bytes]]:
+    steps: list[tuple[str, bytes]] = [
+        ("iso select desfire aid", bytes([0x90, 0x00])),
+        ("get key version", desfire_resp(bytes([0x00]))),
+    ]
+    for idx, frame in enumerate(desfire_version_frames(meta)):
+        steps.append((f"get version frame {idx}", frame))
+    free_mem = int(meta["PICC Free Memory"])
+    steps.append(("get free memory", desfire_resp(struct.pack("<I", free_mem))))
+    master_ks = desfire_key_settings(meta, "PICC")
+    picc_max_keys = int(meta.get("PICC Max Keys", "1"))
+    steps.append(("get picc key settings", desfire_resp(bytes([master_ks, picc_max_keys]))))
+
+    app_ids = parse_hex_bytes(meta.get("Application IDs", ""))
+    if app_ids:
+        steps.append(("get application ids", desfire_resp(app_ids)))
+
+    app_count = int(meta.get("Application Count", "0"))
+    for ai in range(app_count):
+        aid = app_ids[ai * 3:(ai + 1) * 3]
+        prefix = desfire_app_prefix(meta, aid)
+        aid_hex = f"{aid[0]:02X}{aid[1]:02X}{aid[2]:02X}"
+        steps.append((f"select app {aid_hex}", desfire_resp(b"")))
+        app_ks = desfire_key_settings(meta, prefix)
+        app_max = int(meta.get(f"{prefix} Max Keys", "0"))
+        steps.append((f"app {aid_hex} key settings", desfire_resp(bytes([app_ks, app_max]))))
+        file_ids = parse_hex_bytes(meta.get(f"{prefix} File IDs", ""))
+        steps.append((f"app {aid_hex} file ids", desfire_resp(bytes(file_ids))))
+        for fid in file_ids:
+            fp = f"{prefix} File {fid}"
+            ftype = int(meta.get(f"{fp} Type", "0"))
+            fcomm = int(meta.get(f"{fp} Communication Settings", "0"))
+            access = parse_hex_bytes(meta.get(f"{fp} Access Rights", "EE EE"))
+            size = int(meta.get(f"{fp} Size", "0"))
+            fs_payload = bytes([
+                ftype, fcomm, access[0], access[1],
+                size & 0xFF, (size >> 8) & 0xFF, (size >> 16) & 0xFF,
+            ])
+            steps.append((f"file {fid} settings", desfire_resp(fs_payload)))
+            fdata = parse_hex_bytes(meta.get(fp, ""))
+            if ftype == 2:
+                steps.append((f"file {fid} get value", desfire_resp(fdata[:4])))
+            elif ftype in (3, 4):
+                steps.append((f"file {fid} read records", desfire_resp(fdata)))
+            else:
+                steps.append((f"file {fid} read data", desfire_resp(fdata)))
+    return steps
+
+
+def emit_desfire_mock_header(stem: str, steps: list[tuple[str, bytes]], model: bytes,
+                             out_dir: Path) -> None:
+    sym = "Desfire" if stem == "MfDesfire_EV1_sample" else stem.replace("-", "_")
+    lines = [
+        f"/* Auto-generated from Flipper {stem}.nfc — do not edit. */",
+        f"#ifndef TESTS_FIXTURES_DESFIRE_DESFIRE_MOCK_H_",
+        f"#define TESTS_FIXTURES_DESFIRE_DESFIRE_MOCK_H_",
+        "",
+        "#include \"nfc_session_mock.h\"",
+        "",
+        "#include <stddef.h>",
+        "#include <stdint.h>",
+        "",
+        "#include <zephyr/sys/util.h>",
+        "",
+        f"static const uint8_t desfire_{sym}_model[] = {{",
+        model_bin_to_inc(model).rstrip(),
+        "};",
+        "",
+        f"#define DESFIRE_{sym.upper()}_MODEL_LEN ((size_t)sizeof(desfire_{sym}_model))",
+        "",
+    ]
+    step_refs: list[str] = []
+    for idx, (_label, payload) in enumerate(steps):
+        arr = f"desfire_{sym}_step{idx}_rx"
+        lines.append(f"static const uint8_t {arr}[] = {{")
+        if payload:
+            lines.append(model_bin_to_inc(payload).rstrip())
+        lines.append("};")
+        lines.append("")
+        step_refs.append(f"\t{{.rx = {arr}, .rx_len = sizeof({arr}), .err = 0}},")
+    lines.append(f"static const nfc_session_mock_step_t desfire_{sym}_read_steps[] = {{")
+    lines.extend(step_refs)
+    lines.append("};")
+    lines.append("")
+    lines.append(
+        f"#define DESFIRE_{sym.upper()}_READ_STEP_COUNT "
+        f"ARRAY_SIZE(desfire_{sym}_read_steps)"
+    )
+    lines.append("")
+    lines.append("#endif")
+    lines.append("")
+    mock_name = "Desfire_mock.h" if stem == "MfDesfire_EV1_sample" else f"{stem}_mock.h"
+    out_path = out_dir / mock_name
+    out_path.write_text("\n".join(lines), encoding="utf-8")
+    print(f"Wrote {out_path}", file=sys.stderr)
+
+
 def classify(meta: dict, stem: str) -> str:
     filetype = meta.get("Filetype", "")
     if filetype == "Flipper NFC test":
@@ -1271,6 +1465,8 @@ def classify(meta: dict, stem: str) -> str:
         return "ultralight"
     if device == "Mifare Classic":
         return "classic"
+    if device == "Mifare DESFire":
+        return "desfire"
     raise ValueError(f"unsupported device type: {device!r} in {stem}")
 
 
@@ -1283,11 +1479,13 @@ def persist_id_for(proto: str) -> int:
         return NFC_PERSIST_ID_SLIX
     if proto == "classic":
         return NFC_PERSIST_ID_CLASSIC
+    if proto == "desfire":
+        return NFC_PERSIST_ID_DESFIRE
     raise ValueError(f"no persist_id for proto {proto}")
 
 
 def card_bin_allowed(proto: str) -> bool:
-    return proto in ("ultralight", "felica", "slix", "classic")
+    return proto in ("ultralight", "felica", "slix", "classic", "desfire")
 
 
 def hand_flags_for(persist_id: int) -> int:
@@ -1319,6 +1517,9 @@ def emit_fixture(meta: dict, out_dir: Path, stem: str, *, write_card_bin: bool) 
         model = build_classic_model(meta)
         steps = classic_read_steps(meta)
         tx_steps = classic_read_tx_steps(meta)
+    elif proto == "desfire":
+        model = build_desfire_model(meta)
+        steps = desfire_read_steps(meta)
     else:
         raise ValueError(f"unknown proto {proto}")
 
@@ -1361,6 +1562,8 @@ def emit_fixture(meta: dict, out_dir: Path, stem: str, *, write_card_bin: bool) 
             parent_model_path.write_bytes(parent_model)
             print(f"Wrote {parent_model_path} ({len(parent_model)} bytes)", file=sys.stderr)
             print(f"Wrote {parent_read} ({len(parent_framed)} steps)", file=sys.stderr)
+    elif proto == "desfire":
+        emit_desfire_mock_header(stem, steps, model, out_dir)
     print(f"Wrote {model_path} ({len(model)} bytes)", file=sys.stderr)
     print(f"Wrote {read_path} ({len(steps)} steps)", file=sys.stderr)
 
@@ -1380,6 +1583,17 @@ def emit_fixture(meta: dict, out_dir: Path, stem: str, *, write_card_bin: bool) 
         print(f"Wrote {card_path} ({len(card)} bytes)", file=sys.stderr)
         print(f"Wrote {fixture_card} ({len(card)} bytes)", file=sys.stderr)
         print(f"Wrote {card_inc}", file=sys.stderr)
+        if proto == "desfire" and stem == "MfDesfire_EV1_sample":
+            alias_bin = STORE_DIR / "Desfire.card.bin"
+            alias_inc = STORE_DIR / "Desfire_card.inc"
+            alias_bin.write_bytes(card)
+            alias_inc.write_text(
+                "/* Tier E golden: nfc_store envelope for DESFire mock. */\n"
+                + model_bin_to_inc(card),
+                encoding="utf-8",
+            )
+            print(f"Wrote {alias_bin} ({len(card)} bytes)", file=sys.stderr)
+            print(f"Wrote {alias_inc}", file=sys.stderr)
     elif proto == "hal":
         print(f"Skipped .card.bin for HAL signal fixture {stem}", file=sys.stderr)
 
