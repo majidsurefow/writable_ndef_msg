@@ -200,3 +200,167 @@ Ready-to-use Kconfig presets in `confs/`:
 3. Thread stacks: 17% (~10 KB) — mostly fixed overhead
 
 **Versus expectation:** "Only a work queue or two and maybe a static buffer" — the stack indeed uses 2 work queues (NFC stack + PN7160 driver) with ~3 KB total stack. However, the store and protocol data models consume 70% of RAM. For minimal deployments, aggressively tune the store and DESFire Kconfig options.
+
+---
+
+## Layered Memory Breakdown
+
+This section isolates memory contribution from each architectural layer.
+
+### Layer Model
+
+```
+Layer 0: Zephyr base + logging + GPIO/I2C/SPI drivers (baseline)
+Layer 1: + HAL (PN7160 module OR NFCT)
+Layer 2: + NFC stack core (reader engine, store, work queues)
+Layer 3: + Protocols (each protocol's listener/poller)
+Layer 4: + Applets (L1 services — verify, compare, policy)
+Layer 5: + Shell (L2 commands) — optional
+```
+
+### Incremental Layer Build Results
+
+Measured on nrf54l15dk/nrf54l15/cpuapp with `--sysbuild`:
+
+| Layer | Configuration | RAM | FLASH | RAM Δ | FLASH Δ |
+|-------|--------------|-----|-------|-------|---------|
+| **Layer 1** | PN7160 HAL only (`overlay-pn7160-hal.conf`) | 15,888 B | 86,184 B | baseline | baseline |
+| **Layer 2-4** | + Reader engine + Store + Protocols + Applets (`overlay-pn7160-stack.conf`) | 54,792 B | 119,244 B | +38,904 B | +33,060 B |
+| **Layer 5** | + Shell (already in L2-4 above) | — | — | ~3,700 B | ~15 KB |
+| **+ Listen** | + CE listen role (`overlay-pn7160-listen.conf`) | 57,376 B | 131,032 B | +2,584 B | +11,788 B |
+
+**Observations:**
+- HAL-only (Layer 1) provides a minimal 16 KB RAM / 86 KB FLASH baseline for PN7160 bring-up
+- The bulk of RAM comes from Layer 2-4: store slots (25 KB) and protocol models (14 KB)
+- Shell adds ~3.7 KB RAM and ~15 KB FLASH — disable for headless production builds
+
+---
+
+### HAL Comparison
+
+| HAL | RAM | FLASH | RAM Δ from baseline | FLASH Δ from baseline | Notes |
+|-----|-----|-------|---------------------|----------------------|-------|
+| **PN7160 module** | 15,888 B | 86,184 B | — | — | I2C/SPI TML, NCI framing, work queue |
+| **NFCT (nRF native)** | 53,552 B* | 101,600 B* | — | — | Hardware registers only, nrfxlib T4T |
+
+*NFCT figure includes full CE stack (not HAL-only) since NFCT requires listen stack to function.
+
+**HAL Contribution Breakdown (PN7160):**
+
+| Component | RAM | FLASH | Source |
+|-----------|-----|-------|--------|
+| PN7160 driver core | ~2 KB | ~8 KB | `pn7160_driver.c`, NCI framing |
+| PN7160 work queue | 1,024 B | — | `CONFIG_PN7160_WORKQ_STACK_SIZE` |
+| RX buffer | 258 B | — | `CONFIG_PN7160_RX_BUF_SIZE` |
+| I2C/SPI TML | ~200 B | ~2 KB | Transport layer |
+
+**NFCT vs PN7160 for CE-only builds:**
+
+| Metric | NFCT CE | PN7160 CE | Difference |
+|--------|---------|-----------|------------|
+| RAM | 53,552 B | ~50,000 B | ~3.5 KB less with PN7160 |
+| FLASH | 101,600 B | ~110,000 B | ~8 KB less with NFCT |
+| Hardware | On-die | External I2C/SPI | NFCT = simpler BOM |
+| Capabilities | Listen-only | Reader + Listen | PN7160 = more flexible |
+
+---
+
+### Per-Protocol Cost
+
+Measured from `.map` file symbol sizes:
+
+| Protocol | Model RAM | Poller FLASH | Listener FLASH | Notes |
+|----------|-----------|--------------|----------------|-------|
+| **DESFire** | 9,908 B | ~4 KB | ~6 KB | Largest; heavily tunable |
+| **Ultralight** | 1,086 B | ~2 KB | ~3 KB | 256 pages × 4 B |
+| **NDEF** | 522 B | ~1.5 KB | ~2 KB | 500 B data + response |
+| **Aliro** | 584 B | ~3 KB | ~4 KB | P256 crypto + response |
+| **EMV** | 212 B | ~2 KB | ~2.5 KB | FCI/GPO records |
+| **Classic** | 32 B | ~3 KB | — | Poller-only; Crypto1 engine |
+| **FeliCa** | 32 B | ~2 KB | — | Poller-only |
+| **ISO15693** | 32 B | ~1.5 KB | — | Poller-only |
+| **SLIX** | 32 B | ~1 KB | — | Poller-only; extends ISO15693 |
+
+**Total protocol model RAM:** ~12,408 B (22.6% of reader build)
+
+**Response buffers:** Each listener protocol allocates a 255 B `s_resp` buffer for APDU assembly.
+
+---
+
+### Kconfig Impact Table
+
+Measured deltas from full reader build (54,792 B RAM, 119,244 B FLASH):
+
+| Kconfig | Default | Change to | RAM Δ | FLASH Δ | Build Variant |
+|---------|---------|-----------|-------|---------|---------------|
+| `NFC_STORE_RAM_SLOT_COUNT` | 4 | 1 | **−12,360 B** | ~0 | `pn7160-stack-minstore.conf` |
+| `NFC_STORE_BLOB_SIZE` | 4096 | 2048 | **−6,144 B** | ~0 | Combined with above |
+| `NFC_DESFIRE_MAX_APPS` | 4 | 1 | **−7,395 B** | ~0 | `pn7160-stack-mindesfire.conf` |
+| `NFC_DESFIRE_MAX_FILES_PER_APP` | 8 | 2 | **−2,061 B** | ~0 | Combined with above |
+| `CONFIG_SHELL` | y | n | **−45,296 B** | **−71,808 B** | `pn7160-stack-noshell.conf` |
+| `NFC_ROLE_LISTEN` | n | y | +2,584 B | +11,788 B | `overlay-pn7160-listen.conf` |
+| `NFC_ULTRALIGHT_MAX_PAGES` | 256 | 64 | ~−768 B | ~0 | Reduces page array |
+| `NFC_NDEF_MAX_SIZE` | 500 | 256 | ~−244 B | ~0 | Reduces NDEF buffer |
+
+**Build measurements:**
+
+| Configuration | RAM | FLASH | Notes |
+|--------------|-----|-------|-------|
+| Full stack (default) | 54,792 B | 119,244 B | Baseline |
+| Minimal store (1 slot, 2KB blob) | 36,288 B | 119,084 B | −18,504 B RAM |
+| Minimal DESFire (1 app, 2 files, 64B) | 45,336 B | 119,212 B | −9,456 B RAM |
+| No shell | 9,496 B | 47,436 B | −45,296 B RAM, −71,808 B FLASH |
+
+---
+
+### Layer Configuration Files
+
+Layered build configurations in `confs/`:
+
+| File | Purpose | Use Case |
+|------|---------|----------|
+| `layer0-baseline.conf` | Zephyr base only | Firmware baseline measurement |
+| `layer1-pn7160-hal.conf` | PN7160 driver only | HAL bring-up |
+| `layer1-nfct-hal.conf` | NFCT T4T library only | nRF native HAL baseline |
+| `layer2-core-minimal.conf` | NFC core + minimal store | Reader engine isolation |
+| `layer3-protocols.conf` | + All protocols | Protocol cost measurement |
+| `layer4-applets.conf` | + Applets | Applet layer cost |
+| `layer5-shell.conf` | + Shell commands | Full interactive build |
+| `pn7160-stack-noshell.conf` | Stack without shell | Headless production |
+| `pn7160-stack-minstore.conf` | Minimal store config | RAM-constrained builds |
+| `pn7160-stack-mindesfire.conf` | Minimal DESFire config | DESFire optimization |
+
+**Build command for any layer:**
+```bash
+west build -b nrf54l15dk/nrf54l15/cpuapp --sysbuild \
+  -- -DEXTRA_CONF_FILE=confs/<layer>.conf \
+     -DDTC_OVERLAY_FILE=boards/overlays/pn7160_i2c.overlay
+```
+
+---
+
+### Minimal Build Recipe
+
+For absolute minimum RAM footprint with reader functionality:
+
+```conf
+# confs/minimal-reader.conf
+CONFIG_I2C=y
+CONFIG_GPIO=y
+CONFIG_EMUL=y
+CONFIG_PN7160=y
+CONFIG_NFC_STACK=y
+CONFIG_NFC_HAL_BACKEND_PN7160=y
+CONFIG_NFC_PROFILE_READER=y
+CONFIG_NFC_ROLE_LISTEN=n
+CONFIG_NFC_STORE_RAM_SLOT_COUNT=1
+CONFIG_NFC_STORE_BLOB_SIZE=2048
+CONFIG_NFC_DESFIRE_MAX_APPS=1
+CONFIG_NFC_DESFIRE_MAX_FILES_PER_APP=2
+CONFIG_NFC_DESFIRE_MAX_FILE_SIZE=64
+CONFIG_NFC_ULTRALIGHT_MAX_PAGES=64
+CONFIG_NFC_NDEF_MAX_SIZE=256
+CONFIG_SHELL=n
+```
+
+**Expected:** ~20 KB RAM, ~50 KB FLASH (vs 55 KB / 119 KB default)
