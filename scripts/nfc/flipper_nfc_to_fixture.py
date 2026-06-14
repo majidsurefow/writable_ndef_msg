@@ -135,6 +135,14 @@ def read_inc_steps(steps: list[tuple[str, bytes]]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def tx_inc_steps(steps: list[tuple[str, bytes]]) -> str:
+    lines = ["/* Tier B poller TX golden — one STEP per transceive */"]
+    for idx, (label, payload) in enumerate(steps):
+        lines.append(f"/* STEP {idx}: {label} */")
+        lines.append(bytes_to_inc(payload, label).rstrip())
+    return "\n".join(lines) + "\n"
+
+
 def model_bin_to_inc(data: bytes) -> str:
     row: list[str] = []
     lines: list[str] = []
@@ -351,6 +359,99 @@ def build_felica_model(meta: dict) -> bytes:
         buf.extend([sf1, sf2])
         buf.extend(data)
     return bytes(buf)
+
+
+FELICA_BLOCKS_LITE_TOTAL = 28
+FELICA_BLOCK_INDEX_REG = 0x0E
+FELICA_BLOCK_INDEX_RC = 0x80
+FELICA_BLOCK_INDEX_MC = 0x88
+FELICA_BLOCK_INDEX_WCNT = 0x90
+FELICA_BLOCK_INDEX_STATE = 0x92
+FELICA_BLOCK_INDEX_CRC_CHECK = 0xA0
+FELICA_SERVICE_RO_ACCESS = 0x000B
+FELICA_CMD_POLL = 0x00
+FELICA_CMD_READ = 0x06
+FELICA_CMD_POLL_RESP = 0x01
+FELICA_CMD_READ_RESP = 0x07
+
+
+def felica_crc_calculate(data: bytes) -> int:
+    crc = 0
+    for b in data:
+        crc ^= b << 8
+        for _ in range(8):
+            if crc & 0x8000:
+                crc = ((crc << 1) ^ 0x1021) & 0xFFFF
+            else:
+                crc = (crc << 1) & 0xFFFF
+    return ((crc << 8) | (crc >> 8)) & 0xFFFF
+
+
+def felica_crc_append(data: bytes) -> bytes:
+    crc = felica_crc_calculate(data)
+    return data + struct.pack("<H", crc)
+
+
+def felica_lite_wire_block_indices() -> list[int]:
+    indices: list[int] = []
+    idx = 0
+    for _ in range(FELICA_BLOCKS_LITE_TOTAL):
+        indices.append(idx)
+        idx += 1
+        if idx == FELICA_BLOCK_INDEX_REG + 1:
+            idx = FELICA_BLOCK_INDEX_RC
+        elif idx == FELICA_BLOCK_INDEX_MC + 1:
+            idx = FELICA_BLOCK_INDEX_WCNT
+        elif idx == FELICA_BLOCK_INDEX_STATE + 1:
+            idx = FELICA_BLOCK_INDEX_CRC_CHECK
+    return indices
+
+
+def felica_build_poll_tx() -> bytes:
+    body = bytes([0x06, FELICA_CMD_POLL, 0xFF, 0xFF, 0x00, 0x00])
+    return felica_crc_append(body)
+
+
+def felica_build_poll_rx(idm: bytes, pmm: bytes) -> bytes:
+    body = bytes([0x12, FELICA_CMD_POLL_RESP]) + idm[:8].ljust(8, b"\x00") + pmm[:8].ljust(8, b"\x00")
+    return felica_crc_append(body)
+
+
+def felica_build_read_tx(idm: bytes, block_num: int) -> bytes:
+    cmd = bytes([FELICA_CMD_READ]) + idm[:8].ljust(8, b"\x00") + bytes([0x01, 0x0B, 0x00, 0x01])
+    block_list = bytes([0x80, block_num & 0xFF])
+    total = len(cmd) + 1 + len(block_list)
+    body = bytes([total]) + cmd + block_list
+    return felica_crc_append(body)
+
+
+def felica_build_read_rx(idm: bytes, sf1: int, sf2: int, data: bytes) -> bytes:
+    payload = bytes([FELICA_CMD_READ_RESP]) + idm[:8].ljust(8, b"\x00") + bytes([sf1, sf2, 0x01])
+    payload += data.ljust(16, b"\x00")[:16]
+    body = bytes([len(payload) + 1]) + payload
+    return felica_crc_append(body)
+
+
+def felica_framed_read_steps(meta: dict) -> list[tuple[str, bytes, bytes]]:
+    blocks_map: dict[int, bytes] = meta.get("blocks", {})
+    blocks_total = int(meta.get("Blocks total", len(blocks_map)))
+    uid = parse_hex_bytes(meta.get("Manufacture id", meta.get("UID", "")))
+    pmm = parse_hex_bytes(meta.get("Manufacture parameter", ""))
+    idm = uid[:8].ljust(8, b"\x00")
+    steps: list[tuple[str, bytes, bytes]] = []
+
+    steps.append(("felica poll", felica_build_poll_tx(), felica_build_poll_rx(idm, pmm)))
+
+    wire_blocks = felica_lite_wire_block_indices()
+    for dump_idx, wire_block in enumerate(wire_blocks[:blocks_total]):
+        raw = blocks_map.get(dump_idx, b"\x00" * 18)
+        sf1, sf2 = raw[0], raw[1] if len(raw) >= 2 else 0
+        data = raw[2:18].ljust(16, b"\x00") if len(raw) >= 2 else raw.ljust(16, b"\x00")
+        tx = felica_build_read_tx(idm, wire_block)
+        rx = felica_build_read_rx(idm, sf1, sf2, data)
+        steps.append((f"felica READ block {wire_block} (dump {dump_idx})", tx, rx))
+
+    return steps
 
 
 def felica_read_steps(meta: dict) -> list[tuple[str, bytes]]:
@@ -695,6 +796,44 @@ def classic_read_steps(meta: dict) -> list[tuple[str, bytes]]:
     return steps
 
 
+def classic_read_tx_steps(meta: dict) -> list[tuple[str, bytes]]:
+    uid = parse_hex_bytes(meta.get("UID", ""))
+    type_id = classic_type_from_meta(meta)
+    blocks_total = classic_blocks_total(type_id)
+    sectors = classic_sectors_total(type_id)
+    cuid = cuid_from_uid(uid)
+    steps: list[tuple[str, bytes]] = []
+
+    if type_id == CLASSIC_TYPE_1K:
+        steps.append(("classic TX detect 4k probe", bytes([0x60, 254])))
+        steps.append(("classic TX detect 1k probe", bytes([0x60, 62])))
+
+    for sector in range(sectors):
+        first = classic_first_block_of_sector(sector)
+        nt = struct.pack(">I", 0x10000000 + sector)
+        steps.append((f"classic TX AUTH NT sector {sector}", bytes([0x60, first])))
+
+        at_crypto = Crypto1()
+        tx_auth = at_crypto.encrypt_reader_nonce(
+            CLASSIC_DEFAULT_KEY, cuid, nt, CLASSIC_TEST_NR
+        )
+        steps.append((f"classic TX AUTH NR|AR sector {sector}", tx_auth))
+
+        crypto = _classic_auth_crypto_state(nt, cuid)
+
+        for i in range(classic_blocks_in_sector(sector)):
+            block_num = first + i
+            if block_num >= blocks_total:
+                break
+            tx_plain = bytes([0x30, block_num])
+            crc = iso14443_crc_a(tx_plain)
+            tx_plain += struct.pack("<H", crc)
+            tx_enc = crypto.encrypt_bytes(tx_plain)
+            steps.append((f"classic TX READ block {block_num}", tx_enc))
+
+    return steps
+
+
 def emit_classic_mock_header(stem: str, steps: list[tuple[str, bytes]], model: bytes,
                               out_dir: Path) -> None:
     sym = stem.replace("-", "_")
@@ -801,6 +940,7 @@ def emit_fixture(meta: dict, out_dir: Path, stem: str, *, write_card_bin: bool) 
     elif proto == "classic":
         model = build_classic_model(meta)
         steps = classic_read_steps(meta)
+        tx_steps = classic_read_tx_steps(meta)
     else:
         raise ValueError(f"unknown proto {proto}")
 
@@ -808,6 +948,10 @@ def emit_fixture(meta: dict, out_dir: Path, stem: str, *, write_card_bin: bool) 
     read_path = out_dir / f"{stem}_read.inc"
     model_path.write_bytes(model)
     read_path.write_text(read_inc_steps(steps), encoding="utf-8")
+    if proto == "classic":
+        tx_path = out_dir / f"{stem}_tx.inc"
+        tx_path.write_text(tx_inc_steps(tx_steps), encoding="utf-8")
+        print(f"Wrote {tx_path} ({len(tx_steps)} steps)", file=sys.stderr)
     if proto == "ultralight":
         emit_ultralight_mock_header(stem, steps, model, out_dir)
     elif proto == "classic":
