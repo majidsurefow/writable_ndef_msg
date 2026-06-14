@@ -7,13 +7,12 @@
  */
 
 #include "ultralight_poller.h"
+#include "ultralight_poller_i.h"
 
 #include <errno.h>
 #include <string.h>
 
 #include <zephyr/kernel.h>
-
-#define UL_POLLER_TIMEOUT K_MSEC(5000)
 
 static int ultralight_poller_session_valid(const nfc_reader_session_t *session)
 {
@@ -22,14 +21,6 @@ static int ultralight_poller_session_valid(const nfc_reader_session_t *session)
 	}
 
 	return 0;
-}
-
-static int ultralight_poller_transceive(nfc_reader_session_t *session, const uint8_t *tx,
-					size_t tx_len, uint8_t *rx, size_t *rx_len)
-{
-	return nfc_reader_session_transceive(session, tx, tx_len, rx,
-					     NFC_TRANSPORT_MAX_RESPONSE_LEN, rx_len,
-					     UL_POLLER_TIMEOUT);
 }
 
 static bool ultralight_version_is_zero(const uint8_t ver[ULTRALIGHT_VERSION_SIZE])
@@ -79,128 +70,6 @@ static ultralight_type_t ultralight_type_from_version(const uint8_t ver[ULTRALIG
 	}
 }
 
-static int ultralight_poller_read_page(nfc_reader_session_t *session, uint8_t page,
-				       uint8_t out[ULTRALIGHT_READ_RESP_LEN])
-{
-	uint8_t tx[2] = {ULTRALIGHT_CMD_READ, page};
-	uint8_t rx[NFC_TRANSPORT_MAX_RESPONSE_LEN];
-	size_t rx_len = 0U;
-	int ret;
-
-	ret = ultralight_poller_transceive(session, tx, sizeof(tx), rx, &rx_len);
-	if (ret != 0) {
-		return ret;
-	}
-
-	if (rx_len < ULTRALIGHT_READ_RESP_LEN) {
-		return -EIO;
-	}
-
-	(void)memcpy(out, rx, ULTRALIGHT_READ_RESP_LEN);
-	return 0;
-}
-
-static int ultralight_poller_get_version(nfc_reader_session_t *session, uint8_t ver[8])
-{
-	uint8_t tx[1] = {ULTRALIGHT_CMD_GET_VERSION};
-	uint8_t rx[NFC_TRANSPORT_MAX_RESPONSE_LEN];
-	size_t rx_len = 0U;
-	int ret;
-
-	ret = ultralight_poller_transceive(session, tx, sizeof(tx), rx, &rx_len);
-	if (ret != 0) {
-		return ret;
-	}
-
-	if (rx_len < ULTRALIGHT_VERSION_SIZE) {
-		return -EIO;
-	}
-
-	(void)memcpy(ver, rx, ULTRALIGHT_VERSION_SIZE);
-	return 0;
-}
-
-static int ultralight_poller_read_signature(nfc_reader_session_t *session, uint8_t sig[32])
-{
-	uint8_t tx[2] = {ULTRALIGHT_CMD_READ_SIG, 0x00U};
-	uint8_t rx[NFC_TRANSPORT_MAX_RESPONSE_LEN];
-	size_t rx_len = 0U;
-	int ret;
-
-	ret = ultralight_poller_transceive(session, tx, sizeof(tx), rx, &rx_len);
-	if (ret != 0) {
-		return ret;
-	}
-
-	if (rx_len < ULTRALIGHT_SIGNATURE_SIZE) {
-		return -EIO;
-	}
-
-	(void)memcpy(sig, rx, ULTRALIGHT_SIGNATURE_SIZE);
-	return 0;
-}
-
-static int ultralight_poller_read_counter(nfc_reader_session_t *session, uint8_t index,
-					  uint8_t out[3])
-{
-	uint8_t tx[2] = {ULTRALIGHT_CMD_READ_CNT, index};
-	uint8_t rx[NFC_TRANSPORT_MAX_RESPONSE_LEN];
-	size_t rx_len = 0U;
-	int ret;
-
-	ret = ultralight_poller_transceive(session, tx, sizeof(tx), rx, &rx_len);
-	if (ret != 0) {
-		return ret;
-	}
-
-	if (rx_len < 3U) {
-		return -EIO;
-	}
-
-	(void)memcpy(out, rx, 3U);
-	return 0;
-}
-
-static int ultralight_poller_read_tearing(nfc_reader_session_t *session, uint8_t index,
-					  uint8_t *flag)
-{
-	uint8_t tx[2] = {ULTRALIGHT_CMD_CHECK_TEARING, index};
-	uint8_t rx[NFC_TRANSPORT_MAX_RESPONSE_LEN];
-	size_t rx_len = 0U;
-	int ret;
-
-	ret = ultralight_poller_transceive(session, tx, sizeof(tx), rx, &rx_len);
-	if (ret != 0) {
-		return ret;
-	}
-
-	if (rx_len < 1U) {
-		return -EIO;
-	}
-
-	*flag = rx[0];
-	return 0;
-}
-
-static int ultralight_poller_pwd_auth(nfc_reader_session_t *session, const uint8_t pwd[4])
-{
-	uint8_t tx[5] = {ULTRALIGHT_CMD_PWD_AUTH, pwd[0], pwd[1], pwd[2], pwd[3]};
-	uint8_t rx[NFC_TRANSPORT_MAX_RESPONSE_LEN];
-	size_t rx_len = 0U;
-	int ret;
-
-	ret = ultralight_poller_transceive(session, tx, sizeof(tx), rx, &rx_len);
-	if (ret != 0) {
-		return ret;
-	}
-
-	if (rx_len < ULTRALIGHT_PWD_AUTH_RESP_LEN) {
-		return -EIO;
-	}
-
-	return 0;
-}
-
 static int ultralight_poller_try_pwd_auth(nfc_reader_session_t *session,
 					  const ultralight_config_t *cfg, bool *authenticated)
 {
@@ -212,14 +81,14 @@ static int ultralight_poller_try_pwd_auth(nfc_reader_session_t *session,
 	}
 
 	if ((cfg != NULL) && cfg->valid) {
-		ret = ultralight_poller_pwd_auth(session, cfg->pwd);
+		ret = ultralight_poller_i_pwd_auth(session, cfg->pwd);
 		if (ret == 0) {
 			*authenticated = true;
 			return 0;
 		}
 
 		if (cfg->authlim == 0U) {
-			ret = ultralight_poller_pwd_auth(session, default_pwd);
+			ret = ultralight_poller_i_pwd_auth(session, default_pwd);
 			if (ret == 0) {
 				*authenticated = true;
 				return 0;
@@ -267,8 +136,16 @@ static int ultralight_poller_read_pages(nfc_reader_session_t *session, ultraligh
 	out->pages_read = 0U;
 
 	for (uint16_t start = 0U; start < pages_total; start += 4U) {
+		uint16_t config_start;
+
 		(void)memset(&cfg, 0, sizeof(cfg));
 		(void)ultralight_parse_config(out, &cfg);
+		ultralight_config_page_indices(pages_total, &config_start, NULL, NULL, NULL);
+
+		if (ultralight_type_has_password_config(out->type) && cfg.valid && !authenticated &&
+		    ultralight_read_protection_enabled(&cfg) && (start >= config_start)) {
+			(void)ultralight_poller_try_pwd_auth(session, &cfg, &authenticated);
+		}
 
 		if (ultralight_page_needs_auth(&cfg, start) && !authenticated) {
 			ret = ultralight_poller_try_pwd_auth(session, &cfg, &authenticated);
@@ -277,13 +154,13 @@ static int ultralight_poller_read_pages(nfc_reader_session_t *session, ultraligh
 			}
 		}
 
-		ret = ultralight_poller_read_page(session, (uint8_t)start, page_buf);
+		ret = ultralight_poller_i_read_page(session, (uint8_t)start, page_buf);
 		if (ret != 0) {
 			if (!authenticated && cfg.valid) {
 				(void)ultralight_poller_try_pwd_auth(session, &cfg, &authenticated);
 				if (authenticated) {
-					ret = ultralight_poller_read_page(session, (uint8_t)start,
-									  page_buf);
+					ret = ultralight_poller_i_read_page(session, (uint8_t)start,
+									    page_buf);
 				}
 			}
 
@@ -298,8 +175,7 @@ static int ultralight_poller_read_pages(nfc_reader_session_t *session, ultraligh
 	return 0;
 }
 
-static int ultralight_poller_identify_type(nfc_reader_session_t *session,
-					   ultralight_type_t *type_out,
+static int ultralight_poller_identify_type(nfc_reader_session_t *session, ultralight_type_t *type_out,
 					   uint8_t version[ULTRALIGHT_VERSION_SIZE],
 					   bool *has_version)
 {
@@ -309,7 +185,7 @@ static int ultralight_poller_identify_type(nfc_reader_session_t *session,
 	*has_version = false;
 	*type_out = UL_TYPE_UNKNOWN;
 
-	ret = ultralight_poller_get_version(session, version);
+	ret = ultralight_poller_i_get_version(session, version);
 	if (ret == 0) {
 		*has_version = !ultralight_version_is_zero(version);
 		*type_out = ultralight_type_from_version(version);
@@ -318,20 +194,39 @@ static int ultralight_poller_identify_type(nfc_reader_session_t *session,
 		}
 	}
 
-	ret = ultralight_poller_read_page(session, 41U, page_resp);
-	if (ret != 0) {
-		*type_out = UL_TYPE_ORIGIN;
-		return 0;
-	}
-
-	ret = ultralight_poller_read_page(session, 47U, page_resp);
+	ret = ultralight_poller_i_authentication_test(session);
 	if (ret == 0) {
 		*type_out = UL_TYPE_MFUL_C;
 		return 0;
 	}
 
+	ret = ultralight_poller_i_read_page(session, 41U, page_resp);
+	if (ret != 0) {
+		*type_out = UL_TYPE_ORIGIN;
+		return 0;
+	}
+
 	*type_out = UL_TYPE_NTAG203;
 	return 0;
+}
+
+static int ultralight_poller_auth_ultralight_c(nfc_reader_session_t *session,
+					       ultralight_data_t *out, bool *authenticated)
+{
+	uint8_t key[ULTRALIGHT_C_AUTH_DES_KEY_SIZE];
+	int ret;
+
+	(void)memset(key, 0, sizeof(key));
+	if (out->pages_read >= (uint16_t)(ULTRALIGHT_C_KEY_PAGE + 4U)) {
+		(void)memcpy(key, out->pages[ULTRALIGHT_C_KEY_PAGE], sizeof(key));
+	}
+
+	ret = ultralight_poller_i_authenticate(session, key, authenticated);
+	if ((ret == 0) && *authenticated) {
+		(void)memcpy(out->pages[ULTRALIGHT_C_KEY_PAGE], key, sizeof(key));
+	}
+
+	return ret;
 }
 
 int ultralight_poller_detect(const nfc_reader_session_t *session)
@@ -346,8 +241,8 @@ int ultralight_poller_detect(const nfc_reader_session_t *session)
 		return ret;
 	}
 
-	ret = ultralight_poller_transceive((nfc_reader_session_t *)session, tx, sizeof(tx), rx,
-					   &rx_len);
+	ret = ultralight_poller_i_transceive((nfc_reader_session_t *)session, tx, sizeof(tx), rx,
+					     &rx_len);
 	if (ret != 0) {
 		return ret;
 	}
@@ -364,6 +259,7 @@ int ultralight_poller_read(const nfc_reader_session_t *session, ultralight_data_
 	nfc_reader_session_t *sess = (nfc_reader_session_t *)session;
 	uint8_t version[ULTRALIGHT_VERSION_SIZE];
 	bool has_version = false;
+	bool authenticated = false;
 	ultralight_type_t type;
 	uint16_t pages_total;
 	int ret;
@@ -390,12 +286,16 @@ int ultralight_poller_read(const nfc_reader_session_t *session, ultralight_data_
 	}
 
 	out->type = type;
-	out->variant = (ultralight_variant_t)variant_from_type(type);
+	out->variant = variant_from_type(type);
 	out->pages_total = pages_total;
 
 	if (has_version) {
 		out->has_version = true;
 		(void)memcpy(out->version, version, ULTRALIGHT_VERSION_SIZE);
+	}
+
+	if (type == UL_TYPE_MFUL_C) {
+		(void)ultralight_poller_auth_ultralight_c(sess, out, &authenticated);
 	}
 
 	ret = ultralight_poller_read_pages(sess, out, pages_total);
@@ -408,20 +308,20 @@ int ultralight_poller_read(const nfc_reader_session_t *session, ultralight_data_
 	}
 
 	if (has_version) {
-		ret = ultralight_poller_read_signature(sess, out->signature);
+		ret = ultralight_poller_i_read_signature(sess, out->signature);
 		if (ret == 0) {
 			out->has_signature = true;
 		}
 
 		for (uint8_t i = 0U; i < ULTRALIGHT_COUNTER_NUM; i++) {
-			ret = ultralight_poller_read_counter(sess, i, out->counters[i]);
+			ret = ultralight_poller_i_read_counter(sess, i, out->counters[i]);
 			if (ret == 0) {
 				out->counter_count = (uint8_t)(i + 1U);
 			}
 		}
 
 		for (uint8_t i = 0U; i < ULTRALIGHT_TEARING_FLAG_NUM; i++) {
-			ret = ultralight_poller_read_tearing(sess, i, &out->tearing_flags[i]);
+			ret = ultralight_poller_i_read_tearing(sess, i, &out->tearing_flags[i]);
 			if (ret == 0) {
 				out->tearing_flag_count = (uint8_t)(i + 1U);
 			}

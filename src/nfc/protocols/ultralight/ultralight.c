@@ -454,8 +454,8 @@ bool ultralight_parse_config(const ultralight_data_t *data, ultralight_config_t 
 	}
 
 	cfg->auth0 = data->pages[auth0_page][3];
-	cfg->prot = (data->pages[access_page][0] & 0x01U) != 0U;
-	cfg->authlim = (uint8_t)((data->pages[access_page][0] >> 4U) & 0x0FU);
+	cfg->prot = (data->pages[access_page][0] & 0x80U) != 0U;
+	cfg->authlim = (uint8_t)(data->pages[access_page][0] & 0x07U);
 	(void)memcpy(cfg->pwd, data->pages[pwd_page], ULTRALIGHT_PAGE_SIZE);
 	cfg->pack[0] = data->pages[pack_page][0];
 	cfg->pack[1] = data->pages[pack_page][1];
@@ -475,6 +475,10 @@ bool ultralight_read_protection_enabled(const ultralight_config_t *cfg)
 bool ultralight_page_needs_auth(const ultralight_config_t *cfg, uint16_t page)
 {
 	if (!ultralight_read_protection_enabled(cfg)) {
+		return false;
+	}
+
+	if (!cfg->prot) {
 		return false;
 	}
 
