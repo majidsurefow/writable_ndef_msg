@@ -20,6 +20,9 @@ target_sources(app PRIVATE
   ${REPO_NFC}/protocols/ndef/ndef.c
   ${REPO_NFC}/protocols/ndef/ndef_listener.c
   ${REPO_NFC}/protocols/ndef/ndef_poller.c
+  ${REPO_NFC}/protocols/ultralight/ultralight.c
+  ${REPO_NFC}/protocols/ultralight/ultralight_listener.c
+  ${REPO_NFC}/protocols/ultralight/ultralight_poller.c
   ${REPO_NFC}/store/nfc_store.c
   ${REPO_NFC}/applets/nfc_applet_policy.c
   ${REPO_NFC}/applets/nfc_applet_verify_compare.c
@@ -30,8 +33,10 @@ target_sources(app PRIVATE
 target_include_directories(app PRIVATE
   ${REPO_NFC}
   ${REPO_NFC}/protocols/ndef
+  ${REPO_NFC}/protocols/ultralight
   ${REPO_NFC}/applets
   ${REPO_SRC}
   ${CMAKE_CURRENT_SOURCE_DIR}/../../fixtures/store
+  ${CMAKE_CURRENT_SOURCE_DIR}/../../fixtures/ultralight
   ${NFC_TEST_COMMON_INCLUDES}
 )

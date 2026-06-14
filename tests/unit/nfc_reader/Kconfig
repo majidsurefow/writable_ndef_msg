@@ -4,6 +4,21 @@ mainmenu "NFC reader applet unit tests"
 
 source "Kconfig.zephyr"
 
+config NFC_PROTOCOL_NDEF
+	bool "NDEF Type-4 protocol model"
+	default n
+
+config NFC_PROTOCOL_ULTRALIGHT
+	bool "MIFARE Ultralight / NTAG protocol model"
+	default n
+	select NFC_PROTOCOL_NDEF
+
+config NFC_ULTRALIGHT_MAX_PAGES
+	int "Maximum Ultralight pages in data model"
+	default 256
+	range 16 256
+	depends on NFC_PROTOCOL_ULTRALIGHT
+
 config NFC_NDEF_MAX_SIZE
 	int "Maximum NDEF message payload (bytes)"
 	default 500
