@@ -296,7 +296,7 @@ P3 is a read-only audit phase. All findings confirm correct implementation per C
 | **FeliCa** | clone-only | `Felica.nfc` | model + poller decode | NFC-F polling + block read (tech_mask gap) | No |
 | **ISO15693-3** | clone-only | (via SLIX) | model + poller decode | NFC-V inventory + block read | No |
 | **SLIX** | clone-only | `Slix_cap_default/missed/accept_all_pass.nfc` | model + poller, CAP variants | NFC-V SLIX read over RF | No |
-| **DESFire** | emulatable | (reader-captured) | model + poller + listener APDU | ISO-DEP transceive, app/file SELECT | Yes (partial) |
+| **DESFire** | emulatable | `MfDesfire_EV1_sample.nfc` + reader-captured | model + poller + listener APDU | ISO-DEP transceive, app/file SELECT + READ_DATA | Yes (partial) |
 | **EMV** | emulatable | (reader-captured) | model + poller + listener decode | PPSE/AID SELECT + READ RECORD | Yes (partial) |
 | **Aliro** | emulatable | (proprietary) | model + poller + listener; AID router | ISO-DEP AUTH transcript exchange | Yes (partial) |
 
@@ -811,6 +811,85 @@ All doc fixes are consistent with:
 ### Assessment
 
 The stack is lean relative to feature set. 55 KB RAM for a full reader with 9 protocols, 4-slot store, and shell is reasonable. The "work queue or two" expectation is accurate (2 queues, ~3 KB stacks), but protocol data models (especially DESFire at 10 KB) and store slots (16.5 KB) dominate RAM. Production builds should tune these Kconfig options based on actual card complexity.
+
+---
+
+## Flipper Parity Review (post P1-P7)
+
+**Date:** 2026-06-14 · **Branch:** `nfc-stack` · **Baseline:** `7359cf2` (pre-P1) → `b80d127` (HEAD)
+
+### Commit inventory (7359cf2..HEAD)
+
+| Phase | Commits | Landed? |
+|-------|---------|---------|
+| **P1** Ultralight | `1b7df09`..`6072559` (5) | **Yes** — PWD auth, Ntag213_locked golden |
+| **P2** FeliCa | — | **No** — poller_i + CRC + framed mocks in working tree only |
+| **P3** SLIX/15693 | — | **Partial** — parent + child poller hardened uncommitted (`iso15693_3_poller_i`, `slix_poller_i`); no `nfc_iso15693_3/` suite |
+| **P4** EMV | `3e46728`, `3c36374`, `34685f3`, `cccb3d7`, `b80d127` | **Yes** — PPSE FCI, AFL READ RECORD loop, multi-record mock, synthetic golden note |
+| **P4** Aliro | `6373e65`, `07e049b` | **Partial** — AUTH0 in poller + fixtures; listener crypto shim staged |
+| **P5** DESFire | — | **No** — `desfire_poller_i.c` + PICC→app→file SM uncommitted |
+| **P6** Classic | `91d8670`, `35838a4`, `231456d` | **Yes** — sector-0 TX spot-check, truncated/no_session_end, TX sidecar script |
+| **P7** NDEF docs | `6ba164b`..`7d469ec` (4) | **Yes** — T2/T4 split, `NDEF_T2_T4_ROUTING.md` |
+
+**Pending agents:** P2 (FeliCa commit), P3 (SLIX addressed + parent suite), P5 (DESFire commit), P4 Aliro listener.
+
+### Parity summary
+
+| Protocol | Parity | Committed? | Test honesty |
+|----------|--------|------------|--------------|
+| Ultralight | **good** | Yes | Auth-aware golden (`pages_read=4`); no Tier B TX asserts |
+| FeliCa | **excellent** | WIP | 29-TX framed asserts exist locally; not on branch yet |
+| ISO15693-3 | **good** (parent) | WIP | No standalone suite; covered indirectly via SLIX RX goldens |
+| SLIX | **good** | WIP | Addressed mfg frames in WIP; no TX asserts; RX golden only |
+| Classic | **excellent** | Yes | 98-step RX + 5-step sector-0 TX; §14.3 truncated/no_session_end landed |
+| DESFire | **good** | WIP | Deep loopback compare + app/file SM local; PICC-only on HEAD |
+| EMV | n/a (spec) | Yes | AFL-driven records + PAN/track2 compare — not Flipper |
+| Aliro | n/a (no Flipper) | Partial | Poller AUTH0 (`07e049b`); transcript compare; listener shim staged |
+| NDEF T4 | n/a (NXP T4T) | Yes | §5.1 NXP table; Flipper parse-only for T2 content |
+
+### Per-protocol gaps
+
+**Ultralight** (`ultralight_poller.c` vs `mf_ultralight_poller*.c`) — **good**
+- Matches: PWD `0x1B`, TryDefaultPass (`0xFF…FF` when `authlim==0`), partial read stops at AUTH0 (`ultralight_poller.c:273–276`).
+- Gaps: MFUL-C 3DES auth (`0x1A`/`0xAF`) absent; no tearing/counter/signature SM (`mf_ultralight_poller.c:374–407`).
+- Follow-up: Tier B TX asserts for locked NTAG; MFUL-C auth deferred.
+
+**FeliCa** (`felica_poller_i.c` vs `felica_poller_i.c`) — **excellent** (uncommitted)
+- Matches: CRC16 append/check/trim, poll len+`0x00`, Lite block-index skips (`felica_poller_i.c:188–202` ↔ Flipper `felica_poller.c:446–451`), SF1/SF2 zero-fill.
+- Gaps: Non-Lite PMm workflows return `-ENOTSUP` (intentional).
+- Follow-up: Commit P2 bundle; register framed mocks in flipper README.
+
+**ISO15693-3** (`iso15693_3_poller.c` vs `iso15693_3_poller_i.c`) — **good** (uncommitted)
+- Matches: `0x26` inventory, `0x02` sysinfo/read/security, CRC, optional-step degrade, `GET_BLOCKS_SECURITY` batch (`iso15693_3_poller.c:119–165`).
+- Gaps: No `tests/unit/nfc_iso15693_3/`; not in twister matrix.
+- Follow-up: Standalone Tier A/B suite per P3 brief.
+
+**SLIX** (`slix_poller.c` vs `slix_poller_i.c`) — **good** (uncommitted)
+- Matches: `slix_poller_prepare_request()` addressed `0x22`+mfg `0x04`+UID reversed (`slix_poller_i.c:12–45`); type-gated NXP sysinfo/signature; synthetic `0xB0` CAP probe removed.
+- Gaps: No TX asserts in `tests/unit/nfc_slix/`; CAP loaded from model not exercised in poller read path.
+- Follow-up: Commit P3 bundle; addressed framed mocks + TX asserts.
+
+**Classic** (`classic_poller.c` vs `mf_classic_poller_i.c`) — **excellent**
+- Matches: Crypto1 auth+encrypted read, 98-step RX replay; TX spot-check steps 0–4 (`test_poller.c:197–208`).
+- Gaps: Full 98-TX blocked by `NFC_SESSION_MOCK_MAX_TX=32` (spot-check by design); no dict attack.
+- Follow-up: Optional full 98-TX if mock cap raised.
+
+**DESFire** (`desfire_poller.c` vs `mf_desfire_poller*.c`) — **good** (uncommitted)
+- Matches: PICC→app→file SM, `0x91AF` chunking (`desfire_poller_i.c:50–97`); APDU+`91 xx` framing (intentional vs Flipper native cmd bytes).
+- Gaps: Auth-gated directory skips silently; `MfDesfire_EV1_sample.nfc` untracked; shallow compare still on HEAD (`desfire_compare` UID+free_memory only).
+- Follow-up: Commit P5; deepen compare on branch; Flipper `.nfc` generator path.
+
+**Skipped (documented):** EMV — EMVCo spec, no Flipper poller. Aliro — proprietary, no Flipper. NDEF T4 — NXP `RW_NDEF_T4T` / cookbook §5.1; Flipper T2 parse-only.
+
+### Cross-cutting (post P2-P7)
+
+| Item | Before | After |
+|------|--------|-------|
+| EMV shallow compare | UID/AID only | **Fixed** — AFL, records, PAN, track2 (`emv_compare` + poller READ RECORD loop) |
+| DESFire shallow compare | PICC fields only | **Fixed locally** — apps/files/payload; not committed |
+| Aliro compare | Transcript only | Unchanged; AUTH fixtures added (`6373e65`) |
+| P7 doc drift | T2/T4 conflated | **Fixed** — `NDEF_T2_T4_ROUTING.md`, cookbook §5.1/§5.2 split |
+| Twister spot-check | — | **BLOCKED** — SDK mismatch (needs Zephyr-sdk 0.16; host has 1.0.1) |
 
 ---
 
