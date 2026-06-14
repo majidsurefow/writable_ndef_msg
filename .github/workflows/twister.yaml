@@ -155,6 +155,7 @@ jobs:
             tests/unit/nfc_slix
             tests/unit/nfc_desfire
             tests/unit/nfc_emv
+            tests/unit/nfc_aliro
             tests/unit/nfc_ndef
           )
           for dir in "${UNIT_DIRS[@]}"; do

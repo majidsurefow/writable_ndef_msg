@@ -1,0 +1,23 @@
+# Aliro credential protocol — cookbook §5.6 (F3, PSA deferred listen).
+
+config NFC_PROTOCOL_ALIRO
+	bool "Aliro credential protocol"
+	default n
+	depends on NFC_STACK
+	help
+	  Aliro expedited AUTH poller/listener with deferred crypto work.
+
+if NFC_PROTOCOL_ALIRO
+
+config NFC_ALIRO_PROTOCOL_VERIFIED
+	bool "Aliro wire format verified against spec 0.9.4"
+	default n
+	help
+	  Gate hardware-facing AUTH field order checks (cookbook §5.6).
+
+config NFC_ALIRO_MAX_TRANSCRIPT
+	int "Maximum public AUTH transcript bytes"
+	default 512
+	range 128 1024
+
+endif

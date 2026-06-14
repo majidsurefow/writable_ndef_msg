@@ -47,6 +47,11 @@
 #include "protocols/emv/emv_poller.h"
 #endif
 
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_ALIRO)
+#include "protocols/aliro/aliro_listener.h"
+#include "protocols/aliro/aliro_poller.h"
+#endif
+
 #if IS_ENABLED(CONFIG_NFC_STORE)
 #include "store/nfc_store.h"
 #endif
@@ -383,6 +388,54 @@ static int emv_poller_read_stub(const nfc_reader_session_t *session, void *out)
 }
 #endif
 
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_ALIRO)
+static int aliro_poller_read_wrap(const nfc_reader_session_t *session, void *out)
+{
+	return aliro_poller_read(session, out);
+}
+
+static int aliro_poller_clone(const nfc_reader_session_t *session, const char *tag)
+{
+	aliro_data_t data;
+	const nfc_service_t *svcs[] = { aliro_listener_get() };
+	int ret;
+
+	aliro_data_reset(&data);
+	ret = aliro_poller_read(session, &data);
+	if (ret != 0) {
+		LOG_WRN("Aliro poller read failed: %d", ret);
+		return ret;
+	}
+
+	ret = aliro_listener_init(&data);
+	if (ret != 0 && ret != -EALREADY) {
+		return ret;
+	}
+
+	ret = nfc_store_save(tag, svcs, ARRAY_SIZE(svcs));
+	if (ret != 0) {
+		LOG_ERR("nfc_store_save failed: %d", ret);
+	}
+
+	return ret;
+}
+#else
+static int aliro_poller_detect_stub(const nfc_reader_session_t *session)
+{
+	ARG_UNUSED(session);
+
+	return -ENOTSUP;
+}
+
+static int aliro_poller_read_stub(const nfc_reader_session_t *session, void *out)
+{
+	ARG_UNUSED(session);
+	ARG_UNUSED(out);
+
+	return -ENOTSUP;
+}
+#endif
+
 #if IS_ENABLED(CONFIG_NFC_PROTOCOL_NDEF)
 static int nfc_reader_poller_ndef_read(const nfc_reader_session_t *session, void *out)
 {
@@ -567,6 +620,27 @@ static const nfc_reader_poller_entry_t s_pollers[] = {
 		.tech_mask = NFC_TECH_ISO_DEP_A,
 		.detect = emv_poller_detect_stub,
 		.read = emv_poller_read_stub,
+		.listener_get = NULL,
+		.clone_fn = NULL,
+	},
+#endif
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_ALIRO)
+	{
+		.name = "aliro",
+		.persist_id = NFC_PERSIST_ID_ALIRO,
+		.tech_mask = NFC_TECH_ISO_DEP_A,
+		.detect = aliro_poller_detect,
+		.read = aliro_poller_read_wrap,
+		.listener_get = aliro_listener_get,
+		.clone_fn = aliro_poller_clone,
+	},
+#else
+	{
+		.name = "aliro",
+		.persist_id = NFC_PERSIST_ID_ALIRO,
+		.tech_mask = NFC_TECH_ISO_DEP_A,
+		.detect = aliro_poller_detect_stub,
+		.read = aliro_poller_read_stub,
 		.listener_get = NULL,
 		.clone_fn = NULL,
 	},

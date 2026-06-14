@@ -34,6 +34,32 @@ config NFC_PROTOCOL_DESFIRE
 	bool "MIFARE DESFire protocol model (partial emulatable)"
 	default n
 
+config NFC_PROTOCOL_EMV
+	bool "EMV contactless protocol model (partial emulatable)"
+	default n
+
+config NFC_PROTOCOL_ALIRO
+	bool "Aliro credential protocol model (partial emulatable)"
+	default n
+
+config NFC_EMV_MAX_RECORDS
+	int "Maximum EMV READ RECORD blobs"
+	default 2
+	range 1 4
+	depends on NFC_PROTOCOL_EMV
+
+config NFC_EMV_RECORD_SIZE
+	int "Maximum EMV tag-70 record size"
+	default 64
+	range 32 128
+	depends on NFC_PROTOCOL_EMV
+
+config NFC_ALIRO_MAX_TRANSCRIPT
+	int "Maximum Aliro AUTH transcript bytes"
+	default 512
+	range 128 1024
+	depends on NFC_PROTOCOL_ALIRO
+
 config NFC_DESFIRE_MAX_APPS
 	int "Maximum DESFire applications"
 	default 1

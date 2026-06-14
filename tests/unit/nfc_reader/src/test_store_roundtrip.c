@@ -104,9 +104,15 @@ static void fill_fixture_model(ndef_data_t *data)
 	data->ndef_file_len = (uint16_t)(NFC_NDEF_NLEN_FIELD_LEN + sizeof(uri));
 }
 
+static const nfc_transport_caps_t s_test_hal_caps = {
+	.roles = NFC_ROLE_READER | NFC_ROLE_LISTEN,
+	.technologies = NFC_TECH_ALL_READER,
+	.tier = NFC_TIER_SMART,
+};
+
 const nfc_transport_caps_t *nfc_transport_get_capabilities(void)
 {
-	return NULL;
+	return &s_test_hal_caps;
 }
 
 static void *suite_setup(void)

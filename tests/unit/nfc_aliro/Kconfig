@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: Apache-2.0
+mainmenu "Aliro protocol unit tests"
+source "Kconfig.zephyr"
+config NFC_ALIRO_TEST_TIER_POLLER
+	bool "Build Aliro poller tier tests"
+	default n
+config NFC_ALIRO_TEST_TIER_LISTENER
+	bool "Build Aliro listener tier tests"
+	default n
