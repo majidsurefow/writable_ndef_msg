@@ -76,10 +76,11 @@ Applets compose primitives. CI may call primitives directly for bring-up; produc
 | URI (5 B) | same | `test_virtual_loopback_uri_5byte` | `ndef_uri_5byte.card.bin` |
 | chunk (NLEN=300) | same | `test_virtual_loopback_chunk_255` | `ndef_chunk_255.card.bin` |
 
-**Flipper catalog (12 `.nfc` files — parity tracker):**
+**Flipper catalog (13 `.nfc` files — parity tracker):**
 
 | Flipper `.nfc` | Tier A/B fixtures | Tier A/B/C ztest | Tier E+ | `.card.bin` |
 |----------------|-------------------|------------------|---------|-------------|
+| `MfClassic_1K_4b.nfc` | `tests/fixtures/classic/` | **F2 Tier A/B** (`nfc_classic/`) | **SKIP** | `MfClassic_1K_4b.card.bin` |
 | `Ultralight_11.nfc` | `tests/fixtures/ultralight/` | pending F1 (`nfc_ultralight/`) | pending F1 | `Ultralight_11.card.bin` |
 | `Ultralight_21.nfc` | yes | pending F1 | pending F1 | `Ultralight_21.card.bin` |
 | `Ultralight_C.nfc` | yes | pending F1 | pending F1 | `Ultralight_C.card.bin` |
@@ -125,7 +126,7 @@ Generator: `scripts/nfc/ndef_to_fixture.py --variant all` (cookbook [§5.1](NFC_
 **Ztest counts (QEMU, 2026-06-14):**
 - `nfc_ndef`: 87 cases (3 configs)
 - `nfc_ultralight`: 32 cases (2 configs)
-- `nfc_classic`: 17 cases (2 configs)
+- `nfc_classic`: 20 cases (2 configs)
 - `nfc_felica`: 13 cases (2 configs)
 - `nfc_slix`: 18 cases (2 configs)
 - `nfc_desfire`: 30 cases (3 configs)
@@ -135,7 +136,7 @@ Generator: `scripts/nfc/ndef_to_fixture.py --variant all` (cookbook [§5.1](NFC_
 - `nfc_apdu_asm`: 4 cases (1 config)
 - `pn7160_tml`: 9 cases (1 config)
 
-**Total CI matrix:** 24 configs, 392 test cases.
+**Total CI matrix:** 24 configs, 395 test cases.
 
 ---
 
@@ -144,7 +145,7 @@ Generator: `scripts/nfc/ndef_to_fixture.py --variant all` (cookbook [§5.1](NFC_
 ```
 tests/
   fixtures/
-    nfc/flipper/     # 12 GPL .nfc reference files (not linked by CI)
+    nfc/flipper/     # 13 GPL .nfc reference files (not linked by CI)
     ndef/            # NDEF *.inc, *.bin
     store/           # Tier E *.card.bin envelopes (13 goldens — see store/README.md)
     ultralight/      # Tier A/B from flipper/ (6 variants)
@@ -159,9 +160,9 @@ tests/
     nfc_reader/      # Tier E + E+ (13 ztests — store, verify, loopback)
 ```
 
-Flipper provenance and 12-file manifest: [tests/fixtures/nfc/flipper/README.md](../../tests/fixtures/nfc/flipper/README.md).
+Flipper provenance and 13-file manifest: [tests/fixtures/nfc/flipper/README.md](../../tests/fixtures/nfc/flipper/README.md).
 
-**Offline converter:** `scripts/nfc/flipper_nfc_to_fixture.py` — full FlipperFormat parser; `.nfc` → `<stem>_model.bin` + `<stem>_read.inc` (+ optional `<stem>.card.bin` via `--card-bin`). Batch: `--all --card-bin` regenerates all 12 Flipper inputs (10 store goldens; HAL signal files skip `.card.bin`). NDEF (no Flipper protocol folder): `scripts/nfc/ndef_to_fixture.py` → Tier A `.bin` + Tier E `.card.bin` — see cookbook [§14.12](NFC_PROTOCOLS_COOKBOOK.md#1412-protocol-golden-chain-workflow-locked).
+**Offline converter:** `scripts/nfc/flipper_nfc_to_fixture.py` — full FlipperFormat parser; `.nfc` → `<stem>_model.bin` + `<stem>_read.inc` (+ Classic `<stem>_tx.inc`; optional `<stem>.card.bin` via `--card-bin`). Batch: `--all --card-bin` regenerates all 13 Flipper inputs (11 store goldens; HAL signal files skip `.card.bin`). NDEF (no Flipper protocol folder): `scripts/nfc/ndef_to_fixture.py` → Tier A `.bin` + Tier E `.card.bin` — see cookbook [§14.12](NFC_PROTOCOLS_COOKBOOK.md#1412-protocol-golden-chain-workflow-locked).
 
 ---
 
@@ -204,7 +205,7 @@ A tag or saved slot is never one file format. It is the same **protocol model** 
               .card blob (v1)  OR  .nfc file (v2 store)
 ```
 
-**Today:** physical read → model → `.card`. Flipper `.nfc` → model → `.card.bin` via `flipper_nfc_to_fixture.py --card-bin` (10 Flipper-derived store goldens committed; 3 NDEF goldens via `ndef_to_fixture.py`).
+**Today:** physical read → model → `.card`. Flipper `.nfc` → model → `.card.bin` via `flipper_nfc_to_fixture.py --card-bin` (10 Flipper-derived store goldens committed; 3 NDEF goldens via `ndef_to_fixture.py`). **EMV** goldens are synthetic only (`protocol_to_card_bin.py --emv` / `--emv-mc`); Flipper provides no EMV wire captures — see [`tests/fixtures/emv/README.md`](../tests/fixtures/emv/README.md) and [`wave5-emv.md`](archive/waves/wave5-emv.md) §8.
 
 **Offline bridge for applet mock tests:**
 
