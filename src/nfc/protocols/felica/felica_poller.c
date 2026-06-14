@@ -84,7 +84,12 @@ static int felica_poller_read_lite_blocks(nfc_reader_session_t *session, felica_
 int felica_poller_detect(const nfc_reader_session_t *session)
 {
 	nfc_reader_session_t *mut = (nfc_reader_session_t *)session;
-	felica_data_t scratch;
+	const felica_poller_polling_command_t cmd = {
+		.system_code = FELICA_SYSTEM_CODE_ANY,
+		.request_code = 0U,
+		.time_slot = FELICA_TIME_SLOT_1,
+	};
+	felica_poller_polling_response_t resp;
 	int ret;
 
 	ret = felica_poller_session_valid(session);
@@ -92,8 +97,7 @@ int felica_poller_detect(const nfc_reader_session_t *session)
 		return ret;
 	}
 
-	felica_data_reset(&scratch);
-	ret = felica_poller_poll(mut, &scratch);
+	ret = felica_poller_polling(mut, &cmd, &resp, FELICA_POLLER_TIMEOUT);
 	if (ret != 0) {
 		return -ENOTSUP;
 	}

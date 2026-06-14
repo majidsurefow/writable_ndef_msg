@@ -47,6 +47,7 @@ uint8_t felica_persist_id(void);
 
 int felica_serialize(const felica_data_t *data, uint8_t *out, size_t out_max, size_t *out_len);
 int felica_deserialize(felica_data_t *data, const uint8_t *in, size_t in_len);
+int felica_compare(const felica_data_t *expected, const felica_data_t *actual);
 
 const nfc_service_t *felica_service_get(void);
 

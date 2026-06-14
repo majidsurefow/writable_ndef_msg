@@ -4,6 +4,7 @@
 zephyr_library_sources_ifdef(CONFIG_NFC_PROTOCOL_FELICA felica.c)
 zephyr_library_sources_ifdef(CONFIG_NFC_PROTOCOL_FELICA felica_poller.c)
 zephyr_library_sources_ifdef(CONFIG_NFC_PROTOCOL_FELICA felica_poller_i.c)
+zephyr_library_sources_ifdef(CONFIG_NFC_PROTOCOL_FELICA felica_listener.c)
 zephyr_library_sources_ifdef(CONFIG_NFC_PROTOCOL_FELICA
   ${CMAKE_CURRENT_SOURCE_DIR}/../../helpers/felica_crc.c
 )

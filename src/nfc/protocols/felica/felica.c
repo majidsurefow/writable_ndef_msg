@@ -148,6 +148,40 @@ int felica_deserialize(felica_data_t *data, const uint8_t *in, size_t in_len)
 	return 0;
 }
 
+int felica_compare(const felica_data_t *expected, const felica_data_t *actual)
+{
+	if ((expected == NULL) || (actual == NULL)) {
+		return -EINVAL;
+	}
+
+	if (memcmp(expected->idm, actual->idm, FELICA_IDM_SIZE) != 0) {
+		return -EBADMSG;
+	}
+	if (memcmp(expected->pmm, actual->pmm, FELICA_PMM_SIZE) != 0) {
+		return -EBADMSG;
+	}
+	if (expected->blocks_total != actual->blocks_total) {
+		return -EBADMSG;
+	}
+	if (expected->blocks_read != actual->blocks_read) {
+		return -EBADMSG;
+	}
+
+	for (uint16_t i = 0U; i < expected->blocks_total; i++) {
+		if (expected->blocks[i].sf1 != actual->blocks[i].sf1) {
+			return -EBADMSG;
+		}
+		if (expected->blocks[i].sf2 != actual->blocks[i].sf2) {
+			return -EBADMSG;
+		}
+		if (memcmp(expected->blocks[i].data, actual->blocks[i].data, FELICA_BLOCK_DATA_SIZE) != 0) {
+			return -EBADMSG;
+		}
+	}
+
+	return 0;
+}
+
 const nfc_service_t *felica_service_get(void)
 {
 	return &s_felica_svc;

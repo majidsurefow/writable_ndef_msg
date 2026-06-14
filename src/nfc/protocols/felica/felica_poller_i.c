@@ -12,11 +12,13 @@
 #include <errno.h>
 #include <string.h>
 
+static uint8_t s_poller_tx[FELICA_POLLER_MAX_BUFFER_SIZE];
+static uint8_t s_poller_rx[FELICA_POLLER_MAX_BUFFER_SIZE];
+
 int felica_poller_frame_exchange(nfc_reader_session_t *session, const uint8_t *tx, size_t tx_len,
 				 uint8_t *rx, size_t rx_max, size_t *rx_len,
 				 k_timeout_t timeout)
 {
-	uint8_t tx_framed[FELICA_POLLER_MAX_BUFFER_SIZE];
 	size_t framed_len = tx_len;
 	int ret;
 
@@ -24,14 +26,14 @@ int felica_poller_frame_exchange(nfc_reader_session_t *session, const uint8_t *t
 		return -EINVAL;
 	}
 
-	if ((tx_len == 0U) || ((tx_len + FELICA_CRC_SIZE) > sizeof(tx_framed))) {
+	if ((tx_len == 0U) || ((tx_len + FELICA_CRC_SIZE) > sizeof(s_poller_tx))) {
 		return -EINVAL;
 	}
 
-	(void)memcpy(tx_framed, tx, tx_len);
-	felica_crc_append(tx_framed, &framed_len);
+	(void)memcpy(s_poller_tx, tx, tx_len);
+	felica_crc_append(s_poller_tx, &framed_len);
 
-	ret = nfc_reader_session_transceive(session, tx_framed, framed_len, rx, rx_max, rx_len,
+	ret = nfc_reader_session_transceive(session, s_poller_tx, framed_len, rx, rx_max, rx_len,
 					    timeout);
 	if (ret != 0) {
 		return ret;
@@ -50,7 +52,6 @@ int felica_poller_polling(nfc_reader_session_t *session,
 			  felica_poller_polling_response_t *resp, k_timeout_t timeout)
 {
 	uint8_t tx[6U];
-	uint8_t rx[FELICA_POLLER_MAX_BUFFER_SIZE];
 	size_t rx_len = 0U;
 	int ret;
 
@@ -65,19 +66,19 @@ int felica_poller_polling(nfc_reader_session_t *session,
 	tx[4] = cmd->request_code;
 	tx[5] = cmd->time_slot;
 
-	ret = felica_poller_frame_exchange(session, tx, sizeof(tx), rx, sizeof(rx), &rx_len,
-					   timeout);
+	ret = felica_poller_frame_exchange(session, tx, sizeof(tx), s_poller_rx, sizeof(s_poller_rx),
+					   &rx_len, timeout);
 	if (ret != 0) {
 		return ret;
 	}
 
 	if ((rx_len < (2U + FELICA_IDM_SIZE + FELICA_PMM_SIZE)) ||
-	    (rx[1] != FELICA_POLLER_CMD_POLLING_RESP_CODE)) {
+	    (s_poller_rx[1] != FELICA_POLLER_CMD_POLLING_RESP_CODE)) {
 		return -EIO;
 	}
 
-	(void)memcpy(resp->idm, &rx[2], FELICA_IDM_SIZE);
-	(void)memcpy(resp->pmm, &rx[2U + FELICA_IDM_SIZE], FELICA_PMM_SIZE);
+	(void)memcpy(resp->idm, &s_poller_rx[2], FELICA_IDM_SIZE);
+	(void)memcpy(resp->pmm, &s_poller_rx[2U + FELICA_IDM_SIZE], FELICA_PMM_SIZE);
 	return 0;
 }
 
@@ -124,8 +125,6 @@ int felica_poller_read_blocks(nfc_reader_session_t *session, const uint8_t idm[F
 			      uint16_t service_code, felica_poller_read_response_t *resp,
 			      k_timeout_t timeout)
 {
-	uint8_t tx[FELICA_POLLER_MAX_BUFFER_SIZE];
-	uint8_t rx[FELICA_POLLER_MAX_BUFFER_SIZE];
 	size_t tx_len = 0U;
 	size_t rx_len = 0U;
 	size_t need;
@@ -139,26 +138,27 @@ int felica_poller_read_blocks(nfc_reader_session_t *session, const uint8_t idm[F
 		return -EINVAL;
 	}
 
-	felica_poller_prepare_tx_buffer(tx, &tx_len, idm, FELICA_CMD_READ_WITHOUT_ENCRYPTION,
+	felica_poller_prepare_tx_buffer(s_poller_tx, &tx_len, idm, FELICA_CMD_READ_WITHOUT_ENCRYPTION,
 					service_code, block_count, block_numbers);
 
-	ret = felica_poller_frame_exchange(session, tx, tx_len, rx, sizeof(rx), &rx_len, timeout);
+	ret = felica_poller_frame_exchange(session, s_poller_tx, tx_len, s_poller_rx,
+					   sizeof(s_poller_rx), &rx_len, timeout);
 	if (ret != 0) {
 		return ret;
 	}
 
 	need = 2U + FELICA_IDM_SIZE + 3U + FELICA_BLOCK_DATA_SIZE;
-	if ((rx_len < need) || (rx[1] != FELICA_CMD_READ_RESP_CODE)) {
+	if ((rx_len < need) || (s_poller_rx[1] != FELICA_CMD_READ_RESP_CODE)) {
 		return -EIO;
 	}
 
-	resp->length = rx[0];
-	resp->response_code = rx[1];
-	(void)memcpy(resp->idm, &rx[2], FELICA_IDM_SIZE);
-	resp->sf1 = rx[2U + FELICA_IDM_SIZE];
-	resp->sf2 = rx[2U + FELICA_IDM_SIZE + 1U];
-	resp->block_count = rx[2U + FELICA_IDM_SIZE + 2U];
-	(void)memcpy(resp->data, &rx[2U + FELICA_IDM_SIZE + 3U], FELICA_BLOCK_DATA_SIZE);
+	resp->length = s_poller_rx[0];
+	resp->response_code = s_poller_rx[1];
+	(void)memcpy(resp->idm, &s_poller_rx[2], FELICA_IDM_SIZE);
+	resp->sf1 = s_poller_rx[2U + FELICA_IDM_SIZE];
+	resp->sf2 = s_poller_rx[2U + FELICA_IDM_SIZE + 1U];
+	resp->block_count = s_poller_rx[2U + FELICA_IDM_SIZE + 2U];
+	(void)memcpy(resp->data, &s_poller_rx[2U + FELICA_IDM_SIZE + 3U], FELICA_BLOCK_DATA_SIZE);
 	return 0;
 }
 
@@ -200,4 +200,18 @@ uint8_t felica_poller_lite_next_block_index(uint8_t block_index)
 	}
 
 	return block_index;
+}
+
+uint8_t felica_poller_lite_wire_to_dump_index(uint8_t wire_block)
+{
+	uint8_t wire = 0U;
+
+	for (uint8_t dump_idx = 0U; dump_idx < FELICA_BLOCKS_LITE_TOTAL; dump_idx++) {
+		if (wire == wire_block) {
+			return dump_idx;
+		}
+		wire = felica_poller_lite_next_block_index(wire);
+	}
+
+	return wire_block;
 }

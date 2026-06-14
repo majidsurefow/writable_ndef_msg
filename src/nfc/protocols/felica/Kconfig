@@ -5,8 +5,8 @@ config NFC_PROTOCOL_FELICA
 	default n
 	depends on NFC_STACK
 	help
-	  FeliCa Lite block dump model and poller (reader only).
-	  No listener — clone-only.
+	  FeliCa Lite block dump model, poller, and virtual listener for tests.
+	  Product RF emulate remains clone-only (ENOTSUP).
 
 if NFC_PROTOCOL_FELICA
 

@@ -101,6 +101,8 @@ void felica_poller_prepare_tx_buffer_raw(uint8_t *tx, size_t *tx_len,
 
 uint8_t felica_poller_lite_next_block_index(uint8_t block_index);
 
+uint8_t felica_poller_lite_wire_to_dump_index(uint8_t wire_block);
+
 #ifdef __cplusplus
 }
 #endif
