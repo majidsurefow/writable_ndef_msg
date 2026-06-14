@@ -60,9 +60,9 @@ See `scripts/nfc/flipper_nfc_to_fixture.py --help`. After upstream Flipper updat
 | `Ntag215.nfc` | yes | pending F1 | pending F1 | yes |
 | `Ntag216.nfc` | yes | pending F1 | pending F1 | yes |
 | `Felica.nfc` | `tests/fixtures/felica/` | **SHIPPED** (29-TX Lite) | **SHIPPED** (virtual listener) | yes |
-| `Slix_cap_default.nfc` | `tests/fixtures/slix/` + parent `tests/fixtures/iso15693_3/` | **Tier A/B** (SLIX + ISO15693 parent) | **SKIP** | yes |
-| `Slix_cap_missed.nfc` | yes | **Tier A/B** | **SKIP** | yes |
-| `Slix_cap_accept_all_pass.nfc` | yes | **Tier A/B** | **SKIP** | yes |
+| `Slix_cap_default.nfc` | `tests/fixtures/slix/` + parent `tests/fixtures/iso15693_3/` | **SHIPPED** (Tier A/B/C) | **SHIPPED** (virtual listener) | yes |
+| `Slix_cap_missed.nfc` | yes | **SHIPPED** | **SHIPPED** | yes |
+| `Slix_cap_accept_all_pass.nfc` | yes | **SHIPPED** | **SHIPPED** | yes |
 | `nfc_nfca_signal_short.nfc` | `tests/fixtures/hal/` | pending (HAL) | n/a | n/a |
 | `nfc_nfca_signal_long.nfc` | `tests/fixtures/hal/` | pending (HAL) | n/a | n/a |
 | `MfClassic_1K_4b.nfc` | `tests/fixtures/classic/` | **Tier A/B** (`nfc_classic/`, §14.3 TX) | **SKIP** | yes |

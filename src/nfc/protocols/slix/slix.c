@@ -159,6 +159,50 @@ int slix_deserialize(slix_data_t *data, const uint8_t *in, size_t in_len)
 	return 0;
 }
 
+int slix_compare(const slix_data_t *expected, const slix_data_t *actual)
+{
+	int ret;
+
+	if ((expected == NULL) || (actual == NULL)) {
+		return -EINVAL;
+	}
+
+	ret = iso15693_3_compare(&expected->parent, &actual->parent);
+	if (ret != 0) {
+		return ret;
+	}
+
+	if (expected->capabilities != actual->capabilities) {
+		return -EBADMSG;
+	}
+	if (expected->type != actual->type) {
+		return -EBADMSG;
+	}
+	if (memcmp(expected->passwords, actual->passwords, sizeof(expected->passwords)) != 0) {
+		return -EBADMSG;
+	}
+	if (memcmp(expected->signature, actual->signature, SLIX_SIGNATURE_SIZE) != 0) {
+		return -EBADMSG;
+	}
+	if (expected->privacy_mode != actual->privacy_mode) {
+		return -EBADMSG;
+	}
+	if (expected->protection_pointer != actual->protection_pointer) {
+		return -EBADMSG;
+	}
+	if (expected->protection_condition != actual->protection_condition) {
+		return -EBADMSG;
+	}
+	if (expected->lock_eas != actual->lock_eas) {
+		return -EBADMSG;
+	}
+	if (expected->lock_ppl != actual->lock_ppl) {
+		return -EBADMSG;
+	}
+
+	return 0;
+}
+
 const nfc_service_t *slix_service_get(void)
 {
 	return &s_slix_svc;

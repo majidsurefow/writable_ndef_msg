@@ -59,6 +59,7 @@ slix_type_t slix_type_from_uid(const uint8_t uid[ISO15693_UID_SIZE]);
 
 int slix_serialize(const slix_data_t *data, uint8_t *out, size_t out_max, size_t *out_len);
 int slix_deserialize(slix_data_t *data, const uint8_t *in, size_t in_len);
+int slix_compare(const slix_data_t *expected, const slix_data_t *actual);
 
 const nfc_service_t *slix_service_get(void);
 

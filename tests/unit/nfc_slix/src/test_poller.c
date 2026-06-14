@@ -69,8 +69,10 @@ ZTEST(slix_poller, test_read_default_golden)
 	zassert_mem_equal(s_data.parent.block_security, s_expected.parent.block_security,
 			  s_expected.parent.block_count);
 	zassert_equal(s_data.capabilities, SLIX_CAP_DEFAULT);
+	zassert_equal(nfc_session_mock_tx_count(), 85U);
 	assert_tx_matches(0U, slix_Slix_cap_default_step0_tx, SLIX_SLIX_CAP_DEFAULT_STEP0_TX_LEN);
 	assert_tx_matches(1U, slix_Slix_cap_default_step1_tx, SLIX_SLIX_CAP_DEFAULT_STEP1_TX_LEN);
+	assert_tx_matches(84U, slix_Slix_cap_default_step84_tx, SLIX_SLIX_CAP_DEFAULT_STEP84_TX_LEN);
 }
 
 ZTEST(slix_poller, test_read_missed_cap)

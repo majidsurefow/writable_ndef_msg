@@ -17,3 +17,7 @@ config ISO15693_BLOCK_SIZE_MAX
 config NFC_SLIX_TEST_TIER_POLLER
 	bool "Build SLIX poller tier tests"
 	default n
+
+config NFC_SLIX_TEST_TIER_LISTENER
+	bool "Build SLIX listener tier tests"
+	default n

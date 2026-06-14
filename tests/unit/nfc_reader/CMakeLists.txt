@@ -90,6 +90,7 @@ if(CONFIG_NFC_PROTOCOL_ISO15693_3)
     ${REPO_NFC}/protocols/iso15693_3/iso15693_3.c
     ${REPO_NFC}/protocols/iso15693_3/iso15693_3_poller.c
     ${REPO_NFC}/protocols/iso15693_3/iso15693_3_poller_i.c
+    ${REPO_NFC}/protocols/iso15693_3/iso15693_3_listener.c
   )
 endif()
 
@@ -99,6 +100,7 @@ if(CONFIG_NFC_PROTOCOL_SLIX)
     ${REPO_NFC}/protocols/slix/slix.c
     ${REPO_NFC}/protocols/slix/slix_poller.c
     ${REPO_NFC}/protocols/slix/slix_poller_i.c
+    ${REPO_NFC}/protocols/slix/slix_listener.c
   )
 endif()
 

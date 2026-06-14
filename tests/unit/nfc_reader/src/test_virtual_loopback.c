@@ -36,6 +36,12 @@
 #include "protocols/felica/felica_poller.h"
 #include "felica_store_fixture.h"
 #endif /* CONFIG_NFC_PROTOCOL_FELICA */
+#if defined(CONFIG_NFC_PROTOCOL_SLIX)
+#include "protocols/slix/slix.h"
+#include "protocols/slix/slix_listener.h"
+#include "protocols/slix/slix_poller.h"
+#include "slix_store_fixture.h"
+#endif /* CONFIG_NFC_PROTOCOL_SLIX */
 
 #include "nfc_virtual_loopback.h"
 
@@ -48,6 +54,9 @@
 #include "Desfire_mock.h"
 #if defined(CONFIG_NFC_PROTOCOL_FELICA)
 #include "Felica_mock.h"
+#endif
+#if defined(CONFIG_NFC_PROTOCOL_SLIX)
+#include "Slix_cap_default_mock.h"
 #endif
 
 #include <string.h>
@@ -1155,3 +1164,104 @@ ZTEST(nfc_reader_loopback, test_virtual_loopback_felica)
 	zassert_ok(ret, "nfc_virtual_loopback_run failed: %d", ret);
 }
 #endif /* CONFIG_NFC_PROTOCOL_FELICA */
+
+#if defined(CONFIG_NFC_PROTOCOL_SLIX)
+static slix_data_t s_slix_expected;
+static slix_data_t s_slix_work;
+
+static int slix_clone_serialize(uint8_t *out, size_t out_max, size_t *out_len, void *user_ctx)
+{
+	ARG_UNUSED(user_ctx);
+
+	return slix_serialize(&s_slix_work, out, out_max, out_len);
+}
+
+static int slix_clone_deserialize(const uint8_t *in, size_t in_len, void *user_ctx)
+{
+	ARG_UNUSED(user_ctx);
+
+	return slix_deserialize(&s_slix_work, in, in_len);
+}
+
+static nfc_service_t s_slix_clone_svc = {
+	.serialize = slix_clone_serialize,
+	.deserialize = slix_clone_deserialize,
+	.persist_id = NFC_PERSIST_ID_SLIX,
+};
+
+static int slix_listener_setup(void *user_ctx)
+{
+	const slix_data_t *golden = user_ctx;
+
+	(void)slix_listener_shutdown();
+	if (golden == NULL) {
+		return -EINVAL;
+	}
+
+	return slix_listener_init(golden);
+}
+
+static void slix_listener_teardown(void *user_ctx)
+{
+	ARG_UNUSED(user_ctx);
+
+	(void)slix_listener_shutdown();
+}
+
+static int slix_copy_read(void *save_model, const void *read_out, void *user_ctx)
+{
+	ARG_UNUSED(user_ctx);
+
+	*(slix_data_t *)save_model = *(const slix_data_t *)read_out;
+	return 0;
+}
+
+static int slix_compare_wrap(const void *expected, const void *actual, void *user_ctx)
+{
+	ARG_UNUSED(user_ctx);
+
+	return slix_compare(expected, actual);
+}
+
+static int slix_poller_detect_wrap(nfc_reader_session_t *session)
+{
+	return slix_poller_detect(session);
+}
+
+static int slix_poller_read_wrap(nfc_reader_session_t *session, void *read_out)
+{
+	return slix_poller_read(session, read_out);
+}
+
+ZTEST(nfc_reader_loopback, test_virtual_loopback_slix)
+{
+	int ret;
+
+	slix_data_reset(&s_slix_expected);
+	slix_data_reset(&s_slix_work);
+	ret = slix_deserialize(&s_slix_expected, slix_Slix_cap_default_model,
+			       SLIX_SLIX_CAP_DEFAULT_MODEL_LEN);
+	zassert_ok(ret, "slix_deserialize failed: %d", ret);
+
+	ret = nfc_virtual_loopback_run(&(nfc_virtual_loopback_params_t){
+		.listener_svc = slix_listener_get(),
+		.save_svc = &s_slix_clone_svc,
+		.golden_blob = store_fixture_slix_cap_default_card,
+		.golden_blob_len = STORE_FIXTURE_SLIX_CAP_DEFAULT_CARD_LEN,
+		.golden_slot = "golden_slix",
+		.output_slot = "cloned_slix",
+		.poller_detect = slix_poller_detect_wrap,
+		.poller_read = slix_poller_read_wrap,
+		.read_out = &s_slix_work,
+		.listener_setup = slix_listener_setup,
+		.listener_teardown = slix_listener_teardown,
+		.listener_user_ctx = &s_slix_expected,
+		.save_model = &s_slix_work,
+		.copy_read_to_save = slix_copy_read,
+		.expected = &s_slix_expected,
+		.compare = slix_compare_wrap,
+		.verify_envelope = true,
+	});
+	zassert_ok(ret, "nfc_virtual_loopback_run failed: %d", ret);
+}
+#endif /* CONFIG_NFC_PROTOCOL_SLIX */
