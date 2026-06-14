@@ -31,7 +31,7 @@ ZTEST(nfc_reader_registry, test_pollers_table_clone_hooks)
 		}
 		if (strcmp(e->name, "ultralight") == 0) {
 			found_ultralight = true;
-			zassert_is_null(e->clone_fn, "Ultralight stub has no clone_fn yet");
+			zassert_not_null(e->clone_fn, "Ultralight poller needs clone_fn");
 		}
 	}
 

@@ -12,6 +12,11 @@
 #include "protocols/ndef/ndef_poller.h"
 #endif
 
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_ULTRALIGHT)
+#include "protocols/ultralight/ultralight_listener.h"
+#include "protocols/ultralight/ultralight_poller.h"
+#endif
+
 #if IS_ENABLED(CONFIG_NFC_STORE)
 #include "store/nfc_store.h"
 #endif
@@ -23,6 +28,45 @@
 
 LOG_MODULE_DECLARE(nfc_reader, CONFIG_LOG_DEFAULT_LEVEL);
 
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_ULTRALIGHT)
+static int ultralight_poller_read_wrap(const nfc_reader_session_t *session, void *out)
+{
+	return ultralight_poller_read(session, out);
+}
+
+static int ultralight_poller_clone(const nfc_reader_session_t *session, const char *tag)
+{
+	ultralight_data_t data;
+	const nfc_service_t *svcs[] = { ultralight_listener_get() };
+	int ret;
+
+	ultralight_data_reset(&data);
+	ret = ultralight_poller_read(session, &data);
+	if (ret != 0) {
+		LOG_WRN("Ultralight poller read failed: %d", ret);
+		return ret;
+	}
+
+	ret = ultralight_listener_init();
+	if (ret != 0 && ret != -EALREADY) {
+		LOG_ERR("ultralight_listener_init failed: %d", ret);
+		return ret;
+	}
+
+	ret = ultralight_listener_load(&data);
+	if (ret != 0) {
+		LOG_ERR("ultralight_listener_load failed: %d", ret);
+		return ret;
+	}
+
+	ret = nfc_store_save(tag, svcs, ARRAY_SIZE(svcs));
+	if (ret != 0) {
+		LOG_ERR("nfc_store_save failed: %d", ret);
+	}
+
+	return ret;
+}
+#else
 static int ultralight_poller_detect_stub(const nfc_reader_session_t *session)
 {
 	ARG_UNUSED(session);
@@ -37,6 +81,7 @@ static int ultralight_poller_read_stub(const nfc_reader_session_t *session, void
 
 	return -ENOTSUP;
 }
+#endif
 
 #if IS_ENABLED(CONFIG_NFC_PROTOCOL_NDEF)
 static int nfc_reader_poller_ndef_read(const nfc_reader_session_t *session, void *out)
@@ -88,10 +133,17 @@ static const nfc_reader_poller_entry_t s_pollers[] = {
 		.name = "ultralight",
 		.persist_id = NFC_PERSIST_ID_ULTRALIGHT,
 		.tech_mask = NFC_TECH_TYPE2,
+#if IS_ENABLED(CONFIG_NFC_PROTOCOL_ULTRALIGHT)
+		.detect = ultralight_poller_detect,
+		.read = ultralight_poller_read_wrap,
+		.listener_get = ultralight_listener_get,
+		.clone_fn = ultralight_poller_clone,
+#else
 		.detect = ultralight_poller_detect_stub,
 		.read = ultralight_poller_read_stub,
 		.listener_get = NULL,
 		.clone_fn = NULL,
+#endif
 	},
 	{
 		.detect = NULL,
