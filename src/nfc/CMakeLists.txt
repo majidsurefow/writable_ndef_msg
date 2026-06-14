@@ -20,6 +20,14 @@ if(CONFIG_NFC_STACK)
     add_subdirectory(protocols/felica)
   endif()
 
+  if(CONFIG_NFC_PROTOCOL_ISO15693_3)
+    add_subdirectory(protocols/iso15693_3)
+  endif()
+
+  if(CONFIG_NFC_PROTOCOL_SLIX)
+    add_subdirectory(protocols/slix)
+  endif()
+
   if(CONFIG_NFC_STORE)
     add_subdirectory(store)
   endif()

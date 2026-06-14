@@ -1,0 +1,22 @@
+# ISO15693-3 protocol — cookbook §5.8 (parent of SLIX).
+
+config NFC_PROTOCOL_ISO15693_3
+	bool "ISO15693-3 protocol model"
+	default n
+	depends on NFC_STACK
+	help
+	  ISO15693 inventory + block read model (reader only).
+
+if NFC_PROTOCOL_ISO15693_3
+
+config ISO15693_BLOCKS_MAX
+	int "Maximum ISO15693 blocks in data model"
+	default 256
+	range 16 256
+
+config ISO15693_BLOCK_SIZE_MAX
+	int "Maximum ISO15693 block size (bytes)"
+	default 32
+	range 4 32
+
+endif

@@ -1,0 +1,9 @@
+# NXP SLIX protocol — cookbook §5.9 (child of ISO15693-3).
+
+config NFC_PROTOCOL_SLIX
+	bool "NXP SLIX protocol model"
+	default n
+	depends on NFC_STACK
+	select NFC_PROTOCOL_ISO15693_3
+	help
+	  SLIX extensions atop ISO15693-3 parent (reader only, clone-only).
