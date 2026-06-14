@@ -23,6 +23,7 @@ from nfc_persist_ids import (  # noqa: E402
 )
 
 STORE_DIR = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "store"
+EMV_DIR = Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "emv"
 
 DESFIRE_MODEL = bytes([
     0x01, 0x04, 0x01, 0x01, 0x00, 0x18, 0x05, 0x01, 0x04, 0x01, 0x01, 0x00,
@@ -61,7 +62,7 @@ def model_bin_to_inc(data: bytes, comment: str) -> str:
 def emv_build_record0(track2_len: int, track2: bytes, pan: bytes | None = None) -> bytes:
     """Mirror emv_build_record0() + emv_tlv_close() in emv.c."""
     record = bytearray([0x70, 0x00])
-    start = len(record)
+    start = 1
     if pan:
         record.append(0x5A)
         record.append(len(pan))
@@ -130,6 +131,15 @@ def emit_fixture(stem: str, model: bytes, persist_id: int, comment: str) -> None
     print(f"Wrote {card_inc}", file=sys.stderr)
 
 
+def emit_emv_fixture(stem: str, model: bytes, persist_id: int, comment: str) -> None:
+    """Emit store envelope + protocol fixture dir copy for EMV goldens."""
+    emit_fixture(stem, model, persist_id, comment)
+    EMV_DIR.mkdir(parents=True, exist_ok=True)
+    emv_bin = EMV_DIR / f"{stem}.card.bin"
+    emv_bin.write_bytes(build_card_envelope(model, persist_id=persist_id, reader_capture=False))
+    print(f"Wrote {emv_bin} ({emv_bin.stat().st_size} bytes)", file=sys.stderr)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Regenerate desfire/emv/aliro store goldens.")
     parser.add_argument("--all", action="store_true", help="Emit all protocol card goldens")
@@ -148,11 +158,11 @@ def main() -> int:
         emit_fixture("Desfire", DESFIRE_MODEL, NFC_PERSIST_ID_DESFIRE,
                      "Tier E golden: nfc_store envelope for DESFire mock.")
     if args.all or args.emv:
-        emit_fixture("Emv", build_emv_default_model(), NFC_PERSIST_ID_EMV,
-                     "Tier E golden: nfc_store envelope for EMV default card.")
+        emit_emv_fixture("Emv", build_emv_default_model(), NFC_PERSIST_ID_EMV,
+                         "Tier E golden: nfc_store envelope for EMV default card.")
     if args.all or args.emv_mc:
-        emit_fixture("Emv_mc", build_emv_mastercard_model(), NFC_PERSIST_ID_EMV,
-                     "Tier E golden: nfc_store envelope for EMV Mastercard synthetic card.")
+        emit_emv_fixture("Emv_mc", build_emv_mastercard_model(), NFC_PERSIST_ID_EMV,
+                         "Tier E golden: nfc_store envelope for EMV Mastercard synthetic card.")
     if args.all or args.aliro:
         emit_fixture("Aliro", build_aliro_default_model(), NFC_PERSIST_ID_ALIRO,
                      "Tier E golden: nfc_store envelope for Aliro mock.")

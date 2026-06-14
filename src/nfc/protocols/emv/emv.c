@@ -82,7 +82,7 @@ static int emv_build_record0(emv_card_image_t *image)
 
 	emv_tlv_init(&w, image->record_data[0], CONFIG_NFC_EMV_RECORD_SIZE);
 	emv_tlv_open(&w, EMV_TAG_RECORD_TMPL);
-	start = w.pos;
+	start = 1U;
 	pan_bytes = (size_t)image->pan_len / 2U;
 	if (pan_bytes > EMV_PAN_BYTES) {
 		pan_bytes = EMV_PAN_BYTES;
