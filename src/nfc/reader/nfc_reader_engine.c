@@ -13,6 +13,9 @@
 
 #if IS_ENABLED(CONFIG_NFC_STORE)
 #include "store/nfc_store.h"
+#if IS_ENABLED(CONFIG_NFC_STORE_RAM)
+#include "store/nfc_store_ram.h"
+#endif
 #endif
 
 #include <errno.h>
@@ -54,6 +57,13 @@ static int nfc_reader_store_ensure(void)
 	if (ret != 0 && ret != -EALREADY) {
 		return ret;
 	}
+
+#if IS_ENABLED(CONFIG_NFC_STORE_RAM)
+	ret = nfc_store_ram_init();
+	if (ret != 0) {
+		return ret;
+	}
+#endif
 
 	s_store_ready = true;
 	return 0;

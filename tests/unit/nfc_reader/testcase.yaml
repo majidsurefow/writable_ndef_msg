@@ -13,3 +13,15 @@ tests:
       - native_sim/native
     integration_platforms:
       - qemu_cortex_m3
+  sample.nfc.unit.nfc_reader.store_ram:
+    tags:
+      - ci_unit
+      - nfc
+      - writable_ndef.nfc.reader
+      - writable_ndef.nfc.store_ram
+    platform_allow:
+      - native_sim
+      - native_sim/native
+    integration_platforms:
+      - native_sim
+    extra_args: OVERLAY_CONFIG=overlay-store-ram.conf

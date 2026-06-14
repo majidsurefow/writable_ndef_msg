@@ -23,6 +23,10 @@
 extern const union shell_cmd_entry nfc_stack_cmds;
 #endif
 
+#if IS_ENABLED(CONFIG_NFC_STORE_RAM) && IS_ENABLED(CONFIG_NFC_STORE_RAM_SHELL)
+extern const union shell_cmd_entry nfc_store_ram_cmds;
+#endif
+
 #if IS_ENABLED(CONFIG_NFC_APPLETS_SHELL)
 int cmd_nfc_scan(const struct shell *sh, size_t argc, char **argv);
 int cmd_nfc_read(const struct shell *sh, size_t argc, char **argv);
@@ -98,7 +102,7 @@ static int cmd_nfc_reader_clone(const struct shell *sh, size_t argc, char **argv
 		return -EINVAL;
 	}
 
-#if IS_ENABLED(CONFIG_NFC_STORE)
+#if IS_ENABLED(CONFIG_NFC_STORE) && !IS_ENABLED(CONFIG_NFC_STORE_RAM)
 	(void)nfc_store_init(NULL);
 	(void)nfc_store_register_save_cb(nfc_reader_shell_save_cb, (void *)sh);
 #endif
@@ -143,6 +147,9 @@ SHELL_STATIC_SUBCMD_SET_CREATE(nfc_cmds,
 #endif
 #if IS_ENABLED(CONFIG_NFC_LISTEN_STACK_SHELL)
 			       SHELL_CMD(stack, &nfc_stack_cmds, "NFC listen stack commands", NULL),
+#endif
+#if IS_ENABLED(CONFIG_NFC_STORE_RAM) && IS_ENABLED(CONFIG_NFC_STORE_RAM_SHELL)
+			       SHELL_CMD(store, &nfc_store_ram_cmds, "RAM store slots (list, dump)", NULL),
 #endif
 			       SHELL_CMD(reader, &nfc_reader_cmds, "NFC reader commands", NULL),
 			       SHELL_SUBCMD_SET_END);

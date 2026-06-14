@@ -683,7 +683,16 @@ int nfc_reader_pollers_run(const char *tag)
 
 		ret = e->clone_fn(session, tag);
 		if (ret == 0) {
-			LOG_INF("Clone saved tag \"%s\" via %s poller", tag, e->name);
+			uint8_t persist_id = 0U;
+			uint8_t flags = 0U;
+			int meta_ret = nfc_store_peek_entry_meta(tag, &persist_id, &flags);
+
+			if (meta_ret == 0) {
+				LOG_INF("Clone saved tag \"%s\" via %s poller (persist_id=0x%02x)",
+					tag, e->name, persist_id);
+			} else {
+				LOG_INF("Clone saved tag \"%s\" via %s poller", tag, e->name);
+			}
 		}
 		break;
 	}

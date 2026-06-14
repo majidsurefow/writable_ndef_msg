@@ -9,9 +9,13 @@
 #include "hal/nfc_transport.h"
 #include "protocols/ndef/ndef.h"
 #include "store/nfc_store.h"
+#if IS_ENABLED(CONFIG_NFC_STORE_RAM)
+#include "store/nfc_store_ram.h"
+#endif
 #include "store_fixture.h"
 
 #include <errno.h>
+#include <stdio.h>
 #include <string.h>
 
 #include <zephyr/sys/crc.h>
@@ -115,12 +119,37 @@ const nfc_transport_caps_t *nfc_transport_get_capabilities(void)
 	return &s_test_hal_caps;
 }
 
+static void register_mock_hooks(void)
+{
+	(void)nfc_store_register_save_cb(mock_save_cb, NULL);
+	(void)nfc_store_register_load_cb(mock_load_cb, NULL);
+}
+
+#if IS_ENABLED(CONFIG_NFC_STORE_RAM)
+static void store_hooks_rule_before(const struct ztest_unit_test *test, void *data)
+{
+	ARG_UNUSED(data);
+
+	if (strcmp(test->test_suite_name, "nfc_reader_store") != 0) {
+		return;
+	}
+
+	if (strncmp(test->name, "test_store_ram_", 15) == 0) {
+		return;
+	}
+
+	s_saved_len = 0U;
+	register_mock_hooks();
+}
+
+ZTEST_RULE(store_hooks_rule, store_hooks_rule_before, NULL);
+#endif /* CONFIG_NFC_STORE_RAM */
+
 static void *suite_setup(void)
 {
 	s_saved_len = 0U;
 	(void)nfc_store_init(NULL);
-	(void)nfc_store_register_save_cb(mock_save_cb, NULL);
-	(void)nfc_store_register_load_cb(mock_load_cb, NULL);
+	register_mock_hooks();
 	return NULL;
 }
 
@@ -233,3 +262,111 @@ ZTEST(nfc_reader_store, test_store_peek_rejects_read_only_partial)
 
 	zassert_equal(nfc_applet_check_emulate(persist_id, flags), -ENOTSUP);
 }
+
+#if IS_ENABLED(CONFIG_NFC_STORE_RAM)
+
+ZTEST(nfc_reader_store, test_store_ram_save_load_roundtrip)
+{
+	const nfc_service_t *svcs[] = { &s_svc };
+	ndef_data_t loaded;
+	int ret;
+
+	nfc_store_ram_reset();
+	zassert_ok(nfc_store_ram_init());
+
+	fill_fixture_model(&s_model);
+	ret = nfc_store_save("ram1", svcs, ARRAY_SIZE(svcs));
+	zassert_ok(ret);
+
+	ndef_data_reset(&s_model);
+	ret = nfc_store_load("ram1", svcs, ARRAY_SIZE(svcs));
+	zassert_ok(ret);
+
+	loaded = s_model;
+	fill_fixture_model(&s_model);
+	zassert_mem_equal(&loaded.cc, &s_model.cc, NFC_NDEF_CC_LEN);
+	zassert_equal(loaded.ndef_file_len, s_model.ndef_file_len);
+	zassert_mem_equal(loaded.ndef_file, s_model.ndef_file, loaded.ndef_file_len);
+}
+
+ZTEST(nfc_reader_store, test_store_ram_multiple_slots)
+{
+	const nfc_service_t *svcs[] = { &s_svc };
+	int ret;
+
+	if (CONFIG_NFC_STORE_RAM_SLOT_COUNT < 2) {
+		ztest_test_skip();
+	}
+
+	nfc_store_ram_reset();
+	zassert_ok(nfc_store_ram_init());
+
+	fill_fixture_model(&s_model);
+	ret = nfc_store_save("a", svcs, ARRAY_SIZE(svcs));
+	zassert_ok(ret);
+
+	fill_fixture_model(&s_model);
+	ret = nfc_store_save("b", svcs, ARRAY_SIZE(svcs));
+	zassert_ok(ret);
+
+	ndef_data_reset(&s_model);
+	ret = nfc_store_load("b", svcs, ARRAY_SIZE(svcs));
+	zassert_ok(ret);
+	zassert_equal(s_model.ndef_file_len, (uint16_t)(NFC_NDEF_NLEN_FIELD_LEN + 5U));
+
+	ndef_data_reset(&s_model);
+	ret = nfc_store_load("a", svcs, ARRAY_SIZE(svcs));
+	zassert_ok(ret);
+	zassert_equal(s_model.ndef_file_len, (uint16_t)(NFC_NDEF_NLEN_FIELD_LEN + 5U));
+}
+
+ZTEST(nfc_reader_store, test_store_ram_peek_emulate_ready)
+{
+	const nfc_service_t *svcs[] = { &s_svc };
+	uint8_t persist_id;
+	uint8_t flags;
+	int ret;
+
+	nfc_store_ram_reset();
+	zassert_ok(nfc_store_ram_init());
+
+	set_empty_ndef_model(&s_model);
+	ret = nfc_store_save("em1", svcs, ARRAY_SIZE(svcs));
+	zassert_ok(ret);
+
+	ret = nfc_store_peek_entry_meta("em1", &persist_id, &flags);
+	zassert_ok(ret);
+	zassert_equal(persist_id, NFC_PERSIST_ID_NDEF);
+	zassert_equal(nfc_applet_check_emulate(persist_id, flags), 0);
+}
+
+ZTEST(nfc_reader_store, test_store_ram_missing_slot)
+{
+	nfc_store_ram_reset();
+	zassert_ok(nfc_store_ram_init());
+	zassert_equal(nfc_store_ram_load_cb("missing", s_saved_blob, sizeof(s_saved_blob),
+					    &s_saved_len, NULL),
+		      -ENOENT);
+}
+
+ZTEST(nfc_reader_store, test_store_ram_slot_full)
+{
+	const nfc_service_t *svcs[] = { &s_svc };
+	char tag[CONFIG_NFC_STORE_MAX_TAG_LEN];
+	int ret;
+
+	nfc_store_ram_reset();
+	zassert_ok(nfc_store_ram_init());
+
+	set_empty_ndef_model(&s_model);
+	for (int i = 0; i < CONFIG_NFC_STORE_RAM_SLOT_COUNT; i++) {
+		(void)snprintk(tag, sizeof(tag), "s%d", i);
+		ret = nfc_store_save(tag, svcs, ARRAY_SIZE(svcs));
+		zassert_ok(ret, "save slot %d failed: %d", i, ret);
+	}
+
+	ret = nfc_store_save("overflow", svcs, ARRAY_SIZE(svcs));
+	zassert_equal(ret, -EIO);
+}
+
+#endif /* CONFIG_NFC_STORE_RAM */

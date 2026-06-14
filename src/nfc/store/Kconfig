@@ -19,4 +19,25 @@ config NFC_STORE_MAX_TAG_LEN
 	default 16
 	range 8 32
 
+config NFC_STORE_RAM
+	bool "In-RAM multi-slot store backend"
+	default n
+	help
+	  Register save/load callbacks backed by a fixed RAM slot table.
+	  Enables nfc read → nfc emulate without hex import.
+
+if NFC_STORE_RAM
+
+config NFC_STORE_RAM_SLOT_COUNT
+	int "Number of RAM store slots"
+	default 4
+	range 1 16
+
+config NFC_STORE_RAM_SHELL
+	bool "RAM store shell commands (list, dump)"
+	default y
+	depends on SHELL
+
+endif
+
 endif

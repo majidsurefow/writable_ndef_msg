@@ -96,7 +96,7 @@ static int nfc_applet_shell_read(const struct shell *sh, const char *slot, int a
 	k_timeout_t wait_deadline = K_MSEC((int32_t)k_ticks_to_ms_floor64(timeout.ticks) + 5000);
 	int ret;
 
-#if IS_ENABLED(CONFIG_NFC_STORE)
+#if IS_ENABLED(CONFIG_NFC_STORE) && !IS_ENABLED(CONFIG_NFC_STORE_RAM)
 	(void)nfc_store_init(NULL);
 	(void)nfc_store_register_save_cb(nfc_applet_shell_save_cb, (void *)sh);
 #endif
