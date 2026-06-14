@@ -67,4 +67,39 @@ ZTEST(emv_listener, test_read_record)
 	assert_sw(NFC_SW_OK);
 }
 
+ZTEST(emv_listener, test_read_record_wrong_sfi)
+{
+	const nfc_service_t *svc = emv_listener_get();
+	static const uint8_t gpo[] = {0x80U, 0xA8U, 0x00U, 0x00U, 0x02U, 0x83U, 0x00U};
+	static const uint8_t read[] = {0x00U, 0xB2U, 0x01U, 0x14U, 0x00U};
+
+	reset(NULL);
+	svc->on_select(emv_service_app_aid, EMV_SERVICE_APP_AID_LEN, NULL);
+	send_apdu(gpo, sizeof(gpo));
+	send_apdu(read, sizeof(read));
+	assert_sw(0x6A83U);
+}
+
+ZTEST(emv_listener, test_read_record_out_of_range)
+{
+	const nfc_service_t *svc = emv_listener_get();
+	static const uint8_t gpo[] = {0x80U, 0xA8U, 0x00U, 0x00U, 0x02U, 0x83U, 0x00U};
+	static const uint8_t read[] = {0x00U, 0xB2U, 0x02U, 0x0CU, 0x00U};
+
+	reset(NULL);
+	svc->on_select(emv_service_app_aid, EMV_SERVICE_APP_AID_LEN, NULL);
+	send_apdu(gpo, sizeof(gpo));
+	send_apdu(read, sizeof(read));
+	assert_sw(0x6A83U);
+}
+
+ZTEST(emv_listener, test_gpo_before_app_select)
+{
+	static const uint8_t gpo[] = {0x80U, 0xA8U, 0x00U, 0x00U, 0x02U, 0x83U, 0x00U};
+
+	reset(NULL);
+	send_apdu(gpo, sizeof(gpo));
+	assert_sw(NFC_SW_CONDITIONS_NOT_SAT);
+}
+
 ZTEST_SUITE(emv_listener, NULL, NULL, reset, NULL, NULL);

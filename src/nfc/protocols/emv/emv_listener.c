@@ -147,7 +147,8 @@ static void emv_listener_on_apdu(const nfc_apdu_t *apdu, void *user_ctx)
 		}
 		sfi = (uint8_t)((apdu->p2 >> 3U) & 0x1FU);
 		rec_no = apdu->p1;
-		if ((sfi != (s_image.afl[0] >> 3U)) || (rec_no < 1U) || (rec_no > s_image.record_count)) {
+		if ((sfi != (s_image.afl[0] >> 3U)) || (rec_no < s_image.afl[1]) ||
+		    (rec_no > s_image.afl[2])) {
 			emv_listener_send(NULL, 0U, 0x6A83U);
 			return;
 		}

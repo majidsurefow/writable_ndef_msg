@@ -798,7 +798,7 @@ static int emv_copy_read(void *save_model, const void *read_out, void *user_ctx)
 	return 0;
 }
 
-static int __maybe_unused emv_compare(const void *expected, const void *actual, void *user_ctx)
+static int emv_compare(const void *expected, const void *actual, void *user_ctx)
 {
 	const emv_card_image_t *exp = expected;
 	const emv_card_image_t *act = actual;
@@ -890,7 +890,7 @@ ZTEST(nfc_reader_loopback, test_virtual_loopback_emv)
 		.save_model = &s_emv_clone,
 		.copy_read_to_save = emv_copy_read,
 		.expected = &s_emv_loopback_expected,
-		.compare = NULL,
+		.compare = emv_compare,
 		.verify_envelope = true,
 	});
 	zassert_ok(ret);
