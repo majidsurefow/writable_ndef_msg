@@ -41,8 +41,14 @@ extern "C" {
 #define ULTRALIGHT_CMD_READ_SIG           0x3CU
 #define ULTRALIGHT_CMD_READ_CNT           0x39U
 #define ULTRALIGHT_CMD_CHECK_TEARING      0x3EU
+#define ULTRALIGHT_CMD_AUTH               0x1AU
+#define ULTRALIGHT_CMD_AUTH_CONT          0xAFU
+#define ULTRALIGHT_CMD_PWD_AUTH           0x1BU
 
 #define ULTRALIGHT_READ_RESP_LEN          16U
+#define ULTRALIGHT_PWD_AUTH_RESP_LEN      2U
+#define ULTRALIGHT_AUTH0_NONE             0xFFU
+#define ULTRALIGHT_CONFIG_BLOCK_PAGES     5U
 
 /** Serialized blob max — 256 pages + optional EV1 fields. */
 #define ULTRALIGHT_MAX_SERIALIZED \
@@ -85,6 +91,16 @@ typedef struct {
 	uint8_t tearing_flag_count;
 } ultralight_data_t;
 
+/** NTAG21x config block — last five pages (lock, AUTH0, ACCESS, PWD, PACK). */
+typedef struct {
+	uint8_t auth0;
+	bool prot;
+	uint8_t authlim;
+	uint8_t pwd[ULTRALIGHT_PAGE_SIZE];
+	uint8_t pack[ULTRALIGHT_PWD_AUTH_RESP_LEN];
+	bool valid;
+} ultralight_config_t;
+
 void ultralight_data_reset(ultralight_data_t *data);
 uint8_t ultralight_persist_id(void);
 uint16_t ultralight_pages_total_for_type(ultralight_type_t type);
@@ -96,6 +112,14 @@ int ultralight_deserialize(ultralight_data_t *data, const uint8_t *in, size_t in
 int ultralight_scan_ndef_tlv(const uint8_t *data, size_t data_len, const uint8_t **msg_out,
 			     size_t *msg_len_out);
 int ultralight_extract_ndef(const ultralight_data_t *data, const uint8_t **msg, size_t *msg_len);
+
+bool ultralight_type_has_password_config(ultralight_type_t type);
+void ultralight_config_page_indices(uint16_t pages_total, uint16_t *auth0_page,
+				    uint16_t *access_page, uint16_t *pwd_page,
+				    uint16_t *pack_page);
+bool ultralight_parse_config(const ultralight_data_t *data, ultralight_config_t *cfg);
+bool ultralight_read_protection_enabled(const ultralight_config_t *cfg);
+bool ultralight_page_needs_auth(const ultralight_config_t *cfg, uint16_t page);
 
 #ifdef __cplusplus
 }
