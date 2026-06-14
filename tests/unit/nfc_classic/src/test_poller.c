@@ -21,6 +21,15 @@
 static classic_data_t s_data;
 static nfc_reader_session_t s_session;
 
+static const uint8_t TX_DETECT_AUTH[] = {0x60U, 0x00U};
+static const uint8_t TX_DETECT_4K_PROBE[] = {0x60U, 0xFEU};
+static const uint8_t TX_DETECT_1K_PROBE[] = {0x60U, 0x3EU};
+static const uint8_t TX_AUTH_NT_S0[] = {0x60U, 0x00U};
+static const uint8_t TX_AUTH_NR_AR_S0[] = {
+	0x91U, 0x07U, 0xBDU, 0x3AU, 0xFFU, 0xF9U, 0xF4U, 0x82U,
+};
+static const uint8_t TX_READ_BLOCK0[] = {0x2CU, 0x7AU, 0xFBU, 0xB1U};
+
 static void poller_before(void *fixture)
 {
 	ARG_UNUSED(fixture);
@@ -36,6 +45,16 @@ static void poller_before(void *fixture)
 	classic_data_reset(&s_data);
 }
 
+static void assert_tx_equals(size_t index, const uint8_t *exp, size_t exp_len)
+{
+	const uint8_t *tx = NULL;
+	size_t tx_len = 0U;
+
+	zassert_ok(nfc_session_mock_get_tx(index, &tx, &tx_len));
+	zassert_equal(tx_len, exp_len);
+	zassert_mem_equal(tx, exp, exp_len);
+}
+
 ZTEST(classic_poller, test_detect_auth_probe)
 {
 	static const uint8_t nt[] = {0x10U, 0x00U, 0x00U, 0x00U};
@@ -47,6 +66,7 @@ ZTEST(classic_poller, test_detect_auth_probe)
 	nfc_session_mock_load(script, ARRAY_SIZE(script));
 	zassert_ok(classic_poller_detect(&s_session));
 	zassert_equal(nfc_session_mock_tx_count(), 1U);
+	assert_tx_equals(0U, TX_DETECT_AUTH, sizeof(TX_DETECT_AUTH));
 }
 
 ZTEST(classic_poller, test_detect_enotsup_short_rx)
@@ -143,6 +163,20 @@ ZTEST(classic_poller, test_read_1k_golden)
 	zassert_true(classic_is_block_read(&s_data, 0U));
 	zassert_mem_equal(s_data.blocks[0], classic_MfClassic_1K_4b_model + 58U,
 			  CLASSIC_BLOCK_SIZE);
+}
+
+ZTEST(classic_poller, test_read_tx_sequence)
+{
+	poller_before(NULL);
+	nfc_session_mock_load(classic_MfClassic_1K_4b_read_steps,
+			      CLASSIC_MFCLASSIC_1K_4B_READ_STEP_COUNT);
+	zassert_ok(classic_poller_read(&s_session, &s_data));
+	zassert_equal(nfc_session_mock_tx_count(), NFC_SESSION_MOCK_MAX_TX);
+	assert_tx_equals(0U, TX_DETECT_4K_PROBE, sizeof(TX_DETECT_4K_PROBE));
+	assert_tx_equals(1U, TX_DETECT_1K_PROBE, sizeof(TX_DETECT_1K_PROBE));
+	assert_tx_equals(2U, TX_AUTH_NT_S0, sizeof(TX_AUTH_NT_S0));
+	assert_tx_equals(3U, TX_AUTH_NR_AR_S0, sizeof(TX_AUTH_NR_AR_S0));
+	assert_tx_equals(4U, TX_READ_BLOCK0, sizeof(TX_READ_BLOCK0));
 }
 
 ZTEST_SUITE(classic_poller, NULL, NULL, poller_before, NULL, NULL);
