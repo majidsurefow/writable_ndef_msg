@@ -134,6 +134,8 @@ int aliro_poller_read(const nfc_reader_session_t *session, aliro_data_t *out)
 		if (!aliro_poller_auth0_ok(rx, rx_len)) {
 			return -EIO;
 		}
+		(void)memcpy(out->credential_pubkey, &rx[2U + ALIRO_NONCE_SIZE],
+			      ALIRO_P256_PUBLIC_KEY_SIZE);
 		ret = aliro_poller_append_transcript(out, rx, rx_len);
 		if (ret != 0) {
 			return ret;

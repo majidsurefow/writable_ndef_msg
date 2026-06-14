@@ -51,6 +51,6 @@ config NFC_ROLE_LISTEN
 config NFC_HAL_SHELL
 	bool "NFC transport HAL shell commands"
 	default y
-	depends on NFC_STACK && SHELL
+	depends on NFC_STACK && SHELL && (NFC_HAL_BACKEND_PN7160 || NFC_HAL_BACKEND_NRFX)
 	help
 	  Register nfc_transport config|stats|state shell subcommands.

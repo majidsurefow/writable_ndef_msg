@@ -42,7 +42,7 @@ extern "C" {
 #define FELICA_BLOCK_INDEX_STATE       0x92U
 #define FELICA_BLOCK_INDEX_CRC_CHECK   0xA0U
 
-typedef struct {
+typedef struct __packed {
 	uint8_t code;
 	uint8_t idm[FELICA_IDM_SIZE];
 	uint8_t service_num;
@@ -50,7 +50,7 @@ typedef struct {
 	uint8_t block_count;
 } felica_command_header_t;
 
-typedef struct {
+typedef struct __packed {
 	uint8_t service_code : 4;
 	uint8_t access_mode  : 3;
 	uint8_t length       : 1;

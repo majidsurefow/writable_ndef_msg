@@ -33,9 +33,9 @@ static void assert_tx_equals(size_t index, const uint8_t *exp, size_t exp_len)
 	const uint8_t *tx = NULL;
 	size_t tx_len = 0U;
 
-	zassert_ok(nfc_session_mock_get_tx(index, &tx, &tx_len));
-	zassert_equal(tx_len, exp_len);
-	zassert_mem_equal(tx, exp, exp_len);
+	zassert_ok(nfc_session_mock_get_tx(index, &tx, &tx_len), "tx step %zu missing", index);
+	zassert_equal(tx_len, exp_len, "tx step %zu len %zu exp %zu", index, tx_len, exp_len);
+	zassert_mem_equal(tx, exp, exp_len, "tx step %zu payload", index);
 }
 
 ZTEST(felica_poller, test_detect_poll)
@@ -117,19 +117,16 @@ ZTEST(felica_poller, test_read_tx_sequence)
 
 ZTEST(felica_poller, test_read_crc_fail)
 {
+	static const uint8_t bad_crc_read_rx[] = {
+		0x1DU, 0x07U, 0x29U, 0x9FU, 0xFAU, 0x53U, 0xABU, 0x75U, 0x87U, 0x6EU,
+		0x00U, 0x00U, 0x01U, 0x00U, 0x11U, 0x22U, 0x33U, 0x44U, 0x55U, 0x66U,
+		0x77U, 0x88U, 0x99U, 0xAAU, 0xBBU, 0xCCU, 0xDDU, 0xEEU, 0xFFU, 0x00U,
+		0x00U, 0x00U,
+	};
 	static const nfc_session_mock_step_t script[] = {
 		{.rx = felica_Felica_step0_rx, .rx_len = sizeof(felica_Felica_step0_rx), .err = 0},
 		{.rx = felica_Felica_step1_rx, .rx_len = sizeof(felica_Felica_step1_rx), .err = 0},
-		{
-			.rx = (const uint8_t[]){
-				0x1DU, 0x07U, 0x29U, 0x9FU, 0xFAU, 0x53U, 0xABU, 0x75U, 0x87U, 0x6EU,
-				0x00U, 0x00U, 0x01U, 0x00U, 0x11U, 0x22U, 0x33U, 0x44U, 0x55U, 0x66U,
-				0x77U, 0x88U, 0x99U, 0xAAU, 0xBBU, 0xCCU, 0xDDU, 0xEEU, 0xFFU, 0x00U,
-				0x00U, 0x00U,
-			},
-			.rx_len = 32U,
-			.err = 0,
-		},
+		{.rx = bad_crc_read_rx, .rx_len = sizeof(bad_crc_read_rx), .err = 0},
 	};
 
 	poller_before(NULL);

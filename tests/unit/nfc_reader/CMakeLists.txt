@@ -73,8 +73,10 @@ endif()
 if(CONFIG_NFC_PROTOCOL_FELICA)
   target_sources(app PRIVATE
     src/test_store_felica_roundtrip.c
+    ${REPO_NFC}/helpers/felica_crc.c
     ${REPO_NFC}/protocols/felica/felica.c
     ${REPO_NFC}/protocols/felica/felica_poller.c
+    ${REPO_NFC}/protocols/felica/felica_poller_i.c
   )
 endif()
 
@@ -82,6 +84,7 @@ if(CONFIG_NFC_PROTOCOL_ISO15693_3)
   target_sources(app PRIVATE
     ${REPO_NFC}/protocols/iso15693_3/iso15693_3.c
     ${REPO_NFC}/protocols/iso15693_3/iso15693_3_poller.c
+    ${REPO_NFC}/protocols/iso15693_3/iso15693_3_poller_i.c
   )
 endif()
 
@@ -90,6 +93,7 @@ if(CONFIG_NFC_PROTOCOL_SLIX)
     src/test_store_slix_roundtrip.c
     ${REPO_NFC}/protocols/slix/slix.c
     ${REPO_NFC}/protocols/slix/slix_poller.c
+    ${REPO_NFC}/protocols/slix/slix_poller_i.c
   )
 endif()
 

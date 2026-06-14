@@ -46,7 +46,7 @@ void nfc_virtual_rf_disable(void)
 int nfc_virtual_rf_transceive(nfc_reader_session_t *session, const uint8_t *tx, size_t tx_len,
 			      uint8_t *rx, size_t rx_max, size_t *rx_len, k_timeout_t timeout)
 {
-	uint8_t apdu_storage[64];
+	uint8_t apdu_storage[128];
 	nfc_apdu_t apdu;
 	const uint8_t *resp = NULL;
 	size_t resp_len = 0U;

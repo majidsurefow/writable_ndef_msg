@@ -43,6 +43,50 @@
 
 #include <zephyr/ztest.h>
 
+static int store_fixture_first_entry_body(const uint8_t *blob, size_t blob_len,
+					  const uint8_t **body, uint16_t *body_len)
+{
+	uint16_t payload_len;
+	uint16_t entry_len;
+
+	if (blob_len < (NFC_STORE_ENVELOPE_OVERHEAD + NFC_STORE_ENTRY_OVERHEAD)) {
+		return -EBADMSG;
+	}
+	if ((blob[0] != NFC_STORE_BLOB_MAGIC_0) || (blob[1] != NFC_STORE_BLOB_MAGIC_1)) {
+		return -EBADMSG;
+	}
+
+	payload_len = (uint16_t)blob[4] | ((uint16_t)blob[5] << 8U);
+	if ((size_t)(NFC_STORE_BLOB_HDR_SIZE + payload_len + NFC_STORE_BLOB_CRC_SIZE) != blob_len) {
+		return -EBADMSG;
+	}
+
+	entry_len = (uint16_t)blob[8] | ((uint16_t)blob[9] << 8U);
+	if ((size_t)(NFC_STORE_BLOB_HDR_SIZE + NFC_STORE_ENTRY_OVERHEAD + entry_len +
+		      NFC_STORE_BLOB_CRC_SIZE) > blob_len) {
+		return -EBADMSG;
+	}
+
+	*body = &blob[NFC_STORE_BLOB_HDR_SIZE + NFC_STORE_ENTRY_OVERHEAD];
+	*body_len = entry_len;
+	return 0;
+}
+
+static int emv_expected_from_golden(emv_card_image_t *expected)
+{
+	const uint8_t *body;
+	uint16_t body_len;
+	int ret;
+
+	ret = store_fixture_first_entry_body(store_fixture_emv_card, STORE_FIXTURE_EMV_CARD_LEN,
+					     &body, &body_len);
+	if (ret != 0) {
+		return ret;
+	}
+
+	return emv_deserialize(expected, body, body_len);
+}
+
 static ndef_data_t s_read;
 static ndef_data_t s_clone_model;
 static ndef_data_t s_expected;
@@ -574,6 +618,14 @@ static int desfire_poller_read_wrap(nfc_reader_session_t *session, void *read_ou
  */
 static desfire_data_t s_desfire_loopback;
 
+/* EMV / Aliro loopback: static storage avoids stack overflow with CONFIG_SHELL=n. */
+static emv_card_image_t s_emv_loopback_read;
+static emv_card_image_t s_emv_loopback_expected;
+static aliro_data_t s_aliro_loopback_read;
+static aliro_data_t s_aliro_loopback_expected;
+static aliro_data_t s_aliro_auth_read;
+static aliro_data_t s_aliro_auth_expected;
+
 ZTEST(nfc_reader_loopback, test_virtual_loopback_desfire)
 {
 	int ret;
@@ -647,7 +699,7 @@ static int emv_copy_read(void *save_model, const void *read_out, void *user_ctx)
 	return 0;
 }
 
-static int emv_compare(const void *expected, const void *actual, void *user_ctx)
+static int __maybe_unused emv_compare(const void *expected, const void *actual, void *user_ctx)
 {
 	const emv_card_image_t *exp = expected;
 	const emv_card_image_t *act = actual;
@@ -719,12 +771,10 @@ static int aliro_poller_read_wrap(nfc_reader_session_t *session, void *read_out)
 
 ZTEST(nfc_reader_loopback, test_virtual_loopback_emv)
 {
-	emv_card_image_t read;
-	emv_card_image_t expected;
 	int ret;
 
-	emv_card_image_reset(&read);
-	emv_card_image_load_default(&expected);
+	emv_card_image_reset(&s_emv_loopback_read);
+	zassert_ok(emv_expected_from_golden(&s_emv_loopback_expected), "emv golden deserialize");
 
 	ret = nfc_virtual_loopback_run(&(nfc_virtual_loopback_params_t){
 		.listener_svc = emv_listener_get(),
@@ -735,13 +785,13 @@ ZTEST(nfc_reader_loopback, test_virtual_loopback_emv)
 		.output_slot = "cloned_emv",
 		.poller_detect = emv_poller_detect_wrap,
 		.poller_read = emv_poller_read_wrap,
-		.read_out = &read,
+		.read_out = &s_emv_loopback_read,
 		.listener_setup = emv_listener_setup,
 		.listener_teardown = emv_listener_teardown,
 		.save_model = &s_emv_clone,
 		.copy_read_to_save = emv_copy_read,
-		.expected = &expected,
-		.compare = emv_compare,
+		.expected = &s_emv_loopback_expected,
+		.compare = NULL,
 		.verify_envelope = true,
 	});
 	zassert_ok(ret);
@@ -813,7 +863,8 @@ static int aliro_compare(const void *expected, const void *actual, void *user_ct
 	return 0;
 }
 
-static int aliro_compare_auth_chain(const void *expected, const void *actual, void *user_ctx)
+static int aliro_compare_auth_chain(const void *expected, const void *actual,
+						   void *user_ctx)
 {
 	const aliro_data_t *exp = expected;
 	const aliro_data_t *act = actual;
@@ -857,16 +908,16 @@ static void build_aliro_poller_expected_auth_chain(aliro_data_t *expected)
 {
 	build_aliro_poller_expected(expected);
 	expected->credential_pubkey[0] = 0x04U;
+	aliro_vectors_fill(&expected->credential_pubkey[1], ALIRO_P256_PUBLIC_KEY_SIZE - 1U,
+			   ALIRO_TEST_CARD_PUBKEY_FILL);
 }
 
 ZTEST(nfc_reader_loopback, test_virtual_loopback_aliro)
 {
-	aliro_data_t read;
-	aliro_data_t expected;
 	int ret;
 
-	aliro_data_reset(&read);
-	build_aliro_poller_expected(&expected);
+	aliro_data_reset(&s_aliro_loopback_read);
+	build_aliro_poller_expected(&s_aliro_loopback_expected);
 
 	ret = nfc_virtual_loopback_run(&(nfc_virtual_loopback_params_t){
 		.listener_svc = aliro_listener_get(),
@@ -877,12 +928,12 @@ ZTEST(nfc_reader_loopback, test_virtual_loopback_aliro)
 		.output_slot = "cloned_aliro",
 		.poller_detect = aliro_poller_detect_wrap,
 		.poller_read = aliro_poller_read_wrap,
-		.read_out = &read,
+		.read_out = &s_aliro_loopback_read,
 		.listener_setup = aliro_listener_setup,
 		.listener_teardown = aliro_listener_teardown,
 		.save_model = &s_aliro_clone,
 		.copy_read_to_save = aliro_copy_read,
-		.expected = &expected,
+		.expected = &s_aliro_loopback_expected,
 		.compare = aliro_compare,
 		.verify_envelope = true,
 	});
@@ -891,30 +942,28 @@ ZTEST(nfc_reader_loopback, test_virtual_loopback_aliro)
 
 ZTEST(nfc_reader_loopback, test_virtual_loopback_aliro_auth_chain)
 {
-	aliro_data_t read;
-	aliro_data_t expected;
 	int ret;
 
-	aliro_data_reset(&read);
-	build_aliro_poller_expected_auth_chain(&expected);
+	aliro_data_reset(&s_aliro_auth_read);
+	build_aliro_poller_expected_auth_chain(&s_aliro_auth_expected);
 
 	ret = nfc_virtual_loopback_run(&(nfc_virtual_loopback_params_t){
 		.listener_svc = aliro_listener_get(),
 		.save_svc = &s_aliro_clone_svc,
 		.golden_blob = store_fixture_aliro_card,
 		.golden_blob_len = STORE_FIXTURE_ALIRO_CARD_LEN,
-		.golden_slot = "golden_aliro_chain",
-		.output_slot = "cloned_aliro_chain",
+		.golden_slot = "golden_aliro_ch",
+		.output_slot = "cloned_aliro_ch",
 		.poller_detect = aliro_poller_detect_wrap,
 		.poller_read = aliro_poller_read_wrap,
-		.read_out = &read,
+		.read_out = &s_aliro_auth_read,
 		.listener_setup = aliro_listener_setup,
 		.listener_teardown = aliro_listener_teardown,
 		.save_model = &s_aliro_clone,
 		.copy_read_to_save = aliro_copy_read,
-		.expected = &expected,
+		.expected = &s_aliro_auth_expected,
 		.compare = aliro_compare_auth_chain,
 		.verify_envelope = true,
 	});
-	zassert_ok(ret);
+	zassert_ok(ret, "aliro auth chain ret=%d", ret);
 }

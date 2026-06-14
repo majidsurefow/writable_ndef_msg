@@ -251,7 +251,7 @@ int classic_poller_read(const nfc_reader_session_t *session, classic_data_t *out
 			ret = classic_poller_read_block(sess, &crypto, block_num, block_buf);
 			if (ret != 0) {
 				if (authed) {
-					return -EIO;
+					return ret;
 				}
 				break;
 			}
