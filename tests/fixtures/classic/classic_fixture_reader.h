@@ -11,5 +11,6 @@
 #include "MfClassic_1K_4b_mock.h"
 #include "MfClassic_1K_7b_mock.h"
 #include "MfClassic_Mini_4b_mock.h"
+#include "MfClassic_Mini_7b_mock.h"
 
 #endif /* TESTS_FIXTURES_CLASSIC_CLASSIC_FIXTURE_READER_H_ */

@@ -2,14 +2,16 @@
 
 Golden tag dumps copied from Flipper Zero’s NFC unit-test resources. They are **reference inputs only** — CI and ztest use derived `.inc` / `.bin` artifacts, not FlipperFormat parsing at runtime.
 
-## Manifest (17 files)
+## Manifest (19 files)
 
 | File | Device / role |
 |------|----------------|
 | `MfClassic_1K_4b.nfc` | MIFARE Classic 1K (4-byte UID) — **generator golden** |
 | `MfClassic_1K_7b.nfc` | MIFARE Classic 1K (7-byte UID) — **generator golden** |
 | `MfClassic_4K_4b.nfc` | MIFARE Classic 4K (4-byte UID) — **generator golden** |
+| `MfClassic_4K_7b.nfc` | MIFARE Classic 4K (7-byte UID) — **generator golden** |
 | `MfClassic_Mini_4b.nfc` | MIFARE Classic Mini (4-byte UID) — **generator golden** |
+| `MfClassic_Mini_7b.nfc` | MIFARE Classic Mini (7-byte UID) — **generator golden** |
 | `MfDesfire_EV1_sample.nfc` | MIFARE DESFire EV1 — hand golden (P5) |
 | `Ultralight_11.nfc` | MIFARE Ultralight EV1 (11 pages) |
 | `Ultralight_21.nfc` | MIFARE Ultralight EV1 (21 pages) |
@@ -79,7 +81,9 @@ See `scripts/nfc/flipper_nfc_to_fixture.py --help`. After upstream Flipper updat
 | `MfClassic_1K_4b.nfc` | `tests/fixtures/classic/` | **SHIPPED** (Tier A/B/C) | **SHIPPED** (virtual listener) | yes |
 | `MfClassic_1K_7b.nfc` | yes | **SHIPPED** | **SHIPPED** | yes |
 | `MfClassic_4K_4b.nfc` | yes | **SHIPPED** (337-TX full assert) | **SHIPPED** | yes |
+| `MfClassic_4K_7b.nfc` | yes | **SHIPPED** (337-TX full assert) | **SHIPPED** | yes |
 | `MfClassic_Mini_4b.nfc` | yes | **SHIPPED** | **SHIPPED** | yes |
+| `MfClassic_Mini_7b.nfc` | yes | **SHIPPED** | **SHIPPED** | yes |
 | `MfDesfire_EV1_sample.nfc` | `tests/fixtures/desfire/` | **SHIPPED** (13-TX keyless) | **SHIPPED** (virtual listener) | yes |
 
 Full policy: [NFC_APPLETS_AND_TESTING.md](../../../docs/nfc/NFC_APPLETS_AND_TESTING.md) — per-card Flipper parity.

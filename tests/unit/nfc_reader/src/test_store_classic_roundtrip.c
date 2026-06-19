@@ -154,6 +154,14 @@ ZTEST(nfc_reader_classic_store, test_store_load_golden_mfclassic_4k_4b)
 			       classic_MfClassic_4K_4b_model,
 			       CLASSIC_MFCLASSIC_4K_4B_MODEL_LEN);
 }
+
+ZTEST(nfc_reader_classic_store, test_store_load_golden_mfclassic_4k_7b)
+{
+	store_load_golden_case(store_fixture_mfclassic_4k_7b_card,
+			       STORE_FIXTURE_MFCLASSIC_4K_7B_CARD_LEN,
+			       classic_MfClassic_4K_7b_model,
+			       CLASSIC_MFCLASSIC_4K_7B_MODEL_LEN);
+}
 #endif
 
 ZTEST(nfc_reader_classic_store, test_store_load_golden_mfclassic_mini_4b)
@@ -162,6 +170,14 @@ ZTEST(nfc_reader_classic_store, test_store_load_golden_mfclassic_mini_4b)
 			       STORE_FIXTURE_MFCLASSIC_MINI_4B_CARD_LEN,
 			       classic_MfClassic_Mini_4b_model,
 			       CLASSIC_MFCLASSIC_MINI_4B_MODEL_LEN);
+}
+
+ZTEST(nfc_reader_classic_store, test_store_load_golden_mfclassic_mini_7b)
+{
+	store_load_golden_case(store_fixture_mfclassic_mini_7b_card,
+			       STORE_FIXTURE_MFCLASSIC_MINI_7B_CARD_LEN,
+			       classic_MfClassic_Mini_7b_model,
+			       CLASSIC_MFCLASSIC_MINI_7B_MODEL_LEN);
 }
 
 ZTEST(nfc_reader_classic_store, test_store_load_roundtrip_mfclassic_1k_4b)

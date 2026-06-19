@@ -11,6 +11,7 @@
 
 #include "MfClassic_1K_7b_mock.h"
 #include "MfClassic_Mini_4b_mock.h"
+#include "MfClassic_Mini_7b_mock.h"
 
 #include <string.h>
 
@@ -122,3 +123,45 @@ ZTEST(classic_poller_mini, test_read_tx_sequence)
 
 ZTEST_SUITE(classic_poller_mini, NULL, NULL, poller_before, NULL, NULL);
 #endif /* CONFIG_NFC_CLASSIC_TEST_VARIANT_MINI_4B */
+
+#if defined(CONFIG_NFC_CLASSIC_TEST_VARIANT_MINI_7B)
+static const uint8_t s_uid_mini_7b[] = {0x04U, 0xDEU, 0xADU, 0xCAU, 0xFEU, 0xEDU, 0xFAU};
+
+ZTEST(classic_poller_mini_7b, test_read_golden)
+{
+	uint8_t exp_block0[CLASSIC_BLOCK_SIZE];
+
+	classic_data_reset(&s_data);
+	zassert_ok(classic_deserialize(&s_data, classic_MfClassic_Mini_7b_model,
+				       CLASSIC_MFCLASSIC_MINI_7B_MODEL_LEN));
+	(void)memcpy(exp_block0, s_data.blocks[0], sizeof(exp_block0));
+
+	poller_before(NULL);
+	s_session.tag.uid.len = sizeof(s_uid_mini_7b);
+	(void)memcpy(s_session.tag.uid.bytes, s_uid_mini_7b, sizeof(s_uid_mini_7b));
+	nfc_session_mock_load(classic_MfClassic_Mini_7b_read_steps,
+			      CLASSIC_MFCLASSIC_MINI_7B_READ_STEP_COUNT);
+	zassert_ok(classic_poller_read(&s_session, &s_data));
+	zassert_equal(s_data.type, CLASSIC_TYPE_MINI);
+	zassert_equal(s_data.uid_len, sizeof(s_uid_mini_7b));
+	zassert_mem_equal(s_data.uid, s_uid_mini_7b, sizeof(s_uid_mini_7b));
+	zassert_mem_equal(s_data.blocks[0], exp_block0, sizeof(exp_block0));
+}
+
+ZTEST(classic_poller_mini_7b, test_read_tx_sequence)
+{
+	poller_before(NULL);
+	s_session.tag.uid.len = sizeof(s_uid_mini_7b);
+	(void)memcpy(s_session.tag.uid.bytes, s_uid_mini_7b, sizeof(s_uid_mini_7b));
+	nfc_session_mock_load(classic_MfClassic_Mini_7b_read_steps,
+			      CLASSIC_MFCLASSIC_MINI_7B_READ_STEP_COUNT);
+	zassert_ok(classic_poller_read(&s_session, &s_data));
+	zassert_equal(nfc_session_mock_tx_count(), CLASSIC_MFCLASSIC_MINI_7B_TX_STEP_COUNT);
+	for (size_t i = 0U; i < CLASSIC_MFCLASSIC_MINI_7B_TX_STEP_COUNT; i++) {
+		assert_tx_equals(i, classic_MfClassic_Mini_7b_tx_steps[i],
+				 classic_MfClassic_Mini_7b_tx_lens[i]);
+	}
+}
+
+ZTEST_SUITE(classic_poller_mini_7b, NULL, NULL, poller_before, NULL, NULL);
+#endif /* CONFIG_NFC_CLASSIC_TEST_VARIANT_MINI_7B */

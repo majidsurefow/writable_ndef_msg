@@ -42,6 +42,20 @@ VARIANTS: dict[str, dict] = {
         "type_name": "MINI",
         "blocks": 20,
     },
+    "4K_7b": {
+        "uid": bytes([0x04, 0x4B, 0x4B, 0x4B, 0x4B, 0xCA, 0xFE]),
+        "atqa": (0x44, 0x00),
+        "sak": 0x18,
+        "type_name": "4K",
+        "blocks": 256,
+    },
+    "Mini_7b": {
+        "uid": bytes([0x04, 0xDE, 0xAD, 0xCA, 0xFE, 0xED, 0xFA]),
+        "atqa": (0x44, 0x00),
+        "sak": 0x09,
+        "type_name": "MINI",
+        "blocks": 20,
+    },
 }
 
 

@@ -35,4 +35,16 @@ static const uint8_t store_fixture_mfclassic_mini_4b_card[] = {
 
 #define STORE_FIXTURE_MFCLASSIC_MINI_4B_CARD_LEN sizeof(store_fixture_mfclassic_mini_4b_card)
 
+static const uint8_t store_fixture_mfclassic_4k_7b_card[] = {
+#include "MfClassic_4K_7b_card.inc"
+};
+
+#define STORE_FIXTURE_MFCLASSIC_4K_7B_CARD_LEN sizeof(store_fixture_mfclassic_4k_7b_card)
+
+static const uint8_t store_fixture_mfclassic_mini_7b_card[] = {
+#include "MfClassic_Mini_7b_card.inc"
+};
+
+#define STORE_FIXTURE_MFCLASSIC_MINI_7B_CARD_LEN sizeof(store_fixture_mfclassic_mini_7b_card)
+
 #endif /* TESTS_FIXTURES_STORE_CLASSIC_STORE_FIXTURE_H_ */

@@ -150,4 +150,22 @@ ZTEST(classic_listener, test_poller_read_virtual_rf_4k_4b)
 					sizeof(uid));
 }
 
+ZTEST(classic_listener, test_poller_read_virtual_rf_4k_7b)
+{
+	static const uint8_t uid[] = {0x04U, 0x4BU, 0x4BU, 0x4BU, 0x4BU, 0xCAU, 0xFEU};
+
+	listener_poller_read_virtual_rf(classic_MfClassic_4K_7b_model,
+					CLASSIC_MFCLASSIC_4K_7B_MODEL_LEN, uid,
+					sizeof(uid));
+}
+
+ZTEST(classic_listener, test_poller_read_virtual_rf_mini_7b)
+{
+	static const uint8_t uid[] = {0x04U, 0xDEU, 0xADU, 0xCAU, 0xFEU, 0xEDU, 0xFAU};
+
+	listener_poller_read_virtual_rf(classic_MfClassic_Mini_7b_model,
+					CLASSIC_MFCLASSIC_MINI_7B_MODEL_LEN, uid,
+					sizeof(uid));
+}
+
 ZTEST_SUITE(classic_listener, NULL, NULL, listener_reset, NULL, NULL);

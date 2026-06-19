@@ -83,6 +83,18 @@ ZTEST(classic_model, test_serialize_roundtrip_mini_4b_golden)
 			       CLASSIC_TYPE_MINI, 4U);
 }
 
+ZTEST(classic_model, test_serialize_roundtrip_4k_7b_golden)
+{
+	model_roundtrip_golden(classic_MfClassic_4K_7b_model, CLASSIC_MFCLASSIC_4K_7B_MODEL_LEN,
+			       CLASSIC_TYPE_4K, 7U);
+}
+
+ZTEST(classic_model, test_serialize_roundtrip_mini_7b_golden)
+{
+	model_roundtrip_golden(classic_MfClassic_Mini_7b_model, CLASSIC_MFCLASSIC_MINI_7B_MODEL_LEN,
+			       CLASSIC_TYPE_MINI, 7U);
+}
+
 ZTEST(classic_model, test_deserialize_bad_version)
 {
 	uint8_t bad[] = {0x02U, CLASSIC_TYPE_1K};
