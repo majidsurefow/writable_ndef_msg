@@ -7,6 +7,17 @@
 /scan/
 /doc/_build/
 
+# IDE / tooling caches
+.cache/
+__pycache__/
+*.pyc
+
+# local run artifacts (matrix runners, twister/verify logs, reports)
+.nfc_matrix_*
+.p[0-9]*_*.log
+.verify_head_report.txt*
+docs/nfc/.memory_protocol_matrix.*
+
 # local reference trees (not part of the product repo; see docs/CI_TESTING.md)
 /hals_temp/
 /flipperzero/
