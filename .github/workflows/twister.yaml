@@ -147,7 +147,6 @@ jobs:
           export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr"
           export ZEPHYR_TOOLCHAIN_VARIANT=zephyr
           UNIT_DIRS=(
-            modules/nfc_pn7160/tests/unit/pn7160_tml
             tests/unit/nfc_reader
             tests/unit/nfc_ultralight
             tests/unit/nfc_classic

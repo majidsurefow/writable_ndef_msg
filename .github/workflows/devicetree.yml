@@ -9,7 +9,6 @@ on:
       - collab-*
     paths:
       - 'boards/**'
-      - 'modules/**/dts/**'
       - 'sample.yaml'
       - 'overlay*.conf'
       - '.github/workflows/devicetree.yml'
@@ -27,46 +26,6 @@ env:
   APP_PATH: .
 
 jobs:
-  devicetree-bindings:
-    name: Validate DT bindings
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
-
-      - name: Rebase onto target branch
-        if: github.event_name == 'pull_request'
-        env:
-          BASE_REF: ${{ github.base_ref }}
-        run: |
-          git config --global user.email "actions@zephyrproject.org"
-          git config --global user.name "Github Actions"
-          rm -fr ".git/rebase-apply" ".git/rebase-merge"
-          git rebase "origin/${BASE_REF}"
-          git clean -f -d
-
-      - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
-        with:
-          python-version: '3.12'
-
-      - name: Setup Zephyr project
-        uses: zephyrproject-rtos/action-zephyr-setup@5ec39f5cba83346d83a836dfed1524270c660e28 # v1.0.14
-        with:
-          app-path: ${{ env.APP_PATH }}
-          toolchains: arm-zephyr-eabi
-
-      - name: Validate binding YAML (dtschema)
-        run: |
-          export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr"
-          pip install -r "${ZEPHYR_BASE}/scripts/dts/python-devicetree/requirements.txt"
-          pip install dtschema
-          find modules/nfc_pn7160/dts/bindings -name '*.yaml' -print0 \
-            | xargs -0 -r python3 -m dtschema
-
   devicetree-build:
     name: Build PN7160 overlays
     runs-on: ubuntu-24.04
@@ -110,7 +69,6 @@ jobs:
     name: Check Devicetree Status
     if: always()
     needs:
-      - devicetree-bindings
       - devicetree-build
     uses: ./.github/workflows/ready-to-merge.yml
     with:

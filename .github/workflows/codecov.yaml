@@ -23,7 +23,7 @@ concurrency:
 
 env:
   APP_PATH: .
-  UNIT_TEST_DIR: modules/nfc_pn7160/tests/unit/pn7160_tml
+  UNIT_TEST_DIR: tests/unit/nfc_apdu_asm
 
 jobs:
   codecov:
