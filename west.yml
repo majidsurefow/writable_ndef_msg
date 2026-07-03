@@ -1,7 +1,7 @@
 # West manifest for writable_ndef_msg (NCS workspace root, T2 topology).
-# CI and local Multipass use the same pin as .github/workflows/twister.yaml.
-# Out-of-tree modules (e.g. modules/nfc_pn7160) are discovered via ZEPHYR_EXTRA_MODULES
-# in CMakeLists.txt; unit tests add the same path locally. See docs/CI_TESTING.md.
+# CI and local Multipass use the same NCS pin as .github/workflows/twister.yaml.
+# The PN7160 driver is the external nfc-pn7160 module, pinned below; CI clones it
+# from GitHub. Locally it is resolved by the NCS workspace manifest. See docs/CI_TESTING.md.
 
 manifest:
   version: "0.13"
@@ -21,3 +21,8 @@ manifest:
       repo-path: sdk-nrf
       revision: v3.2.4
       import: true
+
+    - name: nfc-pn7160
+      url: https://github.com/majidsurefow/nfc-pn7160
+      revision: faef0be3070fce5db8f7289466243b65961e0b79
+      path: modules/nfc-pn7160
