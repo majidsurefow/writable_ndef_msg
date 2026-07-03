@@ -123,15 +123,30 @@ git rm -r modules/nfc_pn7160
 
 (If `modules/` is now empty, git will stop tracking it automatically — no action needed.)
 
-- [ ] **Step 2: Verify the build is still green**
+- [ ] **Step 2: Verify a real PN7160 build is still green**
+
+> **IMPORTANT (discovered in Task 1):** `west twister -t pn7160` does **not** work as a
+> driver verification — `sample.yaml`'s `extra_args` joins two CMake vars with `;`, and
+> sysbuild needs `writable_ndef_msg_DTC_OVERLAY_FILE`, so those scenarios build with
+> `CONFIG_PN7160` **unset** (driver not compiled). Use the direct `west build` below,
+> which actually enables the driver, per `sysbuild.cmake`'s documented invocation.
 
 ```bash
 source scripts/env/ncs-env.sh
-west twister -T . -t pn7160 -p nrf54l15dk/nrf54l15/cpuapp \
-  --build-only --inline-logs -v --clobber-output -j "$(sysctl -n hw.ncpu)"
+BD="$(mktemp -d)/pn7160-verify-i2c"
+west build -b nrf54l15dk/nrf54l15/cpuapp -d "$BD" . -- \
+  -DEXTRA_CONF_FILE=overlay-pn7160.conf \
+  -Dwritable_ndef_msg_DTC_OVERLAY_FILE=boards/overlays/pn7160_i2c.overlay
+grep '^CONFIG_PN7160=y' "$BD/writable_ndef_msg/zephyr/.config"
+grep -rl "modules/nfc-pn7160/src/pn7160_driver.c" "$BD/writable_ndef_msg/build.ninja"
+grep -rl "modules/nfc_pn7160/src" "$BD" ; echo "old-src-refs-exit=$?"
+rm -rf "$BD"
 ```
 
-Expected: both pn7160 configs **PASSED**. (Proves nothing in the app referenced the deleted tree.)
+Expected: build completes producing `zephyr.elf`; `CONFIG_PN7160=y` present; the
+new-path grep prints a match; the old-src grep prints nothing (`old-src-refs-exit=1`).
+Proves nothing referenced the deleted in-tree tree and the driver still compiles from
+the external module.
 
 - [ ] **Step 3: Confirm no build/source references to the deleted path remain**
 
@@ -141,10 +156,13 @@ grep -rn "modules/nfc_pn7160" CMakeLists.txt src/ boards/ confs/ sample.yaml *.c
 
 Expected: **no output**.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 4: Commit (selective staging — the `git rm` already staged the deletions)**
+
+Do NOT use `git add -A` (unrelated uncommitted work is in the tree). The `git rm -r`
+in Step 1 already staged the deletions; a plain `git commit` commits only those.
 
 ```bash
-git add -A
+git status --short | grep '^D' | head    # sanity: staged deletions are modules/nfc_pn7160/*
 git commit -m "chore(nfc): remove outdated in-tree pn7160 driver (modules/nfc_pn7160)
 
 Superseded by the external nfc-pn7160 Zephyr module.
@@ -408,13 +426,27 @@ Expected: **no output**. (Remaining matches are confined to `docs/` — see Defe
 
 - [ ] **Step 2: Clean build of both PN7160 transports against the external module**
 
+Use direct `west build` (twister `-t pn7160` is vacuous — see Task 2 note). Build both
+the I2C and SPI overlays to cover both transports.
+
 ```bash
 source scripts/env/ncs-env.sh
-west twister -T . -t pn7160 -p nrf54l15dk/nrf54l15/cpuapp \
-  --build-only --inline-logs -v --clobber-output -j "$(sysctl -n hw.ncpu)"
+for tr in i2c spi; do
+  BD="$(mktemp -d)/pn7160-$tr"
+  west build -b nrf54l15dk/nrf54l15/cpuapp -d "$BD" . -- \
+    -DEXTRA_CONF_FILE=overlay-pn7160.conf \
+    -Dwritable_ndef_msg_DTC_OVERLAY_FILE="boards/overlays/pn7160_$tr.overlay" \
+    || { echo "BUILD FAILED: $tr"; }
+  grep -q '^CONFIG_PN7160=y' "$BD/writable_ndef_msg/zephyr/.config" \
+    && echo "$tr: CONFIG_PN7160=y OK" || echo "$tr: CONFIG_PN7160 MISSING"
+  rm -rf "$BD"
+done
 ```
 
-Expected: `sample.nfc.writable_ndef_msg.pn7160.i2c` and `...pn7160.spi` both **PASSED**; no duplicate-module error.
+Expected: both `i2c` and `spi` build to `zephyr.elf` with `CONFIG_PN7160=y OK`; no
+duplicate-module error. (Note the SPI overlay pairs with `overlay-pn7160-spi.conf` in
+the sample matrix, but `overlay-pn7160.conf` + the SPI DT overlay is sufficient to
+compile the driver over SPI for this verification.)
 
 - [ ] **Step 3: Report result**
 
