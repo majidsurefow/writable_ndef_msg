@@ -45,6 +45,11 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Auth for private west modules
+        run: |
+          git config --global credential.helper store
+          echo "https://x-access-token:${{ secrets.auth_TOKEN }}@github.com" >> ~/.git-credentials
+
       - name: Setup Zephyr project
         uses: zephyrproject-rtos/action-zephyr-setup@5ec39f5cba83346d83a836dfed1524270c660e28 # v1.0.14
         with:
