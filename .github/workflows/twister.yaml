@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 name: NCS-CI · Twister
 
 run-name: "NCS-CI · Twister · ${{ github.event_name }} · ${{ github.head_ref || github.ref_name }}"
