@@ -60,7 +60,7 @@ jobs:
         uses: zephyrproject-rtos/action-zephyr-setup@5ec39f5cba83346d83a836dfed1524270c660e28 # v1.0.14
         with:
           app-path: ${{ env.APP_PATH }}
-          toolchains: arm-zephyr-eabi
+          toolchains: llvm
 
       - name: Run Twister (LLVM ci_build)
         run: |
@@ -70,7 +70,7 @@ jobs:
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             extra="--integration"
           fi
-          west twister -T . -t ci_build --toolchain llvm --build-only \
+          west twister -T . -t ci_build --build-only \
             --force-color --inline-logs -v --clobber-output \
             ${extra} -j $(nproc)
 

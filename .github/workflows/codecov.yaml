@@ -71,7 +71,7 @@ jobs:
         run: |
           export ZEPHYR_BASE="$(west topdir)/zephyr"
           export ZEPHYR_TOOLCHAIN_VARIANT=zephyr
-          west twister -T "${UNIT_TEST_DIR}" -t ci_unit -p qemu_cortex_m33 \
+          west twister -T "${UNIT_TEST_DIR}" -t ci_unit -p qemu_cortex_m3 \
             --no-sysbuild --coverage --coverage-tool gcovr \
             -x CONFIG_COVERAGE=y \
             --force-color --inline-logs -v --clobber-output -j $(nproc)
@@ -102,7 +102,7 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ${{ steps.coverage.outputs.files }}
           flags: ci_unit
-          name: ci_unit-qemu_cortex_m33
+          name: ci_unit-qemu_cortex_m3
 
       - name: Upload coverage artifact
         if: always() && steps.coverage.outputs.found == 'true'
