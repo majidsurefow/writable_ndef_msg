@@ -64,7 +64,7 @@ jobs:
         run: |
           export ZEPHYR_BASE="$(west topdir)/zephyr"
           git config diff.renameLimit 10000
-          excludes="-e KconfigBasic -e SysbuildKconfigBasic -e ClangFormat"
+          excludes="-e KconfigBasic -e KconfigBasicNoModules -e Kconfig -e SysbuildKconfig -e SysbuildKconfigBasic -e Gitlint -e ClangFormat"
           if [ "${{ github.actor }}" == "dependabot[bot]" ]; then
             excludes="$excludes -e Identity"
           fi
