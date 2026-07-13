@@ -65,7 +65,7 @@ jobs:
 
       - name: Twister build (PN7160 DT overlays)
         run: |
-          export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr"
+          export ZEPHYR_BASE="$(west topdir)/zephyr"
           export ZEPHYR_TOOLCHAIN_VARIANT=zephyr
           west twister -T . -t pn7160 --integration --build-only \
             --force-color --inline-logs -v --clobber-output -j $(nproc)

@@ -65,7 +65,7 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
         run: |
-          export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr"
+          export ZEPHYR_BASE="$(west topdir)/zephyr"
           changed=$(git diff --name-only origin/${BASE_REF}.. -- ${COMPLIANCE_PATHS} || true)
           if [ -z "$changed" ]; then
             echo "No product-path changes; skipping coding guidelines."

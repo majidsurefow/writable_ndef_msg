@@ -62,7 +62,7 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
         run: |
-          export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr"
+          export ZEPHYR_BASE="$(west topdir)/zephyr"
           git config diff.renameLimit 10000
           excludes="-e KconfigBasic -e SysbuildKconfigBasic -e ClangFormat"
           if [ "${{ github.actor }}" == "dependabot[bot]" ]; then
@@ -88,7 +88,7 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
         run: |
-          export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr"
+          export ZEPHYR_BASE="$(west topdir)/zephyr"
           if [[ ! -s "compliance.xml" ]]; then
             exit 1
           fi

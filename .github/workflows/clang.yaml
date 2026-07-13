@@ -64,7 +64,7 @@ jobs:
 
       - name: Run Twister (LLVM ci_build)
         run: |
-          export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr"
+          export ZEPHYR_BASE="$(west topdir)/zephyr"
           export ZEPHYR_TOOLCHAIN_VARIANT=llvm
           extra=""
           if [ "${{ github.event_name }}" = "pull_request" ]; then

@@ -91,7 +91,7 @@ jobs:
 
       - name: Run Twister (ci_build)
         run: |
-          export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr"
+          export ZEPHYR_BASE="$(west topdir)/zephyr"
           export ZEPHYR_TOOLCHAIN_VARIANT=zephyr
           west twister ${{ matrix.twister_args }}
 
@@ -154,7 +154,7 @@ jobs:
 
       - name: Run Twister (ci_unit on qemu_cortex_m3)
         run: |
-          export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr"
+          export ZEPHYR_BASE="$(west topdir)/zephyr"
           export ZEPHYR_TOOLCHAIN_VARIANT=zephyr
           UNIT_DIRS=(
             tests/unit/nfc_reader
