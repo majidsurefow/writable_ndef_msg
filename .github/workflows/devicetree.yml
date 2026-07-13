@@ -1,4 +1,6 @@
-name: Devicetree
+name: NCS-CI · Devicetree
+
+run-name: "NCS-CI · Devicetree · ${{ github.event_name }} · ${{ github.head_ref || github.ref_name }}"
 
 on:
   pull_request:
@@ -7,12 +9,6 @@ on:
       - nfc-stack
       - v*-branch
       - collab-*
-    paths:
-      - 'boards/**'
-      - 'modules/**/dts/**'
-      - 'sample.yaml'
-      - 'overlay*.conf'
-      - '.github/workflows/devicetree.yml'
   push:
     branches:
       - main
@@ -23,59 +19,43 @@ on:
 permissions:
   contents: read
 
-env:
-  APP_PATH: .
-
 jobs:
-  devicetree-bindings:
-    name: Validate DT bindings
-    runs-on: ubuntu-24.04
+  changes:
+    name: NCS-CI · Devicetree changes
+    runs-on: ubuntu-latest
+    outputs:
+      dts: ${{ steps.filter.outputs.dts }}
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
-
-      - name: Rebase onto target branch
-        if: github.event_name == 'pull_request'
-        env:
-          BASE_REF: ${{ github.base_ref }}
+      - name: Detect DT-relevant changes
+        id: filter
         run: |
-          git config --global user.email "actions@zephyrproject.org"
-          git config --global user.name "Github Actions"
-          rm -fr ".git/rebase-apply" ".git/rebase-merge"
-          git rebase "origin/${BASE_REF}"
-          git clean -f -d
-
-      - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
-        with:
-          python-version: '3.12'
-
-      - name: Setup Zephyr project
-        uses: zephyrproject-rtos/action-zephyr-setup@5ec39f5cba83346d83a836dfed1524270c660e28 # v1.0.14
-        with:
-          app-path: ${{ env.APP_PATH }}
-          toolchains: arm-zephyr-eabi
-
-      - name: Validate binding YAML (dtschema)
-        run: |
-          export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr"
-          pip install -r "${ZEPHYR_BASE}/scripts/dts/python-devicetree/requirements.txt"
-          pip install dtschema
-          find modules/nfc_pn7160/dts/bindings -name '*.yaml' -print0 \
-            | xargs -0 -r python3 -m dtschema
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "dts=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          base="${{ github.event.pull_request.base.sha }}"
+          changed="$(git diff --name-only "$base" HEAD || true)"
+          if echo "$changed" | grep -qE '^(boards/|overlay|sample\.yaml$|\.github/workflows/devicetree\.yml$)'; then
+            echo "dts=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "dts=false" >> "$GITHUB_OUTPUT"
+          fi
 
   devicetree-build:
-    name: Build PN7160 overlays
+    name: NCS-CI · Devicetree build
+    needs: changes
+    if: needs.changes.outputs.dts == 'true'
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
+          clean: false
 
       - name: Rebase onto target branch
         if: github.event_name == 'pull_request'
@@ -88,29 +68,22 @@ jobs:
           git rebase "origin/${BASE_REF}"
           git clean -f -d
 
-      - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+      - name: Setup Zephyr (cached)
+        uses: ./.github/actions/setup-zephyr
         with:
-          python-version: '3.12'
-
-      - name: Setup Zephyr project
-        uses: zephyrproject-rtos/action-zephyr-setup@5ec39f5cba83346d83a836dfed1524270c660e28 # v1.0.14
-        with:
-          app-path: ${{ env.APP_PATH }}
-          toolchains: arm-zephyr-eabi
+          toolchain: "true"
+          auth-token: ${{ secrets.auth_TOKEN }}
 
       - name: Twister build (PN7160 DT overlays)
         run: |
-          export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr"
-          export ZEPHYR_TOOLCHAIN_VARIANT=zephyr
           west twister -T . -t pn7160 --integration --build-only \
             --force-color --inline-logs -v --clobber-output -j $(nproc)
 
   devicetree-status-check:
-    name: Check Devicetree Status
+    name: NCS-CI · Devicetree
     if: always()
     needs:
-      - devicetree-bindings
+      - changes
       - devicetree-build
     uses: ./.github/workflows/ready-to-merge.yml
     with:

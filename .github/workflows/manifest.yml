@@ -1,7 +1,9 @@
 name: Manifest
 
+# Disabled as a PR gate; NCS import:true manifests break action-manifest.
+# Keep file for manual runs.
 on:
-  pull_request_target:
+  workflow_dispatch:
 
 permissions:
   contents: read

@@ -1,4 +1,6 @@
-name: Coding Guidelines
+name: NCS-CI · Guidelines
+
+run-name: "NCS-CI · Guidelines · ${{ github.event_name }} · ${{ github.head_ref || github.ref_name }}"
 
 on:
   pull_request:
@@ -12,21 +14,21 @@ permissions:
   contents: read
 
 env:
-  APP_PATH: .
   COMPLIANCE_PATHS: >-
     src modules boards docs sample.yaml west.yml CMakeLists.txt Kconfig prj.conf
-    overlay-pn7160.conf overlay-pn7160-spi.conf license_config.yml
+    overlay-pn7160.conf overlay-pn7160-spi.conf
 
 jobs:
   coding_guidelines:
     runs-on: ubuntu-24.04
-    name: Run coding guidelines checks on patch series (PR)
+    name: NCS-CI · Guidelines
     steps:
       - name: Checkout the code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
+          clean: false
 
       - name: Rebase onto the target branch
         env:
@@ -35,19 +37,14 @@ jobs:
           git config --global user.email "actions@zephyrproject.org"
           git config --global user.name "Github Actions"
           rm -fr ".git/rebase-apply" ".git/rebase-merge"
-          git rebase origin/${BASE_REF}
+          git rebase "origin/${BASE_REF}"
           git clean -f -d
 
-      - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+      - name: Setup Zephyr (cached, no toolchain)
+        uses: ./.github/actions/setup-zephyr
         with:
-          python-version: '3.12'
-
-      - name: Setup Zephyr project
-        uses: zephyrproject-rtos/action-zephyr-setup@5ec39f5cba83346d83a836dfed1524270c660e28 # v1.0.14
-        with:
-          app-path: ${{ env.APP_PATH }}
-          toolchains: arm-zephyr-eabi
+          toolchain: "false"
+          auth-token: ${{ secrets.auth_TOKEN }}
 
       - name: Install coccinelle
         run: |
@@ -60,7 +57,6 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
         run: |
-          export ZEPHYR_BASE="${GITHUB_WORKSPACE}/zephyr"
           changed=$(git diff --name-only origin/${BASE_REF}.. -- ${COMPLIANCE_PATHS} || true)
           if [ -z "$changed" ]; then
             echo "No product-path changes; skipping coding guidelines."

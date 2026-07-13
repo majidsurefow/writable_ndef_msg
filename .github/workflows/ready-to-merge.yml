@@ -1,4 +1,4 @@
-name: ready to merge
+name: NCS-CI · Gate aggregator
 
 on:
   workflow_call:
@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   all_jobs_passed:
-    name: all jobs passed
+    name: gate
     runs-on: ubuntu-latest
     steps:
       - name: "Check status of all required jobs"

@@ -1,1 +1,0 @@
-coverxygen>=1.6.0

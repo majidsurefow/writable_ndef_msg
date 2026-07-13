@@ -1,7 +1,8 @@
 name: Scancode
 
+# Disabled as a PR gate; keep file for manual runs.
 on:
-  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read

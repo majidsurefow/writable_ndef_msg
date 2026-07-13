@@ -46,7 +46,9 @@ tests:
   sample.nfc.writable_ndef_msg.pn7160.i2c:
     sysbuild: true
     build_only: true
-    extra_args: OVERLAY_FILE=boards/overlays/pn7160_i2c.overlay;EXTRA_CONF_FILE=overlay-pn7160.conf
+    extra_args:
+      - writable_ndef_msg_DTC_OVERLAY_FILE=boards/overlays/pn7160_i2c.overlay
+      - writable_ndef_msg_EXTRA_CONF_FILE=overlay-pn7160.conf
     integration_platforms:
       - nrf54l15dk/nrf54l15/cpuapp
     platform_allow:
@@ -59,7 +61,9 @@ tests:
   sample.nfc.writable_ndef_msg.pn7160.spi:
     sysbuild: true
     build_only: true
-    extra_args: OVERLAY_FILE=boards/overlays/pn7160_spi.overlay;EXTRA_CONF_FILE=overlay-pn7160-spi.conf
+    extra_args:
+      - writable_ndef_msg_DTC_OVERLAY_FILE=boards/overlays/pn7160_spi.overlay
+      - writable_ndef_msg_EXTRA_CONF_FILE=overlay-pn7160-spi.conf
     integration_platforms:
       - nrf54l15dk/nrf54l15/cpuapp
     platform_allow:
