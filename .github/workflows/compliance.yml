@@ -1,4 +1,6 @@
-name: Compliance Checks
+name: NCS-CI · Compliance
+
+run-name: "NCS-CI · Compliance · ${{ github.event_name }} · ${{ github.head_ref || github.ref_name }}"
 
 on:
   pull_request:
@@ -12,21 +14,21 @@ permissions:
   contents: read
 
 env:
-  APP_PATH: .
   COMPLIANCE_PATHS: >-
     src modules boards docs sample.yaml west.yml CMakeLists.txt Kconfig prj.conf
-    overlay-pn7160.conf overlay-pn7160-spi.conf license_config.yml
+    overlay-pn7160.conf overlay-pn7160-spi.conf
 
 jobs:
   check_compliance:
     runs-on: ubuntu-24.04
-    name: Run compliance checks on patch series (PR)
+    name: NCS-CI · Compliance
     steps:
       - name: Checkout the code
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
+          clean: false
 
       - name: Rebase onto the target branch
         env:
@@ -40,21 +42,11 @@ jobs:
           git rebase origin/${BASE_REF}
           git clean -f -d
 
-      - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+      - name: Setup Zephyr (cached, no toolchain)
+        uses: ./.github/actions/setup-zephyr
         with:
-          python-version: '3.12'
-
-      - name: Auth for private west modules
-        run: |
-          git config --global credential.helper store
-          echo "https://x-access-token:${{ secrets.auth_TOKEN }}@github.com" >> ~/.git-credentials
-
-      - name: Setup Zephyr project
-        uses: zephyrproject-rtos/action-zephyr-setup@5ec39f5cba83346d83a836dfed1524270c660e28 # v1.0.14
-        with:
-          app-path: ${{ env.APP_PATH }}
-          toolchains: arm-zephyr-eabi
+          toolchain: "false"
+          auth-token: ${{ secrets.auth_TOKEN }}
 
       - name: Run Compliance Tests
         continue-on-error: true
@@ -62,12 +54,10 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
         run: |
-          export ZEPHYR_BASE="$(west topdir)/zephyr"
           git config diff.renameLimit 10000
-          excludes="-e KconfigBasic -e KconfigBasicNoModules -e Kconfig -e SysbuildKconfig -e SysbuildKconfigBasic -e Gitlint -e ClangFormat"
-          if [ "${{ github.actor }}" == "dependabot[bot]" ]; then
-            excludes="$excludes -e Identity"
-          fi
+          # App/NCS tree: exclude Zephyr-tree-wide Kconfig and commit-style gates
+          # (this repo does not use Signed-off-by / gitlint commit bodies).
+          excludes="-e KconfigBasic -e KconfigBasicNoModules -e Kconfig -e SysbuildKconfig -e SysbuildKconfigBasic -e SysbuildKconfigBasicNoModules -e Gitlint -e Identity -e ClangFormat"
           changed=$(git diff --name-only origin/${BASE_REF}.. -- ${COMPLIANCE_PATHS} || true)
           if [ -z "$changed" ]; then
             echo "No product-path changes; skipping compliance."
@@ -85,10 +75,7 @@ jobs:
           path: compliance.xml
 
       - name: check-warns
-        env:
-          BASE_REF: ${{ github.base_ref }}
         run: |
-          export ZEPHYR_BASE="$(west topdir)/zephyr"
           if [[ ! -s "compliance.xml" ]]; then
             exit 1
           fi

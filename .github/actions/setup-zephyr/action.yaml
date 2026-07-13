@@ -1,0 +1,136 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Setup Zephyr (cached NCS workspace)
+description: >
+  Restore or refresh a cached NCS west workspace and Zephyr SDK. The NCS
+  revision is read from west.yml so the version lives in exactly one place.
+  west uses a parent-of-checkout topdir (zephyr/, nrf/, modules/ are siblings
+  of the repo), so the cache covers the parent workspace minus the repo. On a
+  cache hit only `west update` runs; on a miss the full tree is fetched once.
+
+inputs:
+  toolchain:
+    description: "Install the Zephyr SDK cross-compiler (set 'false' for lint-only jobs)"
+    required: false
+    default: "true"
+  app-path:
+    description: "Manifest root / app path"
+    required: false
+    default: "."
+  auth-token:
+    description: "Optional PAT for private west projects (e.g. nfc-pn7160)"
+    required: false
+    default: ""
+
+outputs:
+  ncs-version:
+    description: "NCS revision read from west.yml"
+    value: ${{ steps.ncs.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve NCS version from west.yml
+      id: ncs
+      shell: bash
+      run: |
+        ver=$(python3 - <<'PY'
+        import re
+        text = open("west.yml", encoding="utf-8").read()
+        m = re.search(r"name:\s*nrf\b[\s\S]*?revision:\s*(\S+)", text)
+        print(m.group(1) if m else "")
+        PY
+        )
+        if [ -z "$ver" ] || [ "$ver" = "null" ]; then
+          echo "::error ::could not read nrf revision from west.yml"; exit 1
+        fi
+        echo "version=${ver}" >> "$GITHUB_OUTPUT"
+        echo "Resolved NCS_VERSION=${ver}"
+
+    - name: Resolve workspace layout
+      shell: bash
+      run: |
+        echo "WS_PARENT=$(dirname "$GITHUB_WORKSPACE")" >> "$GITHUB_ENV"
+        echo "WS_NAME=$(basename "$GITHUB_WORKSPACE")" >> "$GITHUB_ENV"
+
+    - name: Set up Python
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+      with:
+        python-version: '3.12'
+
+    - name: Install west
+      shell: bash
+      run: pip install west
+
+    - name: Auth for private west modules
+      shell: bash
+      env:
+        AUTH_TOKEN: ${{ inputs.auth-token }}
+      run: |
+        if [ -n "$AUTH_TOKEN" ]; then
+          git config --global credential.helper store
+          echo "https://x-access-token:${AUTH_TOKEN}@github.com" >> ~/.git-credentials
+        fi
+
+    - name: Restore west workspace cache
+      id: cache-ws
+      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      with:
+        path: |
+          ${{ env.WS_PARENT }}/*
+          !${{ env.WS_PARENT }}/${{ env.WS_NAME }}
+        key: ${{ runner.os }}-ncs-${{ steps.ncs.outputs.version }}-${{ hashFiles('west.yml') }}
+
+    - name: West init + update (shallow, narrow)
+      shell: bash
+      run: |
+        west init -l "${{ inputs.app-path }}" 2>/dev/null || true
+        west config manifest.group-filter -- -optional || true
+        west config --global update.narrow true
+        west update -o=--depth=1 --narrow
+
+    - name: Zephyr export
+      shell: bash
+      run: west zephyr-export
+
+    - name: Export ZEPHYR_BASE
+      shell: bash
+      run: echo "ZEPHYR_BASE=$(west list zephyr -f '{abspath}')" >> "$GITHUB_ENV"
+
+    - name: Cache pip downloads + built wheels
+      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ steps.ncs.outputs.version }}
+
+    - name: Install Zephyr Python dependencies
+      shell: bash
+      run: pip install -r "${ZEPHYR_BASE}/scripts/requirements.txt"
+
+    - name: Resolve required Zephyr SDK version
+      if: inputs.toolchain == 'true'
+      shell: bash
+      run: echo "ZSDK_VERSION=$(cat "${ZEPHYR_BASE}/SDK_VERSION")" >> "$GITHUB_ENV"
+
+    - name: Cache Zephyr SDK
+      if: inputs.toolchain == 'true'
+      id: cache-sdk
+      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      with:
+        path: ${{ github.workspace }}/zephyr-sdk
+        key: ${{ runner.os }}-zsdk-${{ env.ZSDK_VERSION }}-arm-zephyr-eabi
+
+    - name: Install Zephyr SDK (cache miss only)
+      if: inputs.toolchain == 'true' && steps.cache-sdk.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        url="https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${ZSDK_VERSION}/zephyr-sdk-${ZSDK_VERSION}_linux-x86_64_minimal.tar.xz"
+        mkdir -p zephyr-sdk
+        wget -qO- "$url" | tar -xJ -C zephyr-sdk --strip-components=1
+        ./zephyr-sdk/setup.sh -t arm-zephyr-eabi -c
+
+    - name: Export SDK env
+      if: inputs.toolchain == 'true'
+      shell: bash
+      run: |
+        echo "ZEPHYR_SDK_INSTALL_DIR=${{ github.workspace }}/zephyr-sdk" >> "$GITHUB_ENV"
+        echo "ZEPHYR_TOOLCHAIN_VARIANT=zephyr" >> "$GITHUB_ENV"

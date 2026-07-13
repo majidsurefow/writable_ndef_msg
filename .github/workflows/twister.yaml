@@ -1,4 +1,6 @@
-name: Run tests with twister
+name: NCS-CI · Twister
+
+run-name: "NCS-CI · Twister · ${{ github.event_name }} · ${{ github.head_ref || github.ref_name }}"
 
 on:
   push:
@@ -24,45 +26,88 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  NCS_REVISION: v3.2.4
   APP_PATH: .
 
 jobs:
+  twister-build-matrix:
+    name: NCS-CI · Twister matrix (build)
+    runs-on: ubuntu-latest
+    outputs:
+      config: ${{ steps.config.outputs.config }}
+    steps:
+      - id: config
+        run: |
+          case "${{ github.event_name }}" in
+            pull_request)
+              SCOPE=pr
+              ARGS='-T . -t ci_build -p nrf54l15dk/nrf54l15/cpuapp --integration --build-only --force-color --inline-logs -v --clobber-output -j $(nproc)'
+              TIMEOUT=120
+              ;;
+            push)
+              SCOPE=push
+              ARGS='-T . -t ci_build -p nrf54l15dk/nrf54l15/cpuapp --build-only --force-color --inline-logs -v --clobber-output -j $(nproc)'
+              TIMEOUT=120
+              ;;
+            schedule)
+              SCOPE=nightly
+              ARGS='-T . -t ci_build --build-only --all --force-color --inline-logs -v --clobber-output -j $(nproc)'
+              TIMEOUT=240
+              ;;
+            *)
+              echo "Unsupported event: ${{ github.event_name }}"
+              exit 1
+              ;;
+          esac
+          {
+            echo 'config<<EOF'
+            jq -cn \
+              --arg scope "$SCOPE" \
+              --arg args "$ARGS" \
+              --argjson timeout "$TIMEOUT" \
+              '{include:[{scope:$scope,twister_args:$args,timeout_minutes:$timeout}]}'
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+  twister-unit-matrix:
+    name: NCS-CI · Twister matrix (unit)
+    runs-on: ubuntu-latest
+    outputs:
+      config: ${{ steps.config.outputs.config }}
+    steps:
+      - id: config
+        run: |
+          case "${{ github.event_name }}" in
+            pull_request|push)
+              SCOPE=$([ "${{ github.event_name }}" = "pull_request" ] && echo pr || echo push)
+              ;;
+            *)
+              echo 'config={"include":[]}' >> "$GITHUB_OUTPUT"
+              exit 0
+              ;;
+          esac
+          {
+            echo 'config<<EOF'
+            jq -cn --arg scope "$SCOPE" '{include:[{scope:$scope}]}'
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
   twister-build:
-    name: Twister build (${{ matrix.scope }})
+    name: NCS-CI · Twister build (${{ matrix.scope }})
+    needs: twister-build-matrix
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - scope: pr
-            twister_args: >-
-              -T . -t ci_build --integration --build-only
-              --force-color --inline-logs -v --clobber-output
-              -j $(nproc)
-          - scope: push
-            twister_args: >-
-              -T . -t ci_build --build-only
-              --force-color --inline-logs -v --clobber-output
-              -j $(nproc)
-          - scope: nightly
-            twister_args: >-
-              -T . -t ci_build --build-only --all
-              --force-color --inline-logs -v --clobber-output
-              -j $(nproc)
-    if: >-
-      (matrix.scope == 'pr' && (github.event_name == 'pull_request')) ||
-      (matrix.scope == 'push' && (github.event_name == 'push')) ||
-      (matrix.scope == 'nightly' && (github.event_name == 'schedule'))
-    timeout-minutes: ${{ matrix.scope == 'nightly' && 240 || 120 }}
+      matrix: ${{ fromJSON(needs.twister-build-matrix.outputs.config) }}
+    timeout-minutes: ${{ matrix.timeout_minutes }}
     env:
       BASE_REF: ${{ github.base_ref }}
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
+          clean: false
 
       - name: Rebase onto target branch
         if: github.event_name == 'pull_request'
@@ -73,27 +118,14 @@ jobs:
           git rebase "origin/${BASE_REF}"
           git clean -f -d
 
-      - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+      - name: Setup Zephyr (cached)
+        uses: ./.github/actions/setup-zephyr
         with:
-          python-version: '3.12'
-
-      - name: Auth for private west modules
-        run: |
-          git config --global credential.helper store
-          echo "https://x-access-token:${{ secrets.auth_TOKEN }}@github.com" >> ~/.git-credentials
-
-      - name: Setup Zephyr project
-        uses: zephyrproject-rtos/action-zephyr-setup@5ec39f5cba83346d83a836dfed1524270c660e28 # v1.0.14
-        with:
-          app-path: ${{ env.APP_PATH }}
-          toolchains: arm-zephyr-eabi
+          toolchain: "true"
+          auth-token: ${{ secrets.auth_TOKEN }}
 
       - name: Run Twister (ci_build)
-        run: |
-          export ZEPHYR_BASE="$(west topdir)/zephyr"
-          export ZEPHYR_TOOLCHAIN_VARIANT=zephyr
-          west twister ${{ matrix.twister_args }}
+        run: west twister ${{ matrix.twister_args }}
 
       - name: Upload Twister results
         if: always()
@@ -106,26 +138,23 @@ jobs:
             twister-out/twister.json
 
   twister-unit:
-    name: Twister unit (${{ matrix.scope }})
+    name: NCS-CI · Twister unit (${{ matrix.scope }})
+    needs: twister-unit-matrix
+    if: needs.twister-unit-matrix.outputs.config != '{"include":[]}'
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - scope: pr
-          - scope: push
-    if: >-
-      (matrix.scope == 'pr' && (github.event_name == 'pull_request')) ||
-      (matrix.scope == 'push' && (github.event_name == 'push'))
+      matrix: ${{ fromJSON(needs.twister-unit-matrix.outputs.config) }}
     timeout-minutes: 60
     env:
       BASE_REF: ${{ github.base_ref }}
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
+          clean: false
 
       - name: Rebase onto target branch
         if: github.event_name == 'pull_request'
@@ -136,32 +165,24 @@ jobs:
           git rebase "origin/${BASE_REF}"
           git clean -f -d
 
-      - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+      - name: Setup Zephyr (cached)
+        uses: ./.github/actions/setup-zephyr
         with:
-          python-version: '3.12'
+          toolchain: "true"
+          auth-token: ${{ secrets.auth_TOKEN }}
 
-      - name: Auth for private west modules
-        run: |
-          git config --global credential.helper store
-          echo "https://x-access-token:${{ secrets.auth_TOKEN }}@github.com" >> ~/.git-credentials
-
-      - name: Setup Zephyr project
-        uses: zephyrproject-rtos/action-zephyr-setup@5ec39f5cba83346d83a836dfed1524270c660e28 # v1.0.14
-        with:
-          app-path: ${{ env.APP_PATH }}
-          toolchains: arm-zephyr-eabi
+      - name: Install QEMU (qemu_cortex_m3)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends qemu-system-arm
 
       - name: Run Twister (ci_unit on qemu_cortex_m3)
         run: |
-          export ZEPHYR_BASE="$(west topdir)/zephyr"
-          export ZEPHYR_TOOLCHAIN_VARIANT=zephyr
           UNIT_DIRS=(
             tests/unit/nfc_reader
             tests/unit/nfc_ultralight
             tests/unit/nfc_classic
             tests/unit/nfc_felica
             tests/unit/nfc_slix
+            tests/unit/nfc_iso15693_3
             tests/unit/nfc_desfire
             tests/unit/nfc_emv
             tests/unit/nfc_aliro
@@ -185,7 +206,7 @@ jobs:
             twister-out/twister.json
 
   twister-test-results:
-    name: Publish Unit Test Results
+    name: NCS-CI · Twister test results
     needs:
       - twister-build
       - twister-unit
@@ -193,6 +214,8 @@ jobs:
     if: always() && (needs.twister-build.result != 'skipped' || needs.twister-unit.result != 'skipped')
     permissions:
       checks: write
+      contents: read
+      pull-requests: read
     steps:
       - name: Download artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -200,17 +223,19 @@ jobs:
           path: artifacts
 
       - name: Publish Unit Test Results
-        uses: EnricoMi/publish-unit-test-result-action@c950f6fb443cb5af20a377fd0dfaa78838901040 # v2.23.0
+        uses: EnricoMi/publish-unit-test-result-action@d0a4676d0e0b938bc201470d88276b7c74c712b3 # v2.24.0
         if: always()
         with:
-          check_name: Unit Test Results
+          check_name: NCS-CI · Unit Test Results
           files: "**/twister.xml"
           comment_mode: off
 
   twister-status-check:
-    name: Check Twister Status
+    name: NCS-CI · Twister
     if: always()
     needs:
+      - twister-build-matrix
+      - twister-unit-matrix
       - twister-build
       - twister-unit
       - twister-test-results

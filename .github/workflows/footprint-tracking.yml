@@ -16,6 +16,7 @@ on:
       - 'prj.conf'
       - 'overlay*.conf'
       - '.github/workflows/footprint-tracking.yml'
+      - '.github/actions/setup-zephyr/**'
 
 permissions:
   contents: read
@@ -24,9 +25,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
-env:
-  APP_PATH: .
-
 jobs:
   footprint-tracking:
     name: Record footprint
@@ -34,30 +32,19 @@ jobs:
     timeout-minutes: 120
     steps:
       - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
+          clean: false
 
-      - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+      - name: Setup Zephyr (cached)
+        uses: ./.github/actions/setup-zephyr
         with:
-          python-version: '3.12'
-
-      - name: Auth for private west modules
-        run: |
-          git config --global credential.helper store
-          echo "https://x-access-token:${{ secrets.auth_TOKEN }}@github.com" >> ~/.git-credentials
-
-      - name: Setup Zephyr project
-        uses: zephyrproject-rtos/action-zephyr-setup@5ec39f5cba83346d83a836dfed1524270c660e28 # v1.0.14
-        with:
-          app-path: ${{ env.APP_PATH }}
-          toolchains: arm-zephyr-eabi
+          toolchain: "true"
+          auth-token: ${{ secrets.auth_TOKEN }}
 
       - name: Twister build (ci_build integration)
         run: |
-          export ZEPHYR_BASE="$(west topdir)/zephyr"
-          export ZEPHYR_TOOLCHAIN_VARIANT=zephyr
           west twister -T . -t ci_build --integration --build-only \
             --force-color --inline-logs -v --clobber-output -j $(nproc)
 
